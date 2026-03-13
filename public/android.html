@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Messenger for Android</title>
+    <meta name="theme-color" content="#388bfd">
+    <link rel="stylesheet" href="static/style.css">
+    <link rel="icon" href="static/icon.webp">
+    <style>
+        h1 {
+            font-size: 48px;
+            font-weight: 500;
+            line-height: 56px;
+            margin-bottom: 16px;
+        }
+
+        .intro-subtitle {
+            font-size: 24px;
+            margin-bottom: 40px;
+        }
+
+        .intro-download {
+            display: inline-block;
+            font-size: 24px;
+            line-height: 32px;
+            color: white;
+            padding: 16px 24px;
+            border-radius: 20px;
+            background-color: var(--primary-color);
+        }
+
+        .step-container {
+            padding: 40px;
+            margin-bottom: 40px;
+            border-radius: 40px;
+            border: 1px solid var(--border-color);
+            background: rgb(252 252 252);
+        }
+
+        .step-container>h2 {
+            font-size: 32px;
+            margin-top: 24px;
+            font-weight: 500;
+            line-height: 40px;
+        }
+
+        .step-number {
+            display: flex;
+            width: 50px;
+            background-color: var(--primary-color);
+            aspect-ratio: 1 / 1;
+            border-radius: 100px;
+            align-items: center;
+            font-size: 24px;
+            color: white;
+            justify-content: center;
+        }
+
+        .first-step {
+            margin-top: 16px;
+        }
+
+        .first-step>a {
+            color: white;
+            font-size: 24px;
+            font-weight: 500;
+            padding: 14px 24px;
+            display: inline-block;
+            border-radius: 20px;
+            background-color: var(--primary-color);
+        }
+
+        .step-text {
+            font-size: 20px;
+            margin-top: 16px;
+            line-height: 28px;
+        }
+
+        @media screen and (width<=1024px) {
+            h1 {
+                font-size: 28px;
+                line-height: 38px;
+            }
+
+            .intro-download {
+                display: block;
+                font-size: 18px;
+                text-align: center;
+                line-height: 24px;
+            }
+
+            .step-container {
+                padding: 20px;
+                margin-bottom: 20px;
+            }
+
+            .first-step>a {
+                display: block;
+                text-align: center;
+                font-size: 18px;
+                line-height: 24px;
+            }
+
+            .intro-subtitle {
+                font-size: 18px;
+            }
+
+            .step-container>h2 {
+                font-size: 20px;
+                line-height: 26px;
+            }
+
+            .step-text {
+                font-size: 16px;
+                line-height: 24px;
+            }
+        }
+
+        @media screen and (width<=768px) {
+            h1 {
+                font-size: 28px;
+                line-height: 34px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <nav class="container">
+            <ul>
+                <li>
+                    <a href="/">Главная</a>
+                </li>
+                <li class="active">
+                    <a href="/">Приложения</a>
+                </li>
+            </ul>
+        </nav>
+    </header>
+
+    <main class="container">
+        <section>
+            <h1>Как скачать Messenger на&nbsp;Android</h1>
+            <p class="intro-subtitle">Поддерживаются устройства от&nbsp;Android 9</p>
+            <a href="https://www.rustore.ru/catalog/app/com.aiwazian.messenger" target="_blank" class="intro-download">
+                Скачать из RuStore
+            </a>
+        </section>
+
+        <section class="step-container">
+            <div class="step-number">1</div>
+            <h2>Скачайте файл Messenger.apk на свой смартфон</h2>
+            <div class="first-step">
+                <a href="Messenger.apk">
+                    Скачать
+                </a>
+            </div>
+        </section>
+
+        <section class="step-container">
+            <div class="step-number">2</div>
+            <h2>Разрешите загрузку файла</h2>
+            <div class="step-text">
+                Android покажет стандартное предупреждение для неизвестных файлов. Нажмите «Все равно скачать» — файл
+                безопасен
+            </div>
+        </section>
+
+        <section class="step-container">
+            <div class="step-number">3</div>
+            <h2>Подтвердите установку приложения</h2>
+            <div class="step-text">Нажмите «Установить». Файл можно найти в браузере: Меню > Загрузки > Messenger.apk
+            </div>
+        </section>
+
+        <section class="step-container">
+            <div class="step-number">
+                <svg xmlns="http://www.w3.org/2000/svg" width="19" height="14" viewBox="0 0 19 14" fill="none">
+                    <path
+                        d="M16.8637 0.363701C17.2152 0.0122295 17.785 0.0122298 18.1365 0.363702C18.488 0.715174 18.488 1.28502 18.1365 1.63649L6.63649 13.1365C6.28502 13.488 5.71517 13.488 5.3637 13.1365L0.363701 8.13649C0.0122295 7.78502 0.0122298 7.21517 0.363702 6.8637C0.715174 6.51223 1.28502 6.51223 1.63649 6.8637L6.00009 11.2273L16.8637 0.363701Z"
+                        fill="white" />
+                </svg>
+            </div>
+            <h2>Готово</h2>
+            <div class="step-text">Общайтесь, не беспокоясь о безопасности</div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <div class="desktop">
+                <div class="col slang">
+                    <h3>Messenger</h3> - открытая и безопасная платформа для общения.
+                </div>
+                <div class="col">
+                    <div class="title">
+                        <h3>Приложения</h3>
+                    </div>
+                    <div>
+                        <a href="/android">Android</a>
+                    </div>
+                </div>
+                <div class="col">
+                    <div class="title">
+                        <h3>Открытый код</h3>
+                    </div>
+                    <div>
+                        <a href="https://github.com/karenaiwazian/Messenger_Client" target="_blank">Клиент</a>
+                    </div>
+                    <div>
+                        <a href="https://github.com/karenaiwazian/Messenger_Server" target="_blank">Сервер</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mobile">
+            <a href="/android">Приложения</a>
+        </div>
+    </footer>
+</body>
+
+</html>
