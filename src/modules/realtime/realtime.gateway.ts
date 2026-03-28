@@ -1,4 +1,4 @@
-import { Logger, Inject, forwardRef } from '@nestjs/common'
+import { Logger, Inject, forwardRef, UnauthorizedException } from '@nestjs/common'
 import { WebSocketGateway, OnGatewayConnection, WebSocketServer, OnGatewayDisconnect, SubscribeMessage, MessageBody, ConnectedSocket, OnGatewayInit } from '@nestjs/websockets'
 import { Server, Socket } from 'socket.io'
 import { SocketEvent, SocketEventType } from 'src/common/socket/socket-events'
@@ -29,13 +29,15 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
                 const token = socket.handshake.auth.token as string
                 if (!token) {
                     this.logger.warn(`No token provided for socket ${socket.id}`)
-                    return next(new Error('Unauthorized'))
+                    socket.emit(SocketEvent.UNAUTHORIZED)
+                    return next()
                 }
 
                 const session = await this.sessionsService.findByToken(token)
                 if (!session) {
                     this.logger.warn(`Invalid token provided for socket ${socket.id}`)
-                    return next(new Error('Unauthorized'))
+                    socket.emit(SocketEvent.UNAUTHORIZED)
+                    return next()
                 }
 
                 socket.data.userId = session.userId
@@ -43,14 +45,18 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
                 next()
             } catch (error) {
                 this.logger.error(`Auth error in socket middleware: ${error.message}`)
-                next(new Error('Unauthorized'))
+                socket.emit(SocketEvent.UNAUTHORIZED)
+                next()
             }
         })
     }
 
     async handleConnection(client: Socket, ...args: any[]) {
         try {
-            const userId = UserId(client.data.userId)
+            const userIdRaw = client.data.userId
+            if (!userIdRaw) return
+
+            const userId = UserId(userIdRaw)
             const userRoom = `user:${userId.toString()}`
 
             client.join(userRoom)

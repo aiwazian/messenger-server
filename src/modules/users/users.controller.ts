@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, UseGuards, Request, HttpCode, HttpStatus } from '@nestjs/common'
+import { Body, Controller, Get, Param, Patch, UseGuards, Request, HttpCode, HttpStatus, Delete } from '@nestjs/common'
 import { UsersService } from './users.service'
 import { AuthGuard } from 'src/common/guards/auth.guard'
 import { UpdateUserDto } from './dto/update-user.dto'
@@ -17,6 +17,12 @@ import { ChangePasswordDto } from './dto/change-password.dto'
 @UseGuards(AuthGuard)
 export class UsersController {
     constructor(private readonly usersService: UsersService) { }
+
+    @Delete('me')
+    @HttpCode(HttpStatus.NO_CONTENT)
+    deleteMe(@CurrentUserId() userId: UserId): Promise<void> {
+        return this.usersService.deleteMe(userId)
+    }
 
     @Patch('me/password')
     @HttpCode(HttpStatus.OK)

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Param, Post, UseGuards, Delete, HttpCode, HttpStatus } from '@nestjs/common'
 import { ChatsService } from './chats.service'
 import { CurrentUserId } from 'src/common/decorators/user-id.decorator'
 import { UserId } from 'src/common/types/user-id.type'
@@ -30,6 +30,16 @@ export class ChatsController {
         @Param('chatId') chatId: string
     ) {
         return this.chatsService.getById(userId, ChatId(chatId))
+    }
+
+    @Delete(':chatId')
+    @UseGuards(CanReadChatGuard)
+    @HttpCode(HttpStatus.NO_CONTENT)
+    deleteChat(
+        @CurrentUserId() userId: UserId,
+        @Param('chatId') chatId: string
+    ) {
+        return this.chatsService.deleteChat(userId, ChatId(chatId))
     }
 
     @Post('invite-links')

@@ -394,10 +394,10 @@ export class MessagesService {
         return await this.prisma.$transaction(async (tx) => {
             const ctx = await this.chatsService.resolveConversation(tx, userId, chatId)
 
-            await this.chatsService.create(tx, userId, ctx.conversationId)
+            await this.chatsService.create(tx, userId, ctx.conversationId, ctx.chatType === ChatType.PRIVATE ? (chatId as bigint) : undefined)
 
             if (ctx.chatType === ChatType.PRIVATE) {
-                await this.chatsService.create(tx, UserId(chatId), ctx.conversationId)
+                await this.chatsService.create(tx, UserId(chatId), ctx.conversationId, userId)
             }
 
             return fn(tx, ctx)

@@ -157,6 +157,7 @@ model Conversation {
     id        Int              @id @default(autoincrement())
     type      ConversationType
     createdAt BigInt
+    isSelfConversation Boolean @default(false)
 
     groupId   BigInt? @unique
     channelId BigInt? @unique
@@ -189,6 +190,7 @@ model Chat {
     id             Int    @id @default(autoincrement())
     userId         BigInt
     conversationId Int
+    targetId       BigInt?
 
     isPinned   Boolean @default(false)
     isArchived Boolean @default(false)
@@ -291,6 +293,18 @@ model InviteLink {
     expiresAt      BigInt?
 
     conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+}
+
+model FileCleanupTask {
+    id        Int      @id @default(autoincrement())
+    fileId    String
+    filePath  String
+    attempts  Int      @default(0)
+    lastError String?
+    createdAt BigInt
+    nextRetry BigInt
+
+    @@index([nextRetry])
 }
 
 model PrivacySettings {

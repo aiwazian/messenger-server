@@ -9,6 +9,7 @@ import { InitUploadDto } from './dto/init-upload.dto'
 import { plainToInstance } from 'class-transformer'
 import { FileDto } from './dto/file.dto'
 import { FileDownloadDto } from '../messages/dto/file-download.dto'
+import { Cron, CronExpression } from '@nestjs/schedule'
 
 @Injectable()
 export class StorageService {
@@ -80,16 +81,64 @@ export class StorageService {
         const file = await this.prisma.file.findUnique({ where: { id: fileId } })
         if (!file) return
 
+        const path = file.path
+        await this.prisma.file.delete({ where: { id: fileId } })
+
+        // Asynchronously schedule deletion from S3
+        this.scheduleS3Deletion(fileId, path)
+    }
+
+    async scheduleS3Deletion(fileId: string, filePath: string) {
+        // Try immediately
         try {
             await this.s3Client.send(new DeleteObjectCommand({
                 Bucket: this.bucketName,
-                Key: file.path
+                Key: filePath
             }))
         } catch (e) {
-            console.error(`Failed to delete file ${file.path} from S3`, e)
+            console.error(`Failed to delete file ${filePath} from S3, scheduling retry`, e)
+            await this.prisma.fileCleanupTask.create({
+                data: {
+                    fileId,
+                    filePath,
+                    createdAt: Date.now(),
+                    nextRetry: Date.now() + 1000 * 60 * 60, // 1 hour
+                    attempts: 1,
+                    lastError: e.message
+                }
+            })
         }
+    }
 
-        await this.prisma.file.delete({ where: { id: fileId } })
+    @Cron(CronExpression.EVERY_HOUR)
+    async processFileCleanupTasks() {
+        const now = Date.now()
+        const tasks = await this.prisma.fileCleanupTask.findMany({
+            where: {
+                nextRetry: { lte: now }
+            },
+            take: 50 // process in batches
+        })
+
+        for (const task of tasks) {
+            try {
+                await this.s3Client.send(new DeleteObjectCommand({
+                    Bucket: this.bucketName,
+                    Key: task.filePath
+                }))
+                await this.prisma.fileCleanupTask.delete({ where: { id: task.id } })
+            } catch (e) {
+                console.error(`Retry failed for file ${task.filePath}: ${e.message}`)
+                await this.prisma.fileCleanupTask.update({
+                    where: { id: task.id },
+                    data: {
+                        attempts: task.attempts + 1,
+                        lastError: e.message,
+                        nextRetry: now + 1000 * 60 * 60 // 1 hour
+                    }
+                })
+            }
+        }
     }
 
     async getDownloadUrl(fileId: string): Promise<FileDownloadDto> {

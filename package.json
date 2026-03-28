@@ -29,6 +29,7 @@
         "@nestjs/mapped-types": "*",
         "@nestjs/platform-express": "^11.1.11",
         "@nestjs/platform-socket.io": "^11.1.11",
+        "@nestjs/schedule": "^6.1.1",
         "@nestjs/throttler": "^6.5.0",
         "@nestjs/websockets": "^11.1.11",
         "@prisma/adapter-better-sqlite3": "^7.4.2",

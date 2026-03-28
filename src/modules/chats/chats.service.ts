@@ -67,13 +67,14 @@ export class ChatsService {
 
             switch (chat.conversation.type) {
                 case ConversationType.DIRECT: {
-                    const otherMember = chat.conversation.members.find(m => m.userId !== userId)
+                    chatId = chat.targetId || userId
+                    const otherMember = chat.conversation.members.find(m => m.userId === chatId)
                     if (otherMember) {
-                        chatId = otherMember.userId
                         title = `${otherMember.user.firstName ?? ""} ${otherMember.user.lastName ?? ""}`.trim()
-                    } else {
-                        chatId = userId
+                    } else if (chat.conversation.isSelfConversation) {
                         title = "Saved messages"
+                    } else {
+                        title = "Deleted User"
                     }
                     break
                 }
@@ -110,13 +111,13 @@ export class ChatsService {
         return plainToInstance(ChatResponseDto, chatsWithTitle)
     }
 
-    async create(tx: Prisma.TransactionClient, userId: UserId, conversationId: number): Promise<ChatResponseDto> {
+    async create(tx: Prisma.TransactionClient, userId: UserId, conversationId: number, targetId?: bigint): Promise<ChatResponseDto> {
         const chat = await tx.chat.upsert({
             where: {
                 userId_conversationId: { userId, conversationId }
             },
-            update: {},
-            create: { userId, conversationId }
+            update: { targetId },
+            create: { userId, conversationId, targetId }
         })
 
         return plainToInstance(ChatResponseDto, chat)
@@ -131,6 +132,7 @@ export class ChatsService {
         const now = Date.now()
 
         if (chatType === ChatType.PRIVATE) {
+            const targetUserId = chatId as bigint
             const existing = await tx.conversation.findFirst({
                 where: {
                     type: ConversationType.DIRECT,
@@ -138,8 +140,8 @@ export class ChatsService {
                         some: { userId: userId },
                     },
                     AND: [
-                        { members: { some: { userId: chatId as bigint } } },
-                        { members: { none: { userId: { notIn: [userId, chatId as bigint] } } } }
+                        { members: { some: { userId: targetUserId } } },
+                        { members: { none: { userId: { notIn: [userId, targetUserId] } } } }
                     ]
                 }
             })
@@ -148,16 +150,17 @@ export class ChatsService {
                 return {
                     conversationId: existing.id,
                     conversationType: existing.type,
-                    ownerId: chatId,
+                    ownerId: targetUserId,
                     chatType
                 }
             }
 
-            if (userId === (chatId as bigint)) {
+            if (userId === targetUserId) {
                 const selfConversation = await tx.conversation.create({
                     data: {
                         type: ConversationType.DIRECT,
                         createdAt: now,
+                        isSelfConversation: true,
                         members: {
                             create: {
                                 userId: userId,
@@ -171,9 +174,15 @@ export class ChatsService {
                 return {
                     conversationId: selfConversation.id,
                     conversationType: selfConversation.type,
-                    ownerId: chatId,
+                    ownerId: targetUserId,
                     chatType
                 }
+            }
+
+            // Check if target user exists
+            const targetUser = await tx.user.findUnique({ where: { id: targetUserId } })
+            if (!targetUser) {
+                throw new NotFoundException('User not found or account deleted')
             }
 
             const created = await tx.conversation.create({
@@ -184,7 +193,7 @@ export class ChatsService {
                         createMany: {
                             data: [
                                 { userId: userId, joinedAt: now, role: 'MEMBER' },
-                                { userId: chatId, joinedAt: now, role: 'MEMBER' }
+                                { userId: targetUserId, joinedAt: now, role: 'MEMBER' }
                             ]
                         }
                     }
@@ -194,7 +203,7 @@ export class ChatsService {
             return {
                 conversationId: created.id,
                 conversationType: created.type,
-                ownerId: chatId,
+                ownerId: targetUserId,
                 chatType
             }
         }
@@ -517,10 +526,11 @@ export class ChatsService {
 
         switch (chat.conversation.type) {
             case ConversationType.DIRECT: {
+                resolvedChatId = chat.targetId || userId
                 const otherMember = await this.prisma.conversationMember.findFirst({
                     where: {
                         conversationId: chat.conversationId,
-                        userId: { not: userId }
+                        userId: resolvedChatId
                     },
                     include: {
                         user: {
@@ -534,11 +544,11 @@ export class ChatsService {
                 })
 
                 if (otherMember) {
-                    resolvedChatId = otherMember.userId
                     title = `${otherMember.user.firstName ?? ""} ${otherMember.user.lastName ?? ""}`.trim()
-                } else {
-                    resolvedChatId = userId
+                } else if (chat.conversation.isSelfConversation) {
                     title = "Saved messages"
+                } else {
+                    title = "Deleted User"
                 }
                 break
             }
@@ -568,6 +578,35 @@ export class ChatsService {
             name: title,
             isPinned: chat.isPinned,
             lastMessage: lastMessage
+        })
+    }
+
+    async deleteChat(userId: UserId, chatId: ChatId): Promise<void> {
+        const conversation = await this.findConversationByChatId(chatId, userId)
+
+        await this.prisma.$transaction(async (tx) => {
+            // 1. Delete the user's chat record
+            await tx.chat.deleteMany({
+                where: { userId, conversationId: conversation.id }
+            })
+
+            // 2. Delete the user's membership
+            await tx.conversationMember.deleteMany({
+                where: { userId, conversationId: conversation.id }
+            })
+
+            // 3. Check if there are any members left in this conversation
+            const membersCount = await tx.conversationMember.count({
+                where: { conversationId: conversation.id }
+            })
+
+            if (membersCount === 0) {
+                // 4. If no members left, delete the conversation and all its messages
+                // Messages and files will be deleted by Cascade
+                await tx.conversation.delete({
+                    where: { id: conversation.id }
+                })
+            }
         })
     }
 
