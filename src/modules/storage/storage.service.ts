@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { InitUploadDto } from './dto/init-upload.dto'
 import { plainToInstance } from 'class-transformer'
 import { FileDto } from './dto/file.dto'
+import { FileDownloadDto } from '../messages/dto/file-download.dto'
 
 @Injectable()
 export class StorageService {
@@ -91,7 +92,7 @@ export class StorageService {
         await this.prisma.file.delete({ where: { id: fileId } })
     }
 
-    async getDownloadUrl(fileId: string) {
+    async getDownloadUrl(fileId: string): Promise<FileDownloadDto> {
         const file = await this.prisma.file.findUnique({ where: { id: fileId } })
         if (!file) throw new NotFoundException('File not found')
 
@@ -106,11 +107,11 @@ export class StorageService {
 
         const downloadUrl = await getSignedUrl(this.s3Client, command, { expiresIn: 3600 })
 
-        return {
+        return plainToInstance(FileDownloadDto, {
             downloadUrl,
             name: file.name,
             size: file.size.toString(),
             mimeType: file.mimeType
-        }
+        })
     }
 }

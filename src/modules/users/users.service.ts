@@ -109,6 +109,6 @@ export class UsersService {
     }
 
     async isExists(id: UserId): Promise<boolean> {
-        return await this.prisma.user.count({ where: { id } }) > 0
+        return !!await this.prisma.user.findFirst({ where: { id } })
     }
 }

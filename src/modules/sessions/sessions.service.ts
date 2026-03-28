@@ -15,14 +15,19 @@ export class SessionsService {
         private readonly realtimeGateway: RealtimeGateway
     ) { }
 
-    async getAll(userId: UserId, excludeToken?: string): Promise<SessionResponseDto[]> {
+    async getAll(userId: UserId, currentToken?: string): Promise<SessionResponseDto[]> {
         const sessions = await this.prisma.session.findMany({
             where: {
-                userId: userId,
-                NOT: excludeToken ? { token: excludeToken } : undefined
+                userId: userId
             }
         })
-        return plainToInstance(SessionResponseDto, sessions)
+        return sessions.map(session => {
+            const dto = plainToInstance(SessionResponseDto, session)
+            if (currentToken && session.token === currentToken) {
+                dto.isCurrent = true
+            }
+            return dto
+        })
     }
 
     async findByToken(token: string): Promise<SessionResponseDto> {

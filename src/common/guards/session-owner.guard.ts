@@ -10,7 +10,7 @@ export class SessionOwnerGuard implements CanActivate {
     async canActivate(context: ExecutionContext) {
         const request = context.switchToHttp().getRequest()
         const user = request.user
-        const sessionId: SessionId = request.params[PARAMS.SESSION_ID]
+        const sessionId: SessionId = SessionId(request.params[PARAMS.SESSION_ID])
 
         const isOwner = await this.sessionsService.isOwner(sessionId, user.id)
         if (!isOwner) {

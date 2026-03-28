@@ -16,6 +16,7 @@ import { StorageService } from '../storage/storage.service'
 import { FileInitDto } from './dto/file-init.dto'
 import { FileConfirmDto } from './dto/file-confirm.dto'
 import { detectChatType } from 'src/common/utils/detect-chat-type.util'
+import { FileDownloadDto } from './dto/file-download.dto'
 
 @Injectable()
 export class MessagesService {
@@ -156,7 +157,7 @@ export class MessagesService {
         })
     }
 
-    async getFileDownloadUrl(userId: UserId, chatId: ChatId, messageId: number, fileId: string) {
+    async getFileDownloadUrl(userId: UserId, chatId: ChatId, messageId: number, fileId: string): Promise<FileDownloadDto> {
         return this.withChat(userId, chatId, async (tx, ctx) => {
             const message = await tx.message.findFirst({
                 where: { id: messageId, conversationId: ctx.conversationId },

@@ -232,14 +232,12 @@ export class GroupsService {
     }
 
     async isExists(id: GroupId): Promise<boolean> {
-        return await this.prisma.group.count({ where: { id } }) > 0
+        return !!await this.prisma.group.findFirst({ where: { id } })
     }
 
     async isOwner(groupId: GroupId, userId: UserId): Promise<boolean> {
-        const count = await this.prisma.group.count({
+        return !!await this.prisma.group.findFirst({
             where: { id: groupId, ownerId: userId }
         })
-
-        return count > 0
     }
 }

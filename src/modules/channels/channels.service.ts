@@ -313,14 +313,12 @@ export class ChannelsService {
     }
 
     async isExists(id: ChannelId): Promise<boolean> {
-        return await this.prisma.channel.count({ where: { id } }) > 0
+        return !!await this.prisma.channel.findFirst({ where: { id } })
     }
 
     async isOwner(channelId: ChannelId, userId: UserId): Promise<boolean> {
-        const count = await this.prisma.channel.count({
+        return !!await this.prisma.channel.findFirst({
             where: { id: channelId, ownerId: userId }
         })
-
-        return count > 0
     }
 }

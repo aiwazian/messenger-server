@@ -19,4 +19,7 @@ export class SessionResponseDto {
 
     @Expose()
     osName: string
+
+    @Expose()
+    isCurrent?: boolean
 }
