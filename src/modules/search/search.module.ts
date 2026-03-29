@@ -5,9 +5,9 @@ import { JwtAuthModule } from '../security/jwt.module'
 import { SessionsModule } from '../sessions/sessions.module'
 
 @Module({
-    imports: [JwtAuthModule, SessionsModule],
-    controllers: [SearchController],
-    providers: [SearchService],
-    exports: [SearchService]
+	imports: [JwtAuthModule, SessionsModule],
+	controllers: [SearchController],
+	providers: [SearchService],
+	exports: [SearchService]
 })
-export class SearchModule { }
+export class SearchModule {}

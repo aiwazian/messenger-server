@@ -5,17 +5,17 @@ import { PARAMS } from '../constants/param.constants'
 
 @Injectable()
 export class ChannelExistsGuard implements CanActivate {
-    constructor(private readonly channelsService: ChannelsService) { }
+	constructor(private readonly channelsService: ChannelsService) {}
 
-    async canActivate(context: ExecutionContext) {
-        const request = context.switchToHttp().getRequest()
-        const channelId: ChannelId = request.params[PARAMS.CHANNEL_ID]
+	async canActivate(context: ExecutionContext) {
+		const request = context.switchToHttp().getRequest()
+		const channelId: ChannelId = request.params[PARAMS.CHANNEL_ID]
 
-        const channel = await this.channelsService.isExists(channelId)
-        if (!channel) {
-            throw new NotFoundException('Channel not found')
-        }
+		const channel = await this.channelsService.isExists(channelId)
+		if (!channel) {
+			throw new NotFoundException('Channel not found')
+		}
 
-        return true
-    }
+		return true
+	}
 }

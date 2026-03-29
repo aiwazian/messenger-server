@@ -5,8 +5,8 @@ import { PrismaClient } from 'generated/prisma/client'
 
 @Injectable()
 export class PrismaService extends PrismaClient {
-    constructor(private readonly config: ConfigService) {
-        const adapter = new PrismaBetterSqlite3({ url: config.get('DATABASE_URL') })
-        super({ adapter })
-    }
+	constructor(private readonly config: ConfigService) {
+		const adapter = new PrismaBetterSqlite3({ url: config.get('DATABASE_URL') })
+		super({ adapter })
+	}
 }

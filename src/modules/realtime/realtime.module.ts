@@ -5,8 +5,8 @@ import { ChatsModule } from '../chats/chats.module'
 
 @Global()
 @Module({
-    imports: [forwardRef(() => SessionsModule), ChatsModule],
-    providers: [RealtimeGateway],
-    exports: [RealtimeGateway],
+	imports: [forwardRef(() => SessionsModule), ChatsModule],
+	providers: [RealtimeGateway],
+	exports: [RealtimeGateway]
 })
-export class RealtimeModule { }
+export class RealtimeModule {}

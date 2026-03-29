@@ -4,8 +4,8 @@ import { SessionsModule } from '../sessions/sessions.module'
 import { JwtAuthModule } from '../security/jwt.module'
 
 @Module({
-    imports: [SessionsModule, JwtAuthModule],
-    providers: [StorageService],
-    exports: [StorageService]
+	imports: [SessionsModule, JwtAuthModule],
+	providers: [StorageService],
+	exports: [StorageService]
 })
-export class StorageModule { }
+export class StorageModule {}

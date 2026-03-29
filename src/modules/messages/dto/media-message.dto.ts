@@ -1,11 +1,11 @@
 import { IsString, IsOptional, IsArray } from 'class-validator'
 
 export class MediaMessageDto {
-    @IsOptional()
-    @IsString()
-    text?: string
+	@IsOptional()
+	@IsString()
+	text?: string
 
-    @IsArray()
-    @IsString({ each: true })
-    fileIds: string[]
+	@IsArray()
+	@IsString({ each: true })
+	fileIds: string[]
 }

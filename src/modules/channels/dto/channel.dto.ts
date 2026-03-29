@@ -4,42 +4,42 @@ import { OmitNull } from 'src/common/decorators/omit-null.decorator'
 
 @Exclude()
 export class ChannelResponseDto {
-    @Expose()
-    id: string
+	@Expose()
+	id: string
 
-    @Expose()
-    name: string
+	@Expose()
+	name: string
 
-    @Expose()
-    @OmitNull()
-    username?: string
+	@Expose()
+	@OmitNull()
+	username?: string
 
-    @Expose()
-    @OmitNull()
-    bio?: string
+	@Expose()
+	@OmitNull()
+	bio?: string
 
-    @Expose()
-    @OmitNull()
-    ownerId?: string
+	@Expose()
+	@OmitNull()
+	ownerId?: string
 
-    @Expose()
-    channelType: ChannelType
+	@Expose()
+	channelType: ChannelType
 
-    @Expose()
-    @OmitNull()
-    subscribers: string
+	@Expose()
+	@OmitNull()
+	subscribers: string
 
-    @Expose()
-    @OmitNull()
-    removedUser?: string
+	@Expose()
+	@OmitNull()
+	removedUser?: string
 
-    @Expose()
-    isSubscribed: boolean
+	@Expose()
+	isSubscribed: boolean
 
-    @Expose()
-    isOwner?: boolean
+	@Expose()
+	isOwner?: boolean
 
-    @Expose()
-    @OmitNull()
-    inviteLink?: string
+	@Expose()
+	@OmitNull()
+	inviteLink?: string
 }

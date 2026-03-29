@@ -1,10 +1,10 @@
 import { IsString, IsOptional } from 'class-validator'
 
 export class FileConfirmDto {
-    @IsString()
-    fileId: string
+	@IsString()
+	fileId: string
 
-    @IsOptional()
-    @IsString()
-    text?: string
+	@IsOptional()
+	@IsString()
+	text?: string
 }

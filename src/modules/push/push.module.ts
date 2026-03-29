@@ -5,12 +5,12 @@ import { FirebasePushProvider } from './providers/firebase-push.provider'
 import { PUSH_PROVIDER } from './push.types'
 
 @Module({
-    imports: [ConfigModule],
-    providers: [
-        PushService,
-        FirebasePushProvider,
-        { provide: PUSH_PROVIDER, useExisting: FirebasePushProvider }
-    ],
-    exports: [PushService]
+	imports: [ConfigModule],
+	providers: [
+		PushService,
+		FirebasePushProvider,
+		{ provide: PUSH_PROVIDER, useExisting: FirebasePushProvider }
+	],
+	exports: [PushService]
 })
-export class PushModule { }
+export class PushModule {}

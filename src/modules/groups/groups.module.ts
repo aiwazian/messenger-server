@@ -7,8 +7,8 @@ import { SearchModule } from '../search/search.module'
 import { ChatsModule } from '../chats/chats.module'
 
 @Module({
-    imports: [JwtAuthModule, SessionsModule, SearchModule, ChatsModule],
-    controllers: [GroupsController],
-    providers: [GroupsService]
+	imports: [JwtAuthModule, SessionsModule, SearchModule, ChatsModule],
+	controllers: [GroupsController],
+	providers: [GroupsService]
 })
-export class GroupsModule { }
+export class GroupsModule {}

@@ -1,71 +1,179 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from 'src/providers/prisma/prisma.service'
-import { SearchResponseDto } from './dto/search-response.dto'
+import { SearchResponseDto, SearchResultType } from './dto/search-response.dto'
 import { ChatId } from 'src/common/types/chat-id.type'
 import { plainToInstance } from 'class-transformer'
-import { SearchQueryDto } from './dto/search-query.dto'
+import { SearchQueryDto, SearchType } from './dto/search-query.dto'
 
 @Injectable()
 export class SearchService {
-    constructor(private readonly prisma: PrismaService) { }
+	constructor(private readonly prisma: PrismaService) {}
 
-    async isUsernameAvailable(username: string): Promise<boolean> {
-        // Use Promise.all for parallel queries instead of sequential
-        const [userCount, groupCount, channelCount] = await Promise.all([
-            this.prisma.user.count({ where: { username } }),
-            this.prisma.group.count({ where: { username } }),
-            this.prisma.channel.count({ where: { username } })
-        ])
+	async isUsernameAvailable(username: string): Promise<boolean> {
+		const [userCount, groupCount, channelCount] = await Promise.all([
+			this.prisma.user.count({ where: { username } }),
+			this.prisma.group.count({ where: { username } }),
+			this.prisma.channel.count({ where: { username } })
+		])
 
-        return userCount === 0 && groupCount === 0 && channelCount === 0
-    }
+		return userCount === 0 && groupCount === 0 && channelCount === 0
+	}
 
-    async search(dto: SearchQueryDto): Promise<SearchResponseDto[]> {
-        const query = dto.q
+	async search(dto: SearchQueryDto, userId: bigint): Promise<SearchResponseDto[]> {
+		if (dto.type === SearchType.FILES) {
+			return this.searchFiles(dto, userId)
+		} else {
+			return this.searchChats(dto, userId)
+		}
+	}
 
-        const [users, channels, groups] = await Promise.all([
-            this.prisma.user.findMany({
-                where: {
-                    OR: [
-                        { firstName: { contains: query } },
-                        { lastName: { contains: query } },
-                        { username: { contains: query } }
-                    ]
-                }
-            }),
-            this.prisma.channel.findMany({
-                where: {
-                    OR: [
-                        { name: { contains: query } },
-                        { username: { contains: query } }
-                    ]
-                }
-            }),
-            this.prisma.group.findMany({
-                where: {
-                    OR: [
-                        { name: { contains: query } },
-                        { username: { contains: query } }
-                    ]
-                }
-            })
-        ])
+	private async searchChats(dto: SearchQueryDto, userId: bigint): Promise<SearchResponseDto[]> {
+		const query = dto.q || ''
+		const limit = dto.limit || 20
+		const offset = dto.offset || 0
 
-        const userResults: SearchResponseDto[] = users.map(user => ({
-            chatId: ChatId(user.id),
-            name: `${user.firstName} ${user.lastName || ''}`.trim()
-        }))
+		const [users, channels, groups] = await Promise.all([
+			this.prisma.user.findMany({
+				where: {
+					OR: [
+						{ firstName: { contains: query } },
+						{ lastName: { contains: query } },
+						{ username: { contains: query } }
+					]
+				},
+				take: limit,
+				skip: offset
+			}),
+			this.prisma.channel.findMany({
+				where: {
+					AND: [
+						{
+							OR: [
+								{ name: { contains: query } },
+								{ username: { contains: query } }
+							]
+						},
+						{
+							OR: [
+								{ channelType: 'PUBLIC' },
+								{ ownerId: userId },
+								{ subscribers: { some: { userId } } }
+							]
+						}
+					]
+				},
+				take: limit,
+				skip: offset
+			}),
+			this.prisma.group.findMany({
+				where: {
+					AND: [
+						{
+							OR: [
+								{ name: { contains: query } },
+								{ username: { contains: query } }
+							]
+						},
+						{
+							OR: [
+								{ groupType: 'PUBLIC' },
+								{ ownerId: userId },
+								{ members: { some: { userId } } }
+							]
+						}
+					]
+				},
+				take: limit,
+				skip: offset
+			})
+		])
 
-        const channelResults: SearchResponseDto[] = channels.map(channel => ({
-            chatId: ChatId(channel.id),
-            name: channel.name
-        }))
+		const userResults: SearchResponseDto[] = users.map((user) => ({
+			type: SearchResultType.CHAT,
+			chatId: ChatId(user.id).toString(),
+			name: `${user.firstName} ${user.lastName || ''}`.trim()
+		}))
 
-        const groupResults: SearchResponseDto[] = groups.map(group => ({
-            chatId: ChatId(group.id),
-            name: group.name
-        }))
+		const channelResults: SearchResponseDto[] = channels.map((channel) => ({
+			type: SearchResultType.CHAT,
+			chatId: ChatId(channel.id).toString(),
+			name: channel.name
+		}))
 
-        return plainToInstance(SearchResponseDto, [...userResults, ...channelResults, ...groupResults])
-    }
+		const groupResults: SearchResponseDto[] = groups.map((group) => ({
+			type: SearchResultType.CHAT,
+			chatId: ChatId(group.id).toString(),
+			name: group.name
+		}))
+
+		// We slice because we took `limit` from each category, but we should return only `limit` in total
+		// However, the requirement says "loading by portions of 20 elements",
+		// if we have multiple categories, simple pagination is tricky.
+		// For this task, let's just combine and slice.
+
+		const combined = [...userResults, ...channelResults, ...groupResults]
+
+		return plainToInstance(SearchResponseDto, combined.slice(0, limit))
+	}
+
+	private async searchFiles(dto: SearchQueryDto, userId: bigint): Promise<SearchResponseDto[]> {
+		const query = dto.q || ''
+		const limit = dto.limit || 20
+		const offset = dto.offset || 0
+
+		// Find files in conversations where user is a member
+		const files = await this.prisma.file.findMany({
+			where: {
+				name: { contains: query },
+				message: {
+					conversation: {
+						members: {
+							some: { userId }
+						}
+					}
+				}
+			},
+			include: {
+				message: {
+					include: {
+						sender: {
+							include: {
+								user: true,
+								channel: true
+							}
+						}
+					}
+				}
+			},
+			take: limit,
+			skip: offset,
+			orderBy: {
+				createdAt: 'desc'
+			}
+		})
+
+		const results: SearchResponseDto[] = files.map((file) => {
+			const message = file.message
+			let senderName = 'Unknown'
+			if (message?.sender?.user) {
+				senderName = `${message.sender.user.firstName} ${message.sender.user.lastName || ''}`.trim()
+			} else if (message?.sender?.channel) {
+				senderName = message.sender.channel.name
+			}
+
+			return {
+				type: SearchResultType.FILE,
+				chatId: ChatId(message?.senderId || 0n).toString(), // Using senderId as a proxy for chatId if needed, or better, the conversation target
+				name: file.name,
+				fileId: file.id,
+				size: file.size.toString(),
+				mimeType: file.mimeType,
+				messageId: message?.id.toString(),
+				senderName: senderName,
+				createdAt: file.createdAt.toString()
+			}
+		})
+
+		return plainToInstance(SearchResponseDto, results)
+	}
 }

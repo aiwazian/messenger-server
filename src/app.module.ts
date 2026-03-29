@@ -20,43 +20,45 @@ import { APP_GUARD } from '@nestjs/core'
 import { ScheduleModule } from '@nestjs/schedule'
 
 @Module({
-    imports: [
-        ConfigModule.forRoot({ isGlobal: true }),
-        ScheduleModule.forRoot(),
-        ThrottlerModule.forRoot([{
-            ttl: 60000,
-            limit: 100,
-        }]),
-        PrismaModule,
-        UsersModule,
-        ChannelsModule,
-        AuthModule,
-        SessionsModule,
-        RealtimeModule,
-        GroupsModule,
-        ChatsModule,
-        MessagesModule,
-        SearchModule,
-        PushModule,
-        StorageModule
-    ],
-    controllers: [AppController],
-    providers: [
-        AppService,
-        {
-            provide: APP_GUARD,
-            useClass: ThrottlerGuard,
-        }
-    ]
+	imports: [
+		ConfigModule.forRoot({ isGlobal: true }),
+		ScheduleModule.forRoot(),
+		ThrottlerModule.forRoot([
+			{
+				ttl: 60000,
+				limit: 100
+			}
+		]),
+		PrismaModule,
+		UsersModule,
+		ChannelsModule,
+		AuthModule,
+		SessionsModule,
+		RealtimeModule,
+		GroupsModule,
+		ChatsModule,
+		MessagesModule,
+		SearchModule,
+		PushModule,
+		StorageModule
+	],
+	controllers: [AppController],
+	providers: [
+		AppService,
+		{
+			provide: APP_GUARD,
+			useClass: ThrottlerGuard
+		}
+	]
 })
 export class AppModule {
-    configure(consumer: MiddlewareConsumer) {
-        consumer
-            .apply(AuthMiddleware)
-            .exclude(
-                { path: 'auth/*path', method: RequestMethod.ALL },
-                { path: 'auth', method: RequestMethod.ALL }
-            )
-            .forRoutes('*path')
-    }
+	configure(consumer: MiddlewareConsumer) {
+		consumer
+			.apply(AuthMiddleware)
+			.exclude(
+				{ path: 'auth/*path', method: RequestMethod.ALL },
+				{ path: 'auth', method: RequestMethod.ALL }
+			)
+			.forRoutes('*path')
+	}
 }

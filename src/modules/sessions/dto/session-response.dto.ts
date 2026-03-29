@@ -1,25 +1,25 @@
-import { Exclude, Expose } from "class-transformer"
+import { Exclude, Expose } from 'class-transformer'
 
 @Exclude()
 export class SessionResponseDto {
-    @Expose()
-    id: number
+	@Expose()
+	id: number
 
-    @Expose()
-    userId: number
+	@Expose()
+	userId: number
 
-    @Expose()
-    createdAt: string
+	@Expose()
+	createdAt: string
 
-    @Expose()
-    deviceModel: string
+	@Expose()
+	deviceModel: string
 
-    @Expose()
-    osVersion: string
+	@Expose()
+	osVersion: string
 
-    @Expose()
-    osName: string
+	@Expose()
+	osName: string
 
-    @Expose()
-    isCurrent?: boolean
+	@Expose()
+	isCurrent?: boolean
 }

@@ -1,3 +1,3 @@
 export class LoginAvailableDto {
-    available: boolean
+	available: boolean
 }

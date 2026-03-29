@@ -4,35 +4,35 @@ import { GroupType } from 'generated/prisma/client'
 
 @Exclude()
 export class GroupResponseDto {
-    @Expose()
-    id: string
+	@Expose()
+	id: string
 
-    @Expose()
-    name: string
+	@Expose()
+	name: string
 
-    @Expose()
-    @OmitNull()
-    username?: string
+	@Expose()
+	@OmitNull()
+	username?: string
 
-    @Expose()
-    @OmitNull()
-    bio?: string
+	@Expose()
+	@OmitNull()
+	bio?: string
 
-    @Expose()
-    @OmitNull()
-    groupType?: GroupType
+	@Expose()
+	@OmitNull()
+	groupType?: GroupType
 
-    @Expose()
-    @OmitNull()
-    ownerId?: string
+	@Expose()
+	@OmitNull()
+	ownerId?: string
 
-    @Expose()
-    @OmitNull()
-    membersCount?: number
+	@Expose()
+	@OmitNull()
+	membersCount?: number
 
-    @Expose()
-    isMember?: boolean
+	@Expose()
+	isMember?: boolean
 
-    @Expose()
-    isOwner?: boolean
+	@Expose()
+	isOwner?: boolean
 }

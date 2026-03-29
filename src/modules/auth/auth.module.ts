@@ -5,8 +5,8 @@ import { JwtAuthModule } from 'src/modules/security/jwt.module'
 import { SessionsModule } from '../sessions/sessions.module'
 
 @Module({
-    imports: [JwtAuthModule, SessionsModule],
-    controllers: [AuthController],
-    providers: [AuthService]
+	imports: [JwtAuthModule, SessionsModule],
+	controllers: [AuthController],
+	providers: [AuthService]
 })
-export class AuthModule { }
+export class AuthModule {}

@@ -13,30 +13,29 @@ import { ThrottlerGuard } from '@nestjs/throttler'
 @Controller('auth')
 @UseGuards(ThrottlerGuard)
 export class AuthController {
-    constructor(
-        private readonly authService: AuthService,
-        private readonly sessionService: SessionsService
-    ) { }
+	constructor(
+		private readonly authService: AuthService,
+		private readonly sessionService: SessionsService
+	) {}
 
-    @Get('check/:login')
-    isLoginAvailable(@Param('login') login: string) {
-        return this.authService.isLoginAvailable(login)
-    }
+	@Get('check/:login')
+	isLoginAvailable(@Param('login') login: string) {
+		return this.authService.isLoginAvailable(login)
+	}
 
+	@Post('signin')
+	signin(@Body() dto: SigninDto) {
+		return this.authService.signin(dto)
+	}
 
-    @Post('signin')
-    signin(@Body() dto: SigninDto) {
-        return this.authService.signin(dto)
-    }
+	@Post('signup')
+	signup(@Body() dto: SignupDto) {
+		return this.authService.signup(dto)
+	}
 
-    @Post('signup')
-    signup(@Body() dto: SignupDto) {
-        return this.authService.signup(dto)
-    }
-
-    @Post('logout')
-    @UseGuards(AuthGuard, SessionOwnerGuard)
-    logout(@CurrentUserToken() token: string) {
-        return this.sessionService.deleteByToken(token)
-    }
+	@Post('logout')
+	@UseGuards(AuthGuard, SessionOwnerGuard)
+	logout(@CurrentUserToken() token: string) {
+		return this.sessionService.deleteByToken(token)
+	}
 }

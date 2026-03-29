@@ -5,17 +5,17 @@ import { UserId } from '../types/user-id.type'
 
 @Injectable()
 export class UserExistsGuard implements CanActivate {
-    constructor(private readonly usersService: UsersService) { }
+	constructor(private readonly usersService: UsersService) {}
 
-    async canActivate(context: ExecutionContext) {
-        const request = context.switchToHttp().getRequest()
-        const userId: UserId = request.params[PARAMS.USER_ID]
+	async canActivate(context: ExecutionContext) {
+		const request = context.switchToHttp().getRequest()
+		const userId: UserId = request.params[PARAMS.USER_ID]
 
-        const user = await this.usersService.isExists(userId)
-        if (!user) {
-            throw new NotFoundException('User not found')
-        }
+		const user = await this.usersService.isExists(userId)
+		if (!user) {
+			throw new NotFoundException('User not found')
+		}
 
-        return true
-    }
+		return true
+	}
 }

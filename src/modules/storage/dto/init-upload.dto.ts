@@ -1,4 +1,4 @@
 export class InitUploadDto {
-    signedUrl: string
-    fileId: string
+	signedUrl: string
+	fileId: string
 }

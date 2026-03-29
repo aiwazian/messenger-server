@@ -18,7 +18,7 @@ export class BigIntInterceptor implements NestInterceptor {
 		if (typeof obj === 'object') {
 			// Check if it's a plain object or instance (avoid serializing complex objects like Date, if any)
 			if (obj instanceof Date) return obj.getTime()
-			
+
 			const newObj = {}
 			for (const key in obj) {
 				if (Object.prototype.hasOwnProperty.call(obj, key)) {

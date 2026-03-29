@@ -7,9 +7,9 @@ import { SearchModule } from '../search/search.module'
 import { StorageModule } from '../storage/storage.module'
 
 @Module({
-    imports: [JwtAuthModule, SessionsModule, SearchModule, forwardRef(() => StorageModule)],
-    controllers: [UsersController],
-    providers: [UsersService],
-    exports: [UsersService]
+	imports: [JwtAuthModule, SessionsModule, SearchModule, forwardRef(() => StorageModule)],
+	controllers: [UsersController],
+	providers: [UsersService],
+	exports: [UsersService]
 })
-export class UsersModule { }
+export class UsersModule {}

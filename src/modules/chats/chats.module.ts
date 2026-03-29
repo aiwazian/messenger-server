@@ -6,9 +6,9 @@ import { SessionsModule } from '../sessions/sessions.module'
 import { InviteLinksService } from './invite-links.service'
 
 @Module({
-    imports: [JwtAuthModule, forwardRef(() => SessionsModule)],
-    controllers: [ChatsController],
-    providers: [ChatsService, InviteLinksService],
-    exports: [ChatsService, InviteLinksService]
+	imports: [JwtAuthModule, forwardRef(() => SessionsModule)],
+	controllers: [ChatsController],
+	providers: [ChatsService, InviteLinksService],
+	exports: [ChatsService, InviteLinksService]
 })
-export class ChatsModule { }
+export class ChatsModule {}

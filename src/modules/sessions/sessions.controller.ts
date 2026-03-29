@@ -10,21 +10,21 @@ import { PARAMS } from 'src/common/constants/param.constants'
 @Controller('sessions')
 @UseGuards(AuthGuard)
 export class SessionsController {
-    constructor(private readonly sessionsService: SessionsService) { }
+	constructor(private readonly sessionsService: SessionsService) {}
 
-    @Get()
-    getAll(@CurrentUserId() userId: UserId, @CurrentUserToken() token: string) {
-        return this.sessionsService.getAll(userId, token)
-    }
+	@Get()
+	getAll(@CurrentUserId() userId: UserId, @CurrentUserToken() token: string) {
+		return this.sessionsService.getAll(userId, token)
+	}
 
-    @Delete(`:${PARAMS.SESSION_ID}`)
-    @UseGuards(SessionOwnerGuard)
-    delete(@Param(PARAMS.SESSION_ID, ParseIntPipe) id: number) {
-        return this.sessionsService.deleteById(id)
-    }
+	@Delete(`:${PARAMS.SESSION_ID}`)
+	@UseGuards(SessionOwnerGuard)
+	delete(@Param(PARAMS.SESSION_ID, ParseIntPipe) id: number) {
+		return this.sessionsService.deleteById(id)
+	}
 
-    @Delete()
-    deleteAll(@CurrentUserId() userId: UserId, @CurrentUserToken() token: string) {
-        return this.sessionsService.deleteAll(userId, token)
-    }
+	@Delete()
+	deleteAll(@CurrentUserId() userId: UserId, @CurrentUserToken() token: string) {
+		return this.sessionsService.deleteAll(userId, token)
+	}
 }

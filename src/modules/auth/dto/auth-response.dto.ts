@@ -1,4 +1,4 @@
 export class AuthResponseDto {
-    userId: string
-    token: string
+	userId: string
+	token: string
 }
