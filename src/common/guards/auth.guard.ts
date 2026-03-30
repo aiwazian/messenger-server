@@ -40,7 +40,7 @@ export class AuthGuard implements CanActivate {
 			throw new UnauthorizedException('Invalid token')
 		}
 
-		request.user = { id: payload.userId, token: token }
+		request.user = { id: payload.userId, token: token, session: session }
 
 		return true
 	}

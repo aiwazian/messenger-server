@@ -3,6 +3,7 @@ import {
 	Injectable,
 	NotFoundException,
 	UnauthorizedException,
+	ForbiddenException,
 	Inject,
 	forwardRef
 } from '@nestjs/common'
@@ -31,7 +32,17 @@ export class UsersService {
 		private readonly sessionsService: SessionsService
 	) {}
 
-	async deleteMe(userId: UserId): Promise<void> {
+	async deleteMe(userId: UserId, session: any): Promise<void> {
+		const currentTime = BigInt(Date.now())
+		const sessionCreatedAt = BigInt(session.createdAt)
+		const twentyFourHoursInMs = BigInt(24 * 60 * 60 * 1000)
+
+		if (currentTime - sessionCreatedAt < twentyFourHoursInMs) {
+			throw new ForbiddenException(
+				'Чтобы завершить сессию должно пройти 24 часа с начала сессии'
+			)
+		}
+
 		const user = await this.prisma.user.findUnique({ where: { id: userId } })
 		if (!user) throw new NotFoundException('User not found')
 

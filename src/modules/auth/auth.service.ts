@@ -47,7 +47,7 @@ export class AuthService {
 		// Generate both access and refresh tokens
 		const tokens = this.jwtAuth.generateTokenPair(userId)
 
-		await this.sessionService.create({
+		const session = await this.sessionService.create({
 			userId: userId,
 			token: tokens.accessToken,
 			deviceModel: dto.deviceModel,
@@ -55,7 +55,11 @@ export class AuthService {
 			osName: dto.osName
 		})
 
-		return plainToInstance(AuthResponseDto, { token: tokens.accessToken, userId: userId })
+		return plainToInstance(AuthResponseDto, {
+			token: tokens.accessToken,
+			userId: userId,
+			createdAt: session.createdAt.toString()
+		})
 	}
 
 	async signup(dto: SignupDto): Promise<void> {

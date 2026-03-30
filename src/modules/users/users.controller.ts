@@ -16,6 +16,7 @@ import { UpdateUserDto } from './dto/update-user.dto'
 import { UserId } from 'src/common/types/user-id.type'
 import { ParseUserIdPipe } from 'src/common/pipes/parse-user-id.pipe'
 import { CurrentUserId } from 'src/common/decorators/user-id.decorator'
+import { CurrentSession } from 'src/common/decorators/session.decorator'
 import { UserResponseDto } from './dto/user-response.dto'
 import { PARAMS } from 'src/common/constants/param.constants'
 import { UserExistsGuard } from 'src/common/guards/user-exists.guard'
@@ -31,8 +32,11 @@ export class UsersController {
 
 	@Delete('me')
 	@HttpCode(HttpStatus.NO_CONTENT)
-	deleteMe(@CurrentUserId() userId: UserId): Promise<void> {
-		return this.usersService.deleteMe(userId)
+	deleteMe(
+		@CurrentUserId() userId: UserId,
+		@CurrentSession() session: any
+	): Promise<void> {
+		return this.usersService.deleteMe(userId, session)
 	}
 
 	@Patch('me/password')
