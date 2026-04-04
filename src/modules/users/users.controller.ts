@@ -28,7 +28,7 @@ import { ChangePasswordDto } from './dto/change-password.dto'
 @Controller('users')
 @UseGuards(AuthGuard)
 export class UsersController {
-	constructor(private readonly usersService: UsersService) {}
+	constructor(private readonly usersService: UsersService) { }
 
 	@Delete('me')
 	@HttpCode(HttpStatus.NO_CONTENT)

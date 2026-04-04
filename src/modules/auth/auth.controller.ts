@@ -4,10 +4,7 @@ import { SigninDto } from './dto/signin.dto'
 import { SessionsService } from '../sessions/sessions.service'
 import { AuthGuard } from 'src/common/guards/auth.guard'
 import { SignupDto } from './dto/signup.dto'
-import { CurrentUserId } from 'src/common/decorators/user-id.decorator'
-import { UserId } from 'src/common/types/user-id.type'
 import { CurrentUserToken } from 'src/common/decorators/user-token.decorator'
-import { SessionOwnerGuard } from 'src/common/guards/session-owner.guard'
 import { ThrottlerGuard } from '@nestjs/throttler'
 
 @Controller('auth')
@@ -16,7 +13,7 @@ export class AuthController {
 	constructor(
 		private readonly authService: AuthService,
 		private readonly sessionService: SessionsService
-	) {}
+	) { }
 
 	@Get('check/:login')
 	isLoginAvailable(@Param('login') login: string) {
@@ -34,7 +31,7 @@ export class AuthController {
 	}
 
 	@Post('logout')
-	@UseGuards(AuthGuard, SessionOwnerGuard)
+	@UseGuards(AuthGuard)
 	logout(@CurrentUserToken() token: string) {
 		return this.sessionService.deleteByToken(token)
 	}

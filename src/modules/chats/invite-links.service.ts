@@ -14,7 +14,6 @@ export interface InternalInviteLinkResponse {
 	code: string
 	link: string
 	expiresAt: bigint | null
-	isPermanent: boolean
 	maxUses: number | null
 	uses: number
 }
@@ -37,10 +36,6 @@ export class InviteLinksService {
 		}
 
 		const conversationId = conversation.id
-
-		await this.prisma.inviteLink.deleteMany({
-			where: { conversationId }
-		})
 
 		const id = generateInviteLinkId()
 		const code = randomBytes(8).toString('hex')
@@ -66,7 +61,6 @@ export class InviteLinksService {
 			code: link.code,
 			link: `https://${this.config.get('SHORT_URL_DOMAIN')}/+${link.code}`,
 			expiresAt: link.expiresAt,
-			isPermanent: link.expiresAt === null && (link.maxUses === null || link.maxUses === 0),
 			maxUses: link.maxUses,
 			uses: link.uses
 		}
@@ -154,5 +148,9 @@ export class InviteLinksService {
 
 	async delete(id: bigint) {
 		await this.prisma.inviteLink.delete({ where: { id } })
+	}
+
+	getShortUrlDomain() {
+		return this.config.get('SHORT_URL_DOMAIN')
 	}
 }

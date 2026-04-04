@@ -22,9 +22,6 @@ export class InviteLinkResponseDto {
 	expiresAt?: string
 
 	@Expose()
-	isPermanent: boolean
-
-	@Expose()
 	@OmitNull()
 	maxUses?: number
 
