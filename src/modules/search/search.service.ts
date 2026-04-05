@@ -59,6 +59,11 @@ export class SearchService {
 								{ ownerId: userId },
 								{ subscribers: { some: { userId } } }
 							]
+						},
+						{
+							NOT: {
+								blockedUsers: { some: { userId } }
+							}
 						}
 					]
 				},
@@ -80,6 +85,11 @@ export class SearchService {
 								{ ownerId: userId },
 								{ members: { some: { userId } } }
 							]
+						},
+						{
+							NOT: {
+								blocked: { some: { userId } }
+							}
 						}
 					]
 				},

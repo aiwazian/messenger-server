@@ -24,6 +24,7 @@ import { SearchService } from '../search/search.service'
 import { InviteLinksService } from '../chats/invite-links.service'
 import { UserResponseDto } from '../users/dto/user-response.dto'
 import { ConfigService } from '@nestjs/config'
+import { IsBannedDto } from './dto/is-banned.dto'
 
 @Injectable()
 export class ChannelsService {
@@ -34,7 +35,7 @@ export class ChannelsService {
 		private readonly realtimeGateway: RealtimeGateway,
 		private readonly searchService: SearchService,
 		private readonly inviteLinksService: InviteLinksService
-	) {}
+	) { }
 
 	async create(ownerId: UserId, dto: CreateChannelDto): Promise<ChannelResponseDto> {
 		if (dto.username && dto.channelType === ChannelType.PUBLIC) {
@@ -183,13 +184,36 @@ export class ChannelsService {
 			isPinned: false,
 			lastMessage: lastMessage
 				? plainToInstance(MessageResponseDto, {
-						...lastMessage,
-						chatId: channel.id.toString()
-					})
+					...lastMessage,
+					chatId: channel.id.toString()
+				})
 				: null
 		})
 
 		this.realtimeGateway.sendToUser(userId, SocketEvent.CHAT_NEW, chatPayload)
+	}
+
+	private async leaveInternal(
+		tx: Prisma.TransactionClient,
+		channelId: ChannelId,
+		userId: UserId,
+		conversationId: number
+	): Promise<void> {
+		await tx.channelSubscriber
+			.delete({
+				where: { userId_channelId: { userId, channelId } }
+			})
+			.catch(() => { })
+
+		await tx.conversationMember
+			.delete({
+				where: { conversationId_userId: { conversationId, userId } }
+			})
+			.catch(() => { })
+
+		await tx.chat.deleteMany({
+			where: { userId, conversationId }
+		})
 	}
 
 	async leave(channelId: ChannelId, userId: UserId): Promise<void> {
@@ -201,45 +225,54 @@ export class ChannelsService {
 			throw new BadRequestException('Owner cannot unsubscribe. Delete it instead.')
 
 		const conversation = channel.conversations[0]
+		if (!conversation) return
 
 		await this.prisma.$transaction(async (tx) => {
-			await tx.channelSubscriber
-				.delete({
-					where: { userId_channelId: { userId, channelId } }
-				})
-				.catch(() => {})
-
-			if (conversation) {
-				await tx.conversationMember
-					.delete({
-						where: { conversationId_userId: { conversationId: conversation.id, userId } }
-					})
-					.catch(() => {})
-
-				await tx.chat.deleteMany({
-					where: { userId, conversationId: conversation.id }
-				})
-			}
+			await this.leaveInternal(tx, channelId, userId, conversation.id)
 		})
+
+		this.realtimeGateway.sendToUser(userId, SocketEvent.CHAT_UPDATED, { chatId: channelId })
 	}
 
 	async kick(id: ChannelId, ownerId: UserId, targetUserId: UserId): Promise<void> {
 		if (targetUserId === ownerId) throw new BadRequestException('Cannot kick yourself')
 
 		await this.leave(id, targetUserId)
+
+		this.realtimeGateway.sendToUser(targetUserId, SocketEvent.CHAT_REMOVED, { chatId: id })
 	}
 
 	async ban(id: ChannelId, ownerId: UserId, targetUserId: UserId): Promise<void> {
 		if (targetUserId === ownerId) throw new BadRequestException('Cannot ban yourself')
 
+		const channel = await this.prisma.channel.findUnique({
+			where: { id },
+			include: { conversations: true }
+		})
+		if (channel.ownerId === targetUserId)
+			throw new BadRequestException('Owner cannot unsubscribe. Delete it instead.')
+
+		const conversation = channel.conversations[0]
+
 		await this.prisma.$transaction(async (tx) => {
-			await this.kick(id, ownerId, targetUserId)
+			if (conversation) {
+				await this.leaveInternal(tx, id, targetUserId, conversation.id)
+			} else {
+				await tx.channelSubscriber
+					.delete({
+						where: { userId_channelId: { userId: targetUserId, channelId: id } }
+					})
+					.catch(() => { })
+			}
+
 			await tx.channelBlackList.upsert({
 				where: { userId_channelId: { userId: targetUserId, channelId: id } },
 				create: { userId: targetUserId, channelId: id },
 				update: {}
 			})
 		})
+
+		this.realtimeGateway.sendToUser(targetUserId, SocketEvent.CHAT_REMOVED, { chatId: id })
 	}
 
 	async getById(channelId: ChannelId, userId: UserId): Promise<ChannelResponseDto> {
@@ -303,12 +336,12 @@ export class ChannelsService {
 			channelId,
 			user: search
 				? {
-						OR: [
-							{ firstName: { contains: search } },
-							{ lastName: { contains: search } },
-							{ username: { contains: search } }
-						]
-					}
+					OR: [
+						{ firstName: { contains: search } },
+						{ lastName: { contains: search } },
+						{ username: { contains: search } }
+					]
+				}
 				: undefined
 		}
 
@@ -348,5 +381,63 @@ export class ChannelsService {
 		return !!(await this.prisma.channel.findFirst({
 			where: { id: channelId, ownerId: userId }
 		}))
+	}
+
+	async getBannedUsers(
+		channelId: ChannelId,
+		skip: number,
+		take: number,
+		search?: string
+	): Promise<UserResponseDto[]> {
+		const where: Prisma.ChannelBlackListWhereInput = {
+			channelId,
+			user: search
+				? {
+					OR: [
+						{ firstName: { contains: search } },
+						{ lastName: { contains: search } },
+						{ username: { contains: search } }
+					]
+				}
+				: undefined
+		}
+
+		const bannedUsers = await this.prisma.channelBlackList.findMany({
+			where,
+			skip,
+			take,
+			include: {
+				user: true
+			},
+			orderBy: {
+				user: {
+					firstName: 'asc'
+				}
+			}
+		})
+
+		return plainToInstance(
+			UserResponseDto,
+			bannedUsers.map((b) => b.user)
+		)
+	}
+
+	async unban(id: ChannelId, ownerId: UserId, targetUserId: UserId): Promise<void> {
+		if (targetUserId === ownerId) throw new BadRequestException('Cannot unban yourself')
+
+		const deleted = await this.prisma.channelBlackList.deleteMany({
+			where: { channelId: id, userId: targetUserId }
+		})
+
+		if (deleted.count === 0) {
+			throw new NotFoundException('User is not banned from this channel')
+		}
+	}
+
+	async isBanned(channelId: ChannelId, userId: UserId): Promise<IsBannedDto> {
+		const bannedUser = await this.prisma.channelBlackList.findFirst({
+			where: { channelId, userId }
+		})
+		return plainToInstance(IsBannedDto, { isBanned: bannedUser != null })
 	}
 }

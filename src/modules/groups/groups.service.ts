@@ -17,13 +17,16 @@ import { PrismaService } from 'src/providers/prisma/prisma.service'
 import { ConversationRole, ConversationType, GroupType, Prisma } from 'generated/prisma/client'
 import { SearchService } from '../search/search.service'
 import { UserResponseDto } from '../users/dto/user-response.dto'
+import { RealtimeGateway } from '../realtime/realtime.gateway'
+import { SocketEvent } from 'src/common/socket/socket-events'
 
 @Injectable()
 export class GroupsService {
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly chatsService: ChatsService,
-		private readonly searchService: SearchService
+		private readonly searchService: SearchService,
+		private readonly realtimeGateway: RealtimeGateway
 	) {}
 
 	async create(ownerId: UserId, dto: CreateGroupDto): Promise<GroupResponseDto> {
@@ -139,6 +142,23 @@ export class GroupsService {
 		})
 	}
 
+	private async leaveInternal(
+		tx: Prisma.TransactionClient,
+		groupId: GroupId,
+		userId: UserId,
+		conversationId: number
+	): Promise<void> {
+		await tx.groupMember
+			.delete({ where: { groupId_userId: { groupId, userId } } })
+			.catch(() => {})
+
+		await tx.conversationMember
+			.delete({ where: { conversationId_userId: { conversationId, userId } } })
+			.catch(() => {})
+
+		await tx.chat.deleteMany({ where: { userId, conversationId } })
+	}
+
 	async leave(id: GroupId, userId: UserId): Promise<void> {
 		const group = await this.prisma.group.findUnique({
 			where: { id },
@@ -148,45 +168,52 @@ export class GroupsService {
 			throw new BadRequestException('Owner cannot leave group. Delete it instead.')
 
 		const conversation = group.conversations[0]
+		if (!conversation) return
 
 		await this.prisma.$transaction(async (tx) => {
-			await tx.groupMember
-				.delete({
-					where: { groupId_userId: { groupId: id, userId } }
-				})
-				.catch(() => {})
-
-			if (conversation) {
-				await tx.conversationMember
-					.delete({
-						where: { conversationId_userId: { conversationId: conversation.id, userId } }
-					})
-					.catch(() => {})
-
-				await tx.chat.deleteMany({
-					where: { userId, conversationId: conversation.id }
-				})
-			}
+			await this.leaveInternal(tx, id, userId, conversation.id)
 		})
+
+		this.realtimeGateway.sendToUser(userId, SocketEvent.CHAT_UPDATED, { chatId: id })
 	}
 
 	async kick(id: GroupId, ownerId: UserId, targetUserId: UserId): Promise<void> {
 		if (targetUserId === ownerId) throw new BadRequestException('Cannot kick yourself')
 
 		await this.leave(id, targetUserId)
+
+		this.realtimeGateway.sendToUser(targetUserId, SocketEvent.CHAT_REMOVED, { chatId: id })
 	}
 
 	async ban(id: GroupId, ownerId: UserId, targetUserId: UserId): Promise<void> {
 		if (targetUserId === ownerId) throw new BadRequestException('Cannot ban yourself')
 
+		const group = await this.prisma.group.findUnique({
+			where: { id },
+			include: { conversations: true }
+		})
+		if (group.ownerId === targetUserId)
+			throw new BadRequestException('Owner cannot leave group. Delete it instead.')
+
+		const conversation = group.conversations[0]
+
 		await this.prisma.$transaction(async (tx) => {
-			await this.kick(id, ownerId, targetUserId)
+			if (conversation) {
+				await this.leaveInternal(tx, id, targetUserId, conversation.id)
+			} else {
+				await tx.groupMember
+					.delete({ where: { groupId_userId: { groupId: id, userId: targetUserId } } })
+					.catch(() => {})
+			}
+
 			await tx.groupBlackList.upsert({
 				where: { userId_groupId: { userId: targetUserId, groupId: id } },
 				create: { userId: targetUserId, groupId: id },
 				update: {}
 			})
 		})
+
+		this.realtimeGateway.sendToUser(targetUserId, SocketEvent.CHAT_REMOVED, { chatId: id })
 	}
 
 	async getById(id: GroupId, userId?: UserId): Promise<GroupResponseDto> {

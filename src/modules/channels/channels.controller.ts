@@ -110,4 +110,34 @@ export class ChannelsController {
 	) {
 		return this.channelsService.ban(id, ownerId, targetUserId)
 	}
+
+	@Get(`:${PARAMS.CHANNEL_ID}/banned-users`)
+	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	getBannedUsers(
+		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
+		@Query('skip') skip: string = '0',
+		@Query('take') take: string = '100',
+		@Query('search') search?: string
+	) {
+		return this.channelsService.getBannedUsers(id, parseInt(skip), parseInt(take), search)
+	}
+
+	@Post(`:${PARAMS.CHANNEL_ID}/unban/:userId`)
+	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	unban(
+		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
+		@Param('userId', ParseUserIdPipe) targetUserId: UserId,
+		@CurrentUserId() ownerId: UserId
+	) {
+		return this.channelsService.unban(id, ownerId, targetUserId)
+	}
+
+	@Get(`:${PARAMS.CHANNEL_ID}/is-banned`)
+	@UseGuards(ChannelExistsGuard)
+	isBanned(
+		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
+		@CurrentUserId() userId: UserId
+	) {
+		return this.channelsService.isBanned(id, userId)
+	}
 }

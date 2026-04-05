@@ -14,7 +14,10 @@ export const SocketEvent = {
 	USER_ONLINE: 'user:online',
 	USER_OFFLINE: 'user:offline',
 	AUTH_ERROR: 'auth:error',
-	UNAUTHORIZED: 'Unauthorized'
+	UNAUTHORIZED: 'Unauthorized',
+
+	CHAT_REMOVED: 'chat:removed',
+	CHAT_UPDATED: 'chat:updated'
 } as const
 
 export type SocketEventType = (typeof SocketEvent)[keyof typeof SocketEvent]
