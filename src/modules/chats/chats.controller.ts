@@ -52,6 +52,11 @@ export class ChatsController {
 		return plainToInstance(InviteLinkResponseDto, link)
 	}
 
+	@Get('invite-links/:code/info')
+	getInviteLinkInfo(@Param('code') code: string) {
+		return this.inviteLinksService.getInfo(code)
+	}
+
 	@Get('join/:code')
 	joinViaLink(@CurrentUserId() userId: UserId, @Param('code') code: string) {
 		return this.inviteLinksService.join(userId, code)

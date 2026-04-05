@@ -66,6 +66,50 @@ export class InviteLinksService {
 		}
 	}
 
+	async getInfo(code: string) {
+		const link = await this.prisma.inviteLink.findUnique({
+			where: { code },
+			include: { conversation: true }
+		})
+
+		if (!link) {
+			throw new NotFoundException('Invite link not found')
+		}
+
+		if (link.expiresAt && link.expiresAt < BigInt(Date.now())) {
+			throw new BadRequestException('Invite link expired')
+		}
+
+		if (link.maxUses && link.uses >= link.maxUses) {
+			throw new BadRequestException('Invite link limit reached')
+		}
+
+		const { conversation } = link
+
+		if (conversation.type === ConversationType.CHANNEL && conversation.channelId) {
+			const channel = await this.prisma.channel.findUnique({
+				where: { id: conversation.channelId }
+			})
+
+			if (!channel) {
+				throw new NotFoundException('Channel not found')
+			}
+
+			const subscribersCount = await this.prisma.channelSubscriber.count({
+				where: { channelId: channel.id }
+			})
+
+			return {
+				channelId: channel.id.toString(),
+				channelName: channel.name,
+				description: channel.bio,
+				subscribersCount
+			}
+		}
+
+		throw new NotFoundException('This invite link is for a group, not a channel')
+	}
+
 	async join(userId: UserId, code: string) {
 		const link = await this.prisma.inviteLink.findUnique({
 			where: { code },
