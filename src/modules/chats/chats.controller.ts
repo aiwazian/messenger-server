@@ -19,6 +19,8 @@ import { plainToInstance } from 'class-transformer'
 import { InviteLinkResponseDto } from './dto/invite-link-response.dto'
 import { ChatId } from 'src/common/types/chat-id.type'
 import { CanReadChatGuard } from 'src/common/guards/can-read-chat.guard'
+import { InviteLinkOwnerGuard } from 'src/common/guards/invite-link-owner.guard'
+import { ParseBigIntPipe } from 'src/common/pipes/parse-bigint.pipe'
 
 @Controller('chats')
 @UseGuards(AuthGuard)
@@ -53,12 +55,19 @@ export class ChatsController {
 	}
 
 	@Get('invite-links/:code/info')
-	getInviteLinkInfo(@Param('code') code: string) {
-		return this.inviteLinksService.getInfo(code)
+	getInviteLinkInfo(@CurrentUserId() userId: UserId, @Param('code') code: string) {
+		return this.inviteLinksService.getInfo(userId, code)
 	}
 
 	@Get('join/:code')
 	joinViaLink(@CurrentUserId() userId: UserId, @Param('code') code: string) {
 		return this.inviteLinksService.join(userId, code)
+	}
+
+	@Delete('invite-links/:inviteLinkId')
+	@UseGuards(InviteLinkOwnerGuard)
+	@HttpCode(HttpStatus.NO_CONTENT)
+	deleteInviteLink(@Param('inviteLinkId', ParseBigIntPipe) inviteLinkId: bigint) {
+		return this.inviteLinksService.delete(inviteLinkId)
 	}
 }

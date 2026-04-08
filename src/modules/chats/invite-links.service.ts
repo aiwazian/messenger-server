@@ -24,7 +24,7 @@ export class InviteLinksService {
 		private readonly config: ConfigService,
 		private readonly prisma: PrismaService,
 		private readonly chatsService: ChatsService
-	) {}
+	) { }
 
 	async create(creatorId: UserId, dto: CreateInviteLinkDto): Promise<InternalInviteLinkResponse> {
 		const conversation = await this.prisma.conversation.findUnique({
@@ -66,7 +66,7 @@ export class InviteLinksService {
 		}
 	}
 
-	async getInfo(code: string) {
+	async getInfo(userId: UserId, code: string) {
 		const link = await this.prisma.inviteLink.findUnique({
 			where: { code },
 			include: { conversation: true }
@@ -86,28 +86,58 @@ export class InviteLinksService {
 
 		const { conversation } = link
 
+		let name = ''
+		let description = ''
+		let membersCount = 0
+		let isBanned = false
+		let isJoined = false
+		let type = conversation.type
+
 		if (conversation.type === ConversationType.CHANNEL && conversation.channelId) {
 			const channel = await this.prisma.channel.findUnique({
 				where: { id: conversation.channelId }
 			})
+			if (!channel) throw new NotFoundException('Channel not found')
 
-			if (!channel) {
-				throw new NotFoundException('Channel not found')
-			}
-
-			const subscribersCount = await this.prisma.channelSubscriber.count({
+			name = channel.name
+			description = channel.bio || ''
+			membersCount = await this.prisma.channelSubscriber.count({
 				where: { channelId: channel.id }
 			})
+			isBanned = await this.prisma.channelBlackList.count({
+				where: { channelId: channel.id, userId }
+			}) > 0
+			isJoined = await this.prisma.channelSubscriber.count({
+				where: { channelId: channel.id, userId }
+			}) > 0
+		} else if (conversation.type === ConversationType.GROUP && conversation.groupId) {
+			const group = await this.prisma.group.findUnique({
+				where: { id: conversation.groupId }
+			})
+			if (!group) throw new NotFoundException('Group not found')
 
-			return {
-				channelId: channel.id.toString(),
-				channelName: channel.name,
-				description: channel.bio,
-				subscribersCount
-			}
+			name = group.name
+			description = group.bio || ''
+			membersCount = await this.prisma.groupMember.count({
+				where: { groupId: group.id }
+			})
+			isBanned = await this.prisma.groupBlackList.count({
+				where: { groupId: group.id, userId }
+			}) > 0
+			isJoined = await this.prisma.groupMember.count({
+				where: { groupId: group.id, userId }
+			}) > 0
 		}
 
-		throw new NotFoundException('This invite link is for a group, not a channel')
+		return {
+			chatId: (conversation.channelId || conversation.groupId)?.toString(),
+			name,
+			description,
+			membersCount,
+			isBanned,
+			isJoined,
+			type
+		}
 	}
 
 	async join(userId: UserId, code: string) {
