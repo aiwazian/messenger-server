@@ -1,11 +1,11 @@
 import { CanActivate, ExecutionContext, Injectable, NotFoundException } from '@nestjs/common'
 import { PARAMS } from '../constants/param.constants'
-import { UsersService } from 'src/modules/users/users.service'
 import { UserId } from '../types/user-id.type'
+import { UsersService } from '../../modules/users/users.service'
 
 @Injectable()
 export class UserExistsGuard implements CanActivate {
-	constructor(private readonly usersService: UsersService) {}
+	constructor(private readonly usersService: UsersService) { }
 
 	async canActivate(context: ExecutionContext) {
 		const request = context.switchToHttp().getRequest()

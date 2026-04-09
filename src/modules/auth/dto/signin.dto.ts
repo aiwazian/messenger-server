@@ -1,6 +1,6 @@
 import { IsNotEmpty, IsString } from 'class-validator'
 import { AuthCredentialsDto } from './auth-credentials.dto'
-import { Trim } from 'src/common/decorators/trim.decorator'
+import { Trim } from '../../../common/decorators/trim.decorator'
 
 export class SigninDto extends AuthCredentialsDto {
 	@IsString()

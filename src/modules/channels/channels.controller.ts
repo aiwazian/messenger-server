@@ -11,22 +11,22 @@ import {
 	UseGuards
 } from '@nestjs/common'
 import { ChannelsService } from './channels.service'
-import { AuthGuard } from 'src/common/guards/auth.guard'
-import { ParseChannelIdPipe } from 'src/common/pipes/parse-channel-id.pipe'
-import { ChannelId } from 'src/common/types/channel-id.type'
 import { CreateChannelDto } from './dto/create-channel.dto'
-import { CurrentUserId } from 'src/common/decorators/user-id.decorator'
-import { UserId } from 'src/common/types/user-id.type'
-import { ChannelOwnerGuard } from 'src/common/guards/channel-owner.guard'
-import { ChannelExistsGuard } from 'src/common/guards/channel-exists.guard'
 import { UpdateChannelDto } from './dto/update-channel.dto'
-import { PARAMS } from 'src/common/constants/param.constants'
-import { ParseUserIdPipe } from 'src/common/pipes/parse-user-id.pipe'
+import { AuthGuard } from '../../common/guards/auth.guard'
+import { CurrentUserId } from '../../common/decorators/user-id.decorator'
+import { UserId } from '../../common/types/user-id.type'
+import { ChannelExistsGuard } from '../../common/guards/channel-exists.guard'
+import { PARAMS } from '../../common/constants/param.constants'
+import { ParseChannelIdPipe } from '../../common/pipes/parse-channel-id.pipe'
+import { ChannelId } from '../../common/types/channel-id.type'
+import { ChannelOwnerGuard } from '../../common/guards/channel-owner.guard'
+import { ParseUserIdPipe } from '../../common/pipes/parse-user-id.pipe'
 
 @Controller('channels')
 @UseGuards(AuthGuard)
 export class ChannelsController {
-	constructor(private readonly channelsService: ChannelsService) {}
+	constructor(private readonly channelsService: ChannelsService) { }
 
 	@Post()
 	createChannel(@CurrentUserId() userId: UserId, @Body() dto: CreateChannelDto) {

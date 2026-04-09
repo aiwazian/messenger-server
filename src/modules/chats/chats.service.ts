@@ -1,20 +1,20 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
-import { UserId } from 'src/common/types/user-id.type'
 import { ChatResponseDto } from './dto/chat-response.dto'
 import { plainToInstance } from 'class-transformer'
-import { ChatId } from 'src/common/types/chat-id.type'
-import { ConversationType, Prisma } from 'generated/prisma/client'
-import { ChatType } from 'src/common/enums/chat-type.enum'
-import { detectChatType } from 'src/common/utils/detect-chat-type.util'
 import { MessageResponseDto } from '../messages/dto/message-response.dto'
-import { PrismaService } from 'src/providers/prisma/prisma.service'
+import { PrismaService } from '../../providers/prisma/prisma.service'
+import { UserId } from '../../common/types/user-id.type'
+import { ConversationType } from '../../../generated/prisma/enums'
+import { Prisma } from '../../../generated/prisma/client'
+import { ChatId } from '../../common/types/chat-id.type'
+import { ChatType } from '../../common/enums/chat-type.enum'
+import { detectChatType } from '../../common/utils/detect-chat-type.util'
 
 @Injectable()
 export class ChatsService {
-	constructor(private readonly prisma: PrismaService) {}
+	constructor(private readonly prisma: PrismaService) { }
 
 	async getAll(userId: UserId): Promise<ChatResponseDto[]> {
-		// Optimized: Include members in the initial query to avoid N+1 for direct chats
 		const chats = await this.prisma.chat.findMany({
 			where: { userId: userId },
 			include: {
@@ -42,7 +42,6 @@ export class ChatsService {
 			return []
 		}
 
-		// Batch fetch last messages for all conversations in parallel
 		const conversationIds = chats.map((c) => c.conversationId)
 		const lastMessages = await this.prisma.message.findMany({
 			where: { conversationId: { in: conversationIds } },
@@ -101,11 +100,11 @@ export class ChatsService {
 				isPinned: chat.isPinned,
 				lastMessage: lastMessage
 					? {
-							...lastMessage,
-							chatId: chatId?.toString() || '',
-							isRead: true,
-							files: lastMessage.files?.map((f) => ({ ...f, size: f.size.toString() })) || []
-						}
+						...lastMessage,
+						chatId: chatId?.toString() || '',
+						isRead: true,
+						files: lastMessage.files?.map((f) => ({ ...f, size: f.size.toString() })) || []
+					}
 					: undefined
 			}
 		})

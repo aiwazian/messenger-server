@@ -1,13 +1,13 @@
 import { Injectable } from '@nestjs/common'
-import { PrismaService } from 'src/providers/prisma/prisma.service'
 import { SearchResponseDto, SearchResultType } from './dto/search-response.dto'
-import { ChatId } from 'src/common/types/chat-id.type'
 import { plainToInstance } from 'class-transformer'
 import { SearchQueryDto, SearchType } from './dto/search-query.dto'
+import { PrismaService } from '../../providers/prisma/prisma.service'
+import { ChatId } from '../../common/types/chat-id.type'
 
 @Injectable()
 export class SearchService {
-	constructor(private readonly prisma: PrismaService) {}
+	constructor(private readonly prisma: PrismaService) { }
 
 	async isUsernameAvailable(username: string): Promise<boolean> {
 		const [userCount, groupCount, channelCount] = await Promise.all([
@@ -116,11 +116,6 @@ export class SearchService {
 			name: group.name
 		}))
 
-		// We slice because we took `limit` from each category, but we should return only `limit` in total
-		// However, the requirement says "loading by portions of 20 elements",
-		// if we have multiple categories, simple pagination is tricky.
-		// For this task, let's just combine and slice.
-
 		const combined = [...userResults, ...channelResults, ...groupResults]
 
 		return plainToInstance(SearchResponseDto, combined.slice(0, limit))
@@ -131,7 +126,6 @@ export class SearchService {
 		const limit = dto.limit || 20
 		const offset = dto.offset || 0
 
-		// Find files in conversations where user is a member
 		const files = await this.prisma.file.findMany({
 			where: {
 				name: { contains: query },
@@ -173,7 +167,7 @@ export class SearchService {
 
 			return {
 				type: SearchResultType.FILE,
-				chatId: ChatId(message?.senderId || 0n).toString(), // Using senderId as a proxy for chatId if needed, or better, the conversation target
+				chatId: ChatId(message?.senderId || 0n).toString(),
 				name: file.name,
 				fileId: file.id,
 				size: file.size.toString(),

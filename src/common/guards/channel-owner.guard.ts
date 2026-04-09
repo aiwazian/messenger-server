@@ -1,10 +1,10 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common'
-import { ChannelsService } from 'src/modules/channels/channels.service'
 import { PARAMS } from '../constants/param.constants'
+import { ChannelsService } from '../../modules/channels/channels.service'
 
 @Injectable()
 export class ChannelOwnerGuard implements CanActivate {
-	constructor(private readonly channelsService: ChannelsService) {}
+	constructor(private readonly channelsService: ChannelsService) { }
 
 	async canActivate(context: ExecutionContext) {
 		const request = context.switchToHttp().getRequest()

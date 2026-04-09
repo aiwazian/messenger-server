@@ -8,7 +8,7 @@ import {
 	ValidateIf
 } from 'class-validator'
 import { ChannelType } from '../../../../generated/prisma/client'
-import { Trim } from 'src/common/decorators/trim.decorator'
+import { Trim } from '../../../common/decorators/trim.decorator'
 
 export class CreateChannelDto {
 	@IsString()

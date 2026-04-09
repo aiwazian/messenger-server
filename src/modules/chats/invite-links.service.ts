@@ -1,12 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
-import { PrismaService } from 'src/providers/prisma/prisma.service'
-import { UserId } from 'src/common/types/user-id.type'
 import { CreateInviteLinkDto } from './dto/create-invite-link.dto'
 import { randomBytes } from 'crypto'
-import { generateInviteLinkId } from 'src/common/utils/id-generator.util'
-import { ConversationType } from 'generated/prisma/client'
 import { ChatsService } from './chats.service'
 import { ConfigService } from '@nestjs/config'
+import { PrismaService } from '../../providers/prisma/prisma.service'
+import { UserId } from '../../common/types/user-id.type'
+import { generateInviteLinkId } from '../../common/utils/id-generator.util'
+import { ConversationType } from '../../../generated/prisma/enums'
 
 export interface InternalInviteLinkResponse {
 	id: bigint

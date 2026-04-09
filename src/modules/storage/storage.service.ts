@@ -1,20 +1,20 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
 import {
-	S3Client,
 	PutObjectCommand,
 	GetObjectCommand,
-	DeleteObjectCommand
+	DeleteObjectCommand,
+	S3Client
 } from '@aws-sdk/client-s3'
 import { ConfigService } from '@nestjs/config'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
-import { PrismaService } from 'src/providers/prisma/prisma.service'
-import { FileStatus } from 'generated/prisma/client'
 import { v4 as uuidv4 } from 'uuid'
 import { InitUploadDto } from './dto/init-upload.dto'
 import { plainToInstance } from 'class-transformer'
 import { FileDto } from './dto/file.dto'
 import { FileDownloadDto } from '../messages/dto/file-download.dto'
 import { Cron, CronExpression } from '@nestjs/schedule'
+import { PrismaService } from '../../providers/prisma/prisma.service'
+import { FileStatus } from '../../../generated/prisma/enums'
 
 @Injectable()
 export class StorageService {
@@ -26,15 +26,15 @@ export class StorageService {
 		private readonly prisma: PrismaService
 	) {
 		this.s3Client = new S3Client({
-			region: config.get('S3_REGION'),
-			endpoint: config.get('S3_END_POINT'),
+			region: config.get('S3_REGION')!,
+			endpoint: config.get('S3_END_POINT')!,
 			credentials: {
-				accessKeyId: config.get('S3_ACCESS_KEY'),
-				secretAccessKey: config.get('S3_SECRET_KEY')
+				accessKeyId: config.get('S3_ACCESS_KEY')!,
+				secretAccessKey: config.get('S3_SECRET_KEY')!
 			},
 			forcePathStyle: true
 		})
-		this.bucketName = config.get('S3_BUCKET_NAME')
+		this.bucketName = config.get('S3_BUCKET_NAME')!
 	}
 
 	async initUpload(name: string, size: number, mimeType: string): Promise<InitUploadDto> {
@@ -111,7 +111,7 @@ export class StorageService {
 					createdAt: Date.now(),
 					nextRetry: Date.now() + 1000 * 60 * 60, // 1 hour
 					attempts: 1,
-					lastError: e.message
+					lastError: (e as Error).message
 				}
 			})
 		}
@@ -137,12 +137,12 @@ export class StorageService {
 				)
 				await this.prisma.fileCleanupTask.delete({ where: { id: task.id } })
 			} catch (e) {
-				console.error(`Retry failed for file ${task.filePath}: ${e.message}`)
+				console.error(`Retry failed for file ${task.filePath}: ${(e as Error).message}`)
 				await this.prisma.fileCleanupTask.update({
 					where: { id: task.id },
 					data: {
 						attempts: task.attempts + 1,
-						lastError: e.message,
+						lastError: (e as Error).message,
 						nextRetry: now + 1000 * 60 * 60 // 1 hour
 					}
 				})

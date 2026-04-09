@@ -1,6 +1,6 @@
 import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator'
-import { Trim } from 'src/common/decorators/trim.decorator'
 import { Type } from 'class-transformer'
+import { Trim } from '../../../common/decorators/trim.decorator'
 
 export enum SearchType {
 	CHATS = 'chats',

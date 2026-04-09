@@ -10,13 +10,13 @@ import {
 	OnGatewayInit
 } from '@nestjs/websockets'
 import { Server, Socket } from 'socket.io'
-import { SocketEvent, SocketEventType } from 'src/common/socket/socket-events'
-import { UserId } from 'src/common/types/user-id.type'
-import { ChatId } from 'src/common/types/chat-id.type'
 import { SessionsService } from '../sessions/sessions.service'
 import { instanceToPlain } from 'class-transformer'
-import { PrismaService } from 'src/providers/prisma/prisma.service'
 import { ChatsService } from '../chats/chats.service'
+import { PrismaService } from '../../providers/prisma/prisma.service'
+import { SocketEvent, SocketEventType } from '../../common/socket/socket-events'
+import { UserId } from '../../common/types/user-id.type'
+import { ChatId } from '../../common/types/chat-id.type'
 
 @WebSocketGateway()
 export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
@@ -30,7 +30,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		private readonly sessionsService: SessionsService,
 		private readonly prisma: PrismaService,
 		private readonly chatsService: ChatsService
-	) {}
+	) { }
 
 	afterInit(server: Server) {
 		server.use(async (socket, next) => {
@@ -52,7 +52,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 				socket.data.userId = session.userId
 				socket.data.token = token
 				next()
-			} catch (error) {
+			} catch (error: any) {
 				this.logger.error(`Auth error in socket middleware: ${error.message}`)
 				socket.emit(SocketEvent.UNAUTHORIZED)
 				next()
@@ -78,7 +78,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 					.to(recipients.map((id) => `user:${id.toString()}`))
 					.emit(SocketEvent.USER_ONLINE, { userId: userId.toString() })
 			}
-		} catch (error) {
+		} catch (error: any) {
 			this.logger.error(
 				`Error in handleConnection for client ${client.id}: ${error.message}`,
 				error.stack
@@ -106,7 +106,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 			this.logger.debug(
 				`Client ${client.id} (user ${userId}) joined room chat:${chatId.toString()}`
 			)
-		} catch (e) {
+		} catch (e: any) {
 			this.logger.warn(
 				`Access denied or invalid chat id from client ${client.id}: ${e?.message ?? e}`
 			)
@@ -209,9 +209,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 			return []
 		}
 
-		// Use a single optimized query to get all relevant users based on privacy settings
 		if (visibility === 1) {
-			// Only show to direct contacts
 			const directMembers = await this.prisma.conversationMember.findMany({
 				where: {
 					conversation: {
@@ -225,10 +223,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 			return directMembers.map((d) => UserId(d.userId))
 		}
 
-		// Visibility 0: show to everyone (contacts, group members, channel subscribers)
-		// Fetch all in parallel for better performance
 		const [directMembers, groupMembers, channelSubs, channelOwners] = await Promise.all([
-			// Direct message contacts
 			this.prisma.conversationMember.findMany({
 				where: {
 					conversation: { type: 'DIRECT', members: { some: { userId } } },
@@ -236,24 +231,20 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 				},
 				select: { userId: true }
 			}),
-			// Group members (where user is also a member)
 			this.prisma.groupMember.findMany({
 				where: { userId },
 				select: { groupId: true }
 			}),
-			// Channel subscribers
 			this.prisma.channelSubscriber.findMany({
 				where: { userId },
 				select: { channelId: true }
 			}),
-			// Channel owners
 			this.prisma.channel.findMany({
 				where: { ownerId: userId },
 				select: { id: true }
 			})
 		])
 
-		// Get other group members if user is in groups
 		let otherGroupMembers: { userId: bigint }[] = []
 		if (groupMembers.length > 0) {
 			const groupIds = groupMembers.map((g) => g.groupId)
@@ -263,7 +254,6 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 			})
 		}
 
-		// Get other channel subscribers if user is in channels
 		let otherChannelSubs: { userId: bigint }[] = []
 		if (channelSubs.length > 0) {
 			const channelIds = channelSubs.map((c) => c.channelId)
@@ -273,12 +263,10 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 			})
 		}
 
-		// Get channel owners (excluding self)
 		const otherChannelOwners = channelOwners
 			.filter((c) => c.id !== userId)
 			.map((c) => ({ userId: c.id }))
 
-		// Combine and deduplicate
 		const allUserIds = [
 			...directMembers.map((d) => d.userId.toString()),
 			...otherGroupMembers.map((g) => g.userId.toString()),

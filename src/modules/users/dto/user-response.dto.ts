@@ -1,5 +1,5 @@
 import { Exclude, Expose } from 'class-transformer'
-import { OmitNull } from 'src/common/decorators/omit-null.decorator'
+import { OmitNull } from '../../../common/decorators/omit-null.decorator'
 
 @Exclude()
 export class UserResponseDto {

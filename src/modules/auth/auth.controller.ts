@@ -2,10 +2,10 @@ import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/comm
 import { AuthService } from './auth.service'
 import { SigninDto } from './dto/signin.dto'
 import { SessionsService } from '../sessions/sessions.service'
-import { AuthGuard } from 'src/common/guards/auth.guard'
 import { SignupDto } from './dto/signup.dto'
-import { CurrentUserToken } from 'src/common/decorators/user-token.decorator'
 import { ThrottlerGuard } from '@nestjs/throttler'
+import { AuthGuard } from '../../common/guards/auth.guard'
+import { CurrentUserToken } from '../../common/decorators/user-token.decorator'
 
 @Controller('auth')
 @UseGuards(ThrottlerGuard)

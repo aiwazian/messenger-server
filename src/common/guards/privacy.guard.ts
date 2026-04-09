@@ -1,11 +1,11 @@
 import { CanActivate, ExecutionContext, Injectable, NotFoundException } from '@nestjs/common'
 import { PARAMS } from '../constants/param.constants'
-import { PrismaService } from 'src/providers/prisma/prisma.service'
 import { UserId } from '../types/user-id.type'
+import { PrismaService } from '../../providers/prisma/prisma.service'
 
 @Injectable()
 export class PrivacyGuard implements CanActivate {
-	constructor(private readonly prisma: PrismaService) {}
+	constructor(private readonly prisma: PrismaService) { }
 
 	async canActivate(context: ExecutionContext) {
 		const request = context.switchToHttp().getRequest()

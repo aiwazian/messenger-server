@@ -9,19 +9,19 @@ import {
 	NotFoundException
 } from '@nestjs/common'
 import { InviteLinksService } from '../chats/invite-links.service'
-import { AuthGuard } from 'src/common/guards/auth.guard'
-import { CurrentUserId } from 'src/common/decorators/user-id.decorator'
-import { UserId } from 'src/common/types/user-id.type'
 import { CreateInviteLinkDto } from '../chats/dto/create-invite-link.dto'
 import { plainToInstance } from 'class-transformer'
 import { InviteLinkResponseDto } from '../chats/dto/invite-link-response.dto'
-import { ParseGroupIdPipe } from 'src/common/pipes/parse-group-id.pipe'
-import { ParseBigIntPipe } from 'src/common/pipes/parse-bigint.pipe'
-import { GroupId } from 'src/common/types/group-id.type'
-import { GroupOwnerGuard } from 'src/common/guards/group-owner.guard'
-import { GroupExistsGuard } from 'src/common/guards/group-exists.guard'
-import { PrismaService } from 'src/providers/prisma/prisma.service'
-import { PARAMS } from 'src/common/constants/param.constants'
+import { AuthGuard } from '../../common/guards/auth.guard'
+import { PrismaService } from '../../providers/prisma/prisma.service'
+import { GroupExistsGuard } from '../../common/guards/group-exists.guard'
+import { PARAMS } from '../../common/constants/param.constants'
+import { GroupOwnerGuard } from '../../common/guards/group-owner.guard'
+import { ParseGroupIdPipe } from '../../common/pipes/parse-group-id.pipe'
+import { GroupId } from '../../common/types/group-id.type'
+import { CurrentUserId } from '../../common/decorators/user-id.decorator'
+import { UserId } from '../../common/types/user-id.type'
+import { ParseBigIntPipe } from '../../common/pipes/parse-bigint.pipe'
 
 @Controller('groups')
 @UseGuards(AuthGuard)
@@ -29,7 +29,7 @@ export class GroupInviteLinksController {
 	constructor(
 		private readonly inviteLinksService: InviteLinksService,
 		private readonly prisma: PrismaService
-	) {}
+	) { }
 
 	@Get(`:${PARAMS.GROUP_ID}/invite-links`)
 	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
@@ -42,7 +42,7 @@ export class GroupInviteLinksController {
 		const links = await this.inviteLinksService.getByConversation(conversation.id)
 		const domain = this.inviteLinksService.getShortUrlDomain()
 
-		const mappedLinks = links.map((link) => ({
+		const mappedLinks = links.map((link: any) => ({
 			...link,
 			chatId: id.toString(),
 			link: `https://${domain}/+${link.code}`

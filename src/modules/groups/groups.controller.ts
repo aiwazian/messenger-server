@@ -11,23 +11,23 @@ import {
 	UseGuards
 } from '@nestjs/common'
 import { GroupsService } from './groups.service'
-import { AuthGuard } from 'src/common/guards/auth.guard'
 import { CreateGroupDto } from './dto/create-group.dto'
-import { CurrentUserId } from 'src/common/decorators/user-id.decorator'
-import { UserId } from 'src/common/types/user-id.type'
-import { GroupId } from 'src/common/types/group-id.type'
-import { ParseGroupIdPipe } from 'src/common/pipes/parse-group-id.pipe'
-import { GroupOwnerGuard } from 'src/common/guards/group-owner.guard'
-import { GroupExistsGuard } from 'src/common/guards/group-exists.guard'
-import { PARAMS } from 'src/common/constants/param.constants'
 import { UpdateGroupDto } from './dto/update-group.dto'
-import { ParseUserIdPipe } from 'src/common/pipes/parse-user-id.pipe'
-import { CanReadChatGuard } from 'src/common/guards/can-read-chat.guard'
+import { AuthGuard } from '../../common/guards/auth.guard'
+import { CurrentUserId } from '../../common/decorators/user-id.decorator'
+import { UserId } from '../../common/types/user-id.type'
+import { PARAMS } from '../../common/constants/param.constants'
+import { GroupExistsGuard } from '../../common/guards/group-exists.guard'
+import { ParseGroupIdPipe } from '../../common/pipes/parse-group-id.pipe'
+import { GroupId } from '../../common/types/group-id.type'
+import { CanReadChatGuard } from '../../common/guards/can-read-chat.guard'
+import { GroupOwnerGuard } from '../../common/guards/group-owner.guard'
+import { ParseUserIdPipe } from '../../common/pipes/parse-user-id.pipe'
 
 @Controller('groups')
 @UseGuards(AuthGuard)
 export class GroupsController {
-	constructor(private readonly groupsService: GroupsService) {}
+	constructor(private readonly groupsService: GroupsService) { }
 
 	@Post()
 	createGroup(@CurrentUserId() userId: UserId, @Body() dto: CreateGroupDto) {
@@ -98,5 +98,25 @@ export class GroupsController {
 		@CurrentUserId() ownerId: UserId
 	) {
 		return this.groupsService.ban(id, ownerId, targetUserId)
+	}
+
+	@Get(`:${PARAMS.GROUP_ID}/blacklist`)
+	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
+	getBlackList(
+		@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId,
+		@Query('skip') skip: number,
+		@Query('take') take: number,
+		@Query('search') search?: string
+	) {
+		return this.groupsService.getBlackList(id, Number(skip) || 0, Number(take) || 100, search)
+	}
+
+	@Post(`:${PARAMS.GROUP_ID}/unban/:userId`)
+	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
+	unban(
+		@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId,
+		@Param('userId', ParseUserIdPipe) targetUserId: UserId
+	) {
+		return this.groupsService.unban(id, targetUserId)
 	}
 }

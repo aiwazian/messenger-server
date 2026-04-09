@@ -1,16 +1,16 @@
 import { Controller, Delete, Get, Param, ParseIntPipe, UseGuards } from '@nestjs/common'
 import { SessionsService } from './sessions.service'
-import { AuthGuard } from 'src/common/guards/auth.guard'
-import { SessionOwnerGuard } from 'src/common/guards/session-owner.guard'
-import { CurrentUserId } from 'src/common/decorators/user-id.decorator'
-import { UserId } from 'src/common/types/user-id.type'
-import { CurrentUserToken } from 'src/common/decorators/user-token.decorator'
-import { PARAMS } from 'src/common/constants/param.constants'
+import { AuthGuard } from '../../common/guards/auth.guard'
+import { CurrentUserId } from '../../common/decorators/user-id.decorator'
+import { UserId } from '../../common/types/user-id.type'
+import { CurrentUserToken } from '../../common/decorators/user-token.decorator'
+import { PARAMS } from '../../common/constants/param.constants'
+import { SessionOwnerGuard } from '../../common/guards/session-owner.guard'
 
 @Controller('sessions')
 @UseGuards(AuthGuard)
 export class SessionsController {
-	constructor(private readonly sessionsService: SessionsService) {}
+	constructor(private readonly sessionsService: SessionsService) { }
 
 	@Get()
 	getAll(@CurrentUserId() userId: UserId, @CurrentUserToken() token: string) {

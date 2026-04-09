@@ -10,17 +10,17 @@ import {
 	HttpStatus
 } from '@nestjs/common'
 import { ChatsService } from './chats.service'
-import { CurrentUserId } from 'src/common/decorators/user-id.decorator'
-import { UserId } from 'src/common/types/user-id.type'
-import { AuthGuard } from 'src/common/guards/auth.guard'
 import { InviteLinksService } from './invite-links.service'
 import { CreateInviteLinkDto } from './dto/create-invite-link.dto'
 import { plainToInstance } from 'class-transformer'
 import { InviteLinkResponseDto } from './dto/invite-link-response.dto'
-import { ChatId } from 'src/common/types/chat-id.type'
-import { CanReadChatGuard } from 'src/common/guards/can-read-chat.guard'
-import { InviteLinkOwnerGuard } from 'src/common/guards/invite-link-owner.guard'
-import { ParseBigIntPipe } from 'src/common/pipes/parse-bigint.pipe'
+import { AuthGuard } from '../../common/guards/auth.guard'
+import { UserId } from '../../common/types/user-id.type'
+import { CurrentUserId } from '../../common/decorators/user-id.decorator'
+import { CanReadChatGuard } from '../../common/guards/can-read-chat.guard'
+import { ChatId } from '../../common/types/chat-id.type'
+import { ParseBigIntPipe } from '../../common/pipes/parse-bigint.pipe'
+import { InviteLinkOwnerGuard } from '../../common/guards/invite-link-owner.guard'
 
 @Controller('chats')
 @UseGuards(AuthGuard)
@@ -28,7 +28,7 @@ export class ChatsController {
 	constructor(
 		private readonly chatsService: ChatsService,
 		private readonly inviteLinksService: InviteLinksService
-	) {}
+	) { }
 
 	@Get()
 	getAll(@CurrentUserId() userId: UserId) {

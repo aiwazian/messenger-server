@@ -1,16 +1,16 @@
 import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common'
 import { SigninDto } from './dto/signin.dto'
 import { SignupDto } from './dto/signup.dto'
-import { generateUserId } from 'src/common/utils/id-generator.util'
 import { SessionsService } from '../sessions/sessions.service'
 import { Prisma, SenderType } from '../../../generated/prisma/client'
-import { hashPassword, verifyPassword } from 'src/common/utils/password.util'
-import { UserId } from 'src/common/types/user-id.type'
 import { AuthResponseDto } from './dto/auth-response.dto'
-import { JwtAuthService } from 'src/modules/security/jwt.service'
 import { plainToInstance } from 'class-transformer'
 import { LoginAvailableDto } from './dto/check-login.dto'
-import { PrismaService } from 'src/providers/prisma/prisma.service'
+import { PrismaService } from '../../providers/prisma/prisma.service'
+import { JwtAuthService } from '../security/jwt.service'
+import { hashPassword, verifyPassword } from '../../common/utils/password.util'
+import { UserId } from '../../common/types/user-id.type'
+import { generateUserId } from '../../common/utils/id-generator.util'
 
 @Injectable()
 export class AuthService {
@@ -18,7 +18,7 @@ export class AuthService {
 		private readonly prisma: PrismaService,
 		private readonly sessionService: SessionsService,
 		private readonly jwtAuth: JwtAuthService
-	) {}
+	) { }
 
 	async isLoginAvailable(login: string): Promise<LoginAvailableDto> {
 		const user = await this.prisma.user.findUnique({
@@ -44,7 +44,6 @@ export class AuthService {
 
 		const userId = UserId(user.id)
 
-		// Generate both access and refresh tokens
 		const tokens = this.jwtAuth.generateTokenPair(userId)
 
 		const session = await this.sessionService.create({

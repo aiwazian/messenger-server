@@ -1,22 +1,23 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
-import { UserId } from 'src/common/types/user-id.type'
 import { TextMessageDto } from './dto/text-message.dto'
 import { MediaMessageDto } from './dto/media-message.dto'
-import { ChatId } from 'src/common/types/chat-id.type'
 import { plainToInstance } from 'class-transformer'
 import { ChatsService } from '../chats/chats.service'
-import { ConversationType, Prisma, FileStatus } from 'generated/prisma/client'
 import { MessageResponseDto } from './dto/message-response.dto'
-import { PrismaService } from 'src/providers/prisma/prisma.service'
-import { ChatType } from 'src/common/enums/chat-type.enum'
 import { PushService } from '../push/push.service'
 import { RealtimeGateway } from '../realtime/realtime.gateway'
-import { SocketEvent } from 'src/common/socket/socket-events'
 import { StorageService } from '../storage/storage.service'
 import { FileInitDto } from './dto/file-init.dto'
 import { FileConfirmDto } from './dto/file-confirm.dto'
-import { detectChatType } from 'src/common/utils/detect-chat-type.util'
 import { FileDownloadDto } from './dto/file-download.dto'
+import { PrismaService } from '../../providers/prisma/prisma.service'
+import { UserId } from '../../common/types/user-id.type'
+import { ChatId } from '../../common/types/chat-id.type'
+import { ConversationType, FileStatus } from '../../../generated/prisma/enums'
+import { ChatType } from '../../common/enums/chat-type.enum'
+import { SocketEvent } from '../../common/socket/socket-events'
+import { detectChatType } from '../../common/utils/detect-chat-type.util'
+import { Prisma } from '../../../generated/prisma/client'
 
 @Injectable()
 export class MessagesService {
@@ -26,7 +27,7 @@ export class MessagesService {
 		private readonly pushService: PushService,
 		private readonly realtimeGateway: RealtimeGateway,
 		private readonly storageService: StorageService
-	) {}
+	) { }
 
 	async sendTextMessage(
 		senderId: UserId,
@@ -56,7 +57,7 @@ export class MessagesService {
 				...message,
 				chatId: chatId.toString(),
 				isRead: true,
-				files: message.files.map((f) => ({ ...f, size: f.size.toString() }))
+				files: message.files.map((f: any) => ({ ...f, size: f.size.toString() }))
 			})
 
 			await this.notifyRecipients(senderId, chatId, ctx, messageInstance)
@@ -85,7 +86,6 @@ export class MessagesService {
 
 			const results: MessageResponseDto[] = []
 
-			// Optimize: Get starting sequenceId once
 			const lastMessage = await tx.message.findFirst({
 				where: { conversationId: ctx.conversationId },
 				orderBy: { sequenceId: 'desc' },
@@ -113,7 +113,7 @@ export class MessagesService {
 					...message,
 					chatId: chatId.toString(),
 					isRead: true,
-					files: message.files.map((f) => ({ ...f, size: f.size.toString() }))
+					files: message.files.map((f: any) => ({ ...f, size: f.size.toString() }))
 				})
 
 				await this.notifyRecipients(senderId, chatId, ctx, messageInstance)
@@ -320,7 +320,6 @@ export class MessagesService {
 		const isDirect = conversation.type === ConversationType.DIRECT
 
 		if (!isDirect || forEveryone) {
-			// Delete files associated with this message
 			const files = await this.prisma.file.findMany({
 				where: { messageId: messageId }
 			})
@@ -333,7 +332,6 @@ export class MessagesService {
 				where: { id: messageId }
 			})
 		} else {
-			// "Delete for me" in DIRECT chat
 			const isSender = message.senderId === userId
 			const updateData = isSender ? { deletedBySender: true } : { deletedByReceiver: true }
 
@@ -342,9 +340,7 @@ export class MessagesService {
 				data: updateData
 			})
 
-			// If both participants deleted it, remove from DB
 			if (updated.deletedBySender && updated.deletedByReceiver) {
-				// Delete files associated with this message
 				const files = await this.prisma.file.findMany({
 					where: { messageId: messageId }
 				})
@@ -362,11 +358,9 @@ export class MessagesService {
 		const ctx = await this.chatsService.resolveConversation(this.prisma, userId, chatId)
 		const recipients = await this.getRecipients(userId, chatId, ctx.chatType)
 
-		// Notify sender always
 		const senderPayload = { chatId: chatId.toString(), messageId }
 		this.realtimeGateway.sendToUser(userId, SocketEvent.MESSAGE_DELETE, senderPayload)
 
-		// Notify recipient only if it was deleted for everyone
 		if (!isDirect || forEveryone) {
 			const recipientPayload = { chatId: userId.toString(), messageId }
 			for (const recipientId of recipients) {
@@ -379,7 +373,6 @@ export class MessagesService {
 		const conversation = await this.chatsService.findConversationByChatId(chatId, userId)
 		const chatType = detectChatType(chatId)
 
-		// Fetch all messages to delete their files
 		const messages = await this.prisma.message.findMany({
 			where: { conversationId: conversation.id },
 			include: { files: true }
@@ -391,21 +384,16 @@ export class MessagesService {
 			}
 		}
 
-		// Delete all messages
 		await this.prisma.message.deleteMany({
 			where: { conversationId: conversation.id }
 		})
 
-		// Notify participants
 		const ctx = await this.chatsService.resolveConversation(this.prisma, userId, chatId)
 		const recipients = await this.getRecipients(userId, chatId, ctx.chatType)
 		const targets = Array.from(new Set([...recipients, userId]))
 
 		const payload = { chatId: chatId.toString() }
 
-		// We should add a new SocketEvent for HISTORY_CLEAR or reuse MESSAGE_DELETE with some flag
-		// Let's assume there is a SocketEvent.HISTORY_CLEAR or similar.
-		// If not, I'll check socket-events.ts
 		this.realtimeGateway.sendToChat(chatId, SocketEvent.HISTORY_CLEAR, payload)
 		this.realtimeGateway.sendToUsersExceptChat(targets, chatId, SocketEvent.HISTORY_CLEAR, payload)
 	}

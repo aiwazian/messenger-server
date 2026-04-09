@@ -1,6 +1,6 @@
 import { Exclude, Expose } from 'class-transformer'
-import { ChannelType } from 'generated/prisma/enums'
-import { OmitNull } from 'src/common/decorators/omit-null.decorator'
+import { OmitNull } from '../../../common/decorators/omit-null.decorator'
+import { ChannelType } from '../../../../generated/prisma/enums'
 
 @Exclude()
 export class ChannelResponseDto {

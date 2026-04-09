@@ -6,18 +6,11 @@ import {
 	Injectable,
 	NotFoundException
 } from '@nestjs/common'
-import { ChannelId } from 'src/common/types/channel-id.type'
-import { UserId } from 'src/common/types/user-id.type'
 import { CreateChannelDto } from './dto/create-channel.dto'
-import { generateChannelId } from 'src/common/utils/id-generator.util'
 import { ChannelResponseDto } from './dto/channel.dto'
-import { SenderType } from 'generated/prisma/enums'
 import { UpdateChannelDto } from './dto/update-channel.dto'
-import { ChannelType, ConversationRole, ConversationType, Prisma } from 'generated/prisma/client'
 import { ChatsService } from '../chats/chats.service'
-import { PrismaService } from 'src/providers/prisma/prisma.service'
 import { RealtimeGateway } from '../realtime/realtime.gateway'
-import { SocketEvent } from 'src/common/socket/socket-events'
 import { ChatResponseDto } from '../chats/dto/chat-response.dto'
 import { MessageResponseDto } from '../messages/dto/message-response.dto'
 import { SearchService } from '../search/search.service'
@@ -25,6 +18,13 @@ import { InviteLinksService } from '../chats/invite-links.service'
 import { UserResponseDto } from '../users/dto/user-response.dto'
 import { ConfigService } from '@nestjs/config'
 import { IsBannedDto } from './dto/is-banned.dto'
+import { PrismaService } from '../../providers/prisma/prisma.service'
+import { ChannelType, ConversationRole, ConversationType, SenderType } from '../../../generated/prisma/enums'
+import { UserId } from '../../common/types/user-id.type'
+import { generateChannelId } from '../../common/utils/id-generator.util'
+import { ChannelId } from '../../common/types/channel-id.type'
+import { Prisma } from '../../../generated/prisma/client'
+import { SocketEvent } from '../../common/socket/socket-events'
 
 @Injectable()
 export class ChannelsService {
@@ -113,14 +113,14 @@ export class ChannelsService {
 	async update(id: ChannelId, dto: UpdateChannelDto, userId: UserId): Promise<ChannelResponseDto> {
 		const existingChannel = await this.prisma.channel.findUnique({ where: { id } })
 
-		if (dto.username && dto.username !== existingChannel.username) {
+		if (dto.username && dto.username !== existingChannel!.username) {
 			const isAvailable = await this.searchService.isUsernameAvailable(dto.username)
 			if (!isAvailable) throw new ConflictException('Username is already taken')
 		}
 
-		const channelType = dto.channelType ?? existingChannel.channelType
+		const channelType = dto.channelType ?? existingChannel!.channelType
 		const username =
-			channelType === ChannelType.PRIVATE ? null : (dto.username ?? existingChannel.username)
+			channelType === ChannelType.PRIVATE ? null : (dto.username ?? existingChannel!.username)
 
 		await this.prisma.channel.update({
 			where: { id: id },
@@ -140,7 +140,7 @@ export class ChannelsService {
 			include: { conversations: true }
 		})
 
-		if (channel.channelType !== ChannelType.PUBLIC) {
+		if (channel!.channelType !== ChannelType.PUBLIC) {
 			throw new BadRequestException('This channel is private. Use invite link to join.')
 		}
 
@@ -149,7 +149,7 @@ export class ChannelsService {
 		})
 		if (isBanned) throw new BadRequestException('You are banned from this channel')
 
-		const conversation = channel.conversations[0]
+		const conversation = channel!.conversations[0]
 		if (!conversation) throw new NotFoundException('Channel conversation not found')
 
 		await this.prisma.$transaction(async (tx) => {
@@ -179,13 +179,13 @@ export class ChannelsService {
 		})
 
 		const chatPayload = plainToInstance(ChatResponseDto, {
-			id: channel.id.toString(),
-			name: channel.name,
+			id: channel!.id.toString(),
+			name: channel!.name,
 			isPinned: false,
 			lastMessage: lastMessage
 				? plainToInstance(MessageResponseDto, {
 					...lastMessage,
-					chatId: channel.id.toString()
+					chatId: channel!.id.toString()
 				})
 				: null
 		})
@@ -221,10 +221,10 @@ export class ChannelsService {
 			where: { id: channelId },
 			include: { conversations: true }
 		})
-		if (channel.ownerId === userId)
+		if (channel!.ownerId === userId)
 			throw new BadRequestException('Owner cannot unsubscribe. Delete it instead.')
 
-		const conversation = channel.conversations[0]
+		const conversation = channel!.conversations[0]
 		if (!conversation) return
 
 		await this.prisma.$transaction(async (tx) => {
@@ -249,10 +249,10 @@ export class ChannelsService {
 			where: { id },
 			include: { conversations: true }
 		})
-		if (channel.ownerId === targetUserId)
+		if (channel!.ownerId === targetUserId)
 			throw new BadRequestException('Owner cannot unsubscribe. Delete it instead.')
 
-		const conversation = channel.conversations[0]
+		const conversation = channel!.conversations[0]
 
 		await this.prisma.$transaction(async (tx) => {
 			if (conversation) {
@@ -301,10 +301,10 @@ export class ChannelsService {
 			}
 		})
 
-		const isOwner = channel.ownerId == userId
-		let inviteLinkCode = channel.conversations[0]?.inviteLinks[0]?.code
+		const isOwner = channel!.ownerId == userId
+		let inviteLinkCode = channel!.conversations[0]?.inviteLinks[0]?.code
 
-		if (channel.channelType === ChannelType.PRIVATE && !inviteLinkCode && isOwner) {
+		if (channel!.channelType === ChannelType.PRIVATE && !inviteLinkCode && isOwner) {
 			const newLink = await this.inviteLinksService.create(userId, {
 				channelId: channelId.toString()
 			})
@@ -317,11 +317,11 @@ export class ChannelsService {
 
 		return plainToInstance(ChannelResponseDto, {
 			...channel,
-			id: channel.id.toString(),
-			isSubscribed: channel.subscribers.length > 0,
+			id: channel!.id.toString(),
+			isSubscribed: channel!.subscribers.length > 0,
 			isOwner,
-			subscribers: channel._count.subscribers.toString(),
-			removedUser: channel._count.blockedUsers.toString(),
+			subscribers: channel!._count.subscribers.toString(),
+			removedUser: channel!._count.blockedUsers.toString(),
 			inviteLink
 		})
 	}

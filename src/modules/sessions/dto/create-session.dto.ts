@@ -1,4 +1,4 @@
-import { UserId } from 'src/common/types/user-id.type'
+import { UserId } from "../../../common/types/user-id.type"
 
 export class CreateSessionDto {
 	userId: UserId

@@ -2,23 +2,23 @@ import { plainToInstance } from 'class-transformer'
 import {
 	BadRequestException,
 	ConflictException,
-	ForbiddenException,
 	Injectable,
 	NotFoundException
 } from '@nestjs/common'
-import { GroupId } from 'src/common/types/group-id.type'
-import { UserId } from 'src/common/types/user-id.type'
 import { CreateGroupDto } from './dto/create-group.dto'
-import { generateGroupId } from 'src/common/utils/id-generator.util'
 import { GroupResponseDto } from './dto/group-response.dto'
 import { UpdateGroupDto } from './dto/update-group.dto'
 import { ChatsService } from '../chats/chats.service'
-import { PrismaService } from 'src/providers/prisma/prisma.service'
-import { ConversationRole, ConversationType, GroupType, Prisma } from 'generated/prisma/client'
 import { SearchService } from '../search/search.service'
 import { UserResponseDto } from '../users/dto/user-response.dto'
 import { RealtimeGateway } from '../realtime/realtime.gateway'
-import { SocketEvent } from 'src/common/socket/socket-events'
+import { PrismaService } from '../../providers/prisma/prisma.service'
+import { UserId } from '../../common/types/user-id.type'
+import { generateGroupId } from '../../common/utils/id-generator.util'
+import { ConversationRole, ConversationType, GroupType } from '../../../generated/prisma/enums'
+import { GroupId } from '../../common/types/group-id.type'
+import { Prisma } from '../../../generated/prisma/client'
+import { SocketEvent } from '../../common/socket/socket-events'
 
 @Injectable()
 export class GroupsService {
@@ -27,7 +27,7 @@ export class GroupsService {
 		private readonly chatsService: ChatsService,
 		private readonly searchService: SearchService,
 		private readonly realtimeGateway: RealtimeGateway
-	) {}
+	) { }
 
 	async create(ownerId: UserId, dto: CreateGroupDto): Promise<GroupResponseDto> {
 		if (dto.username) {
@@ -89,7 +89,7 @@ export class GroupsService {
 	async update(id: GroupId, dto: UpdateGroupDto, userId: UserId): Promise<GroupResponseDto> {
 		const existingGroup = await this.prisma.group.findUnique({ where: { id } })
 
-		if (dto.username && dto.username !== existingGroup.username) {
+		if (dto.username && dto.username !== existingGroup?.username) {
 			const isAvailable = await this.searchService.isUsernameAvailable(dto.username)
 			if (!isAvailable) throw new ConflictException('Username is already taken')
 		}
@@ -112,7 +112,7 @@ export class GroupsService {
 			include: { conversations: true }
 		})
 
-		if (group.groupType !== GroupType.PUBLIC) {
+		if (group?.groupType !== GroupType.PUBLIC) {
 			throw new BadRequestException('This group is private. Use invite link to join.')
 		}
 
@@ -150,11 +150,11 @@ export class GroupsService {
 	): Promise<void> {
 		await tx.groupMember
 			.delete({ where: { groupId_userId: { groupId, userId } } })
-			.catch(() => {})
+			.catch(() => { })
 
 		await tx.conversationMember
 			.delete({ where: { conversationId_userId: { conversationId, userId } } })
-			.catch(() => {})
+			.catch(() => { })
 
 		await tx.chat.deleteMany({ where: { userId, conversationId } })
 	}
@@ -164,10 +164,10 @@ export class GroupsService {
 			where: { id },
 			include: { conversations: true }
 		})
-		if (group.ownerId === userId)
+		if (group?.ownerId === userId)
 			throw new BadRequestException('Owner cannot leave group. Delete it instead.')
 
-		const conversation = group.conversations[0]
+		const conversation = group?.conversations[0]
 		if (!conversation) return
 
 		await this.prisma.$transaction(async (tx) => {
@@ -192,10 +192,10 @@ export class GroupsService {
 			where: { id },
 			include: { conversations: true }
 		})
-		if (group.ownerId === targetUserId)
+		if (group!.ownerId === targetUserId)
 			throw new BadRequestException('Owner cannot leave group. Delete it instead.')
 
-		const conversation = group.conversations[0]
+		const conversation = group!.conversations[0]
 
 		await this.prisma.$transaction(async (tx) => {
 			if (conversation) {
@@ -203,7 +203,7 @@ export class GroupsService {
 			} else {
 				await tx.groupMember
 					.delete({ where: { groupId_userId: { groupId: id, userId: targetUserId } } })
-					.catch(() => {})
+					.catch(() => { })
 			}
 
 			await tx.groupBlackList.upsert({
@@ -225,19 +225,19 @@ export class GroupsService {
 				},
 				members: userId
 					? {
-							where: { userId },
-							select: { userId: true }
-						}
+						where: { userId },
+						select: { userId: true }
+					}
 					: undefined
 			}
 		})
 
-		const isMember = userId ? group.members.length > 0 : false
-		const isOwner = userId ? group.ownerId === userId : false
+		const isMember = userId ? group!.members.length > 0 : false
+		const isOwner = userId ? group!.ownerId === userId : false
 
 		return plainToInstance(GroupResponseDto, {
 			...group,
-			membersCount: group._count.members,
+			membersCount: group!._count.members,
 			isMember,
 			isOwner
 		})
@@ -253,12 +253,12 @@ export class GroupsService {
 			groupId: id,
 			user: search
 				? {
-						OR: [
-							{ firstName: { contains: search } },
-							{ lastName: { contains: search } },
-							{ username: { contains: search } }
-						]
-					}
+					OR: [
+						{ firstName: { contains: search } },
+						{ lastName: { contains: search } },
+						{ username: { contains: search } }
+					]
+				}
 				: undefined
 		}
 
@@ -294,5 +294,52 @@ export class GroupsService {
 		return !!(await this.prisma.group.findFirst({
 			where: { id: groupId, ownerId: userId }
 		}))
+	}
+
+	async getBlackList(
+		id: GroupId,
+		skip: number,
+		take: number,
+		search?: string
+	): Promise<UserResponseDto[]> {
+		const where: Prisma.GroupBlackListWhereInput = {
+			groupId: id,
+			user: search
+				? {
+					OR: [
+						{ firstName: { contains: search } },
+						{ lastName: { contains: search } },
+						{ username: { contains: search } }
+					]
+				}
+				: undefined
+		}
+
+		const list = await this.prisma.groupBlackList.findMany({
+			where,
+			skip,
+			take,
+			include: {
+				user: true
+			},
+			orderBy: {
+				user: {
+					firstName: 'asc'
+				}
+			}
+		})
+
+		return plainToInstance(
+			UserResponseDto,
+			list.map((m) => m.user)
+		)
+	}
+
+	async unban(id: GroupId, targetUserId: UserId): Promise<void> {
+		await this.prisma.groupBlackList
+			.delete({
+				where: { userId_groupId: { userId: targetUserId, groupId: id } }
+			})
+			.catch(() => { })
 	}
 }

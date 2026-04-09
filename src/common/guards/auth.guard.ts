@@ -1,14 +1,14 @@
 import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common'
-import { SessionsService } from 'src/modules/sessions/sessions.service'
-import { JwtAuthService } from 'src/modules/security/jwt.service'
 import { TokenPayload } from '../types/token-payload.type'
+import { JwtAuthService } from '../../modules/security/jwt.service'
+import { SessionsService } from '../../modules/sessions/sessions.service'
 
 @Injectable()
 export class AuthGuard implements CanActivate {
 	constructor(
 		private readonly sessionService: SessionsService,
 		private readonly jwtService: JwtAuthService
-	) {}
+	) { }
 
 	async canActivate(context: ExecutionContext) {
 		const request = context.switchToHttp().getRequest()

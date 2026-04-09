@@ -1,15 +1,14 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common'
 import { JwtService as NestJwtService } from '@nestjs/jwt'
-import { TokenPayload } from 'src/common/types/token-payload.type'
-import { UserId } from 'src/common/types/user-id.type'
+import { UserId } from '../../common/types/user-id.type'
+import { TokenPayload } from '../../common/types/token-payload.type'
 
-// Token expiry constants - security best practice
 const ACCESS_TOKEN_EXPIRY = '30d'
 const REFRESH_TOKEN_EXPIRY = '90d'
 
 @Injectable()
 export class JwtAuthService {
-	constructor(private readonly jwtService: NestJwtService) {}
+	constructor(private readonly jwtService: NestJwtService) { }
 
 	generateToken(userId: UserId, tokenType: 'access' | 'refresh' = 'access'): string {
 		const expiresIn = tokenType === 'access' ? ACCESS_TOKEN_EXPIRY : REFRESH_TOKEN_EXPIRY
@@ -27,7 +26,6 @@ export class JwtAuthService {
 		try {
 			const payload = this.jwtService.verify(token)
 
-			// Reject refresh tokens as access tokens
 			if (payload.type === 'refresh') {
 				throw new UnauthorizedException('Invalid token type')
 			}
@@ -42,7 +40,6 @@ export class JwtAuthService {
 		try {
 			const payload = this.jwtService.verify(token)
 
-			// Only accept refresh tokens
 			if (payload.type !== 'refresh') {
 				throw new UnauthorizedException('Invalid token type')
 			}

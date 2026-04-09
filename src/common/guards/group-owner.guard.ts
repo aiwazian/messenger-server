@@ -1,10 +1,10 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common'
-import { GroupsService } from 'src/modules/groups/groups.service'
 import { PARAMS } from '../constants/param.constants'
+import { GroupsService } from '../../modules/groups/groups.service'
 
 @Injectable()
 export class GroupOwnerGuard implements CanActivate {
-	constructor(private readonly groupsService: GroupsService) {}
+	constructor(private readonly groupsService: GroupsService) { }
 
 	async canActivate(context: ExecutionContext) {
 		const request = context.switchToHttp().getRequest()

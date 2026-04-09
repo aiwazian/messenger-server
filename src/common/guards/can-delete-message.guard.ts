@@ -5,16 +5,14 @@ import {
 	Injectable,
 	NotFoundException
 } from '@nestjs/common'
-import { PrismaService } from 'src/providers/prisma/prisma.service'
 import { UserId } from '../types/user-id.type'
 import { PARAMS } from '../constants/param.constants'
-import { detectChatType } from '../utils/detect-chat-type.util'
-import { ChatType } from '../enums/chat-type.enum'
-import { ConversationType } from 'generated/prisma/client'
+import { PrismaService } from '../../providers/prisma/prisma.service'
+import { ConversationType } from '../../../generated/prisma/enums'
 
 @Injectable()
 export class CanDeleteMessageGuard implements CanActivate {
-	constructor(private readonly prisma: PrismaService) {}
+	constructor(private readonly prisma: PrismaService) { }
 
 	async canActivate(context: ExecutionContext): Promise<boolean> {
 		const request = context.switchToHttp().getRequest()
@@ -39,7 +37,6 @@ export class CanDeleteMessageGuard implements CanActivate {
 			return true
 		}
 
-		// 2. User is a member of the direct chat (allow deleting anyone's message in DM)
 		if (message.conversation.type === ConversationType.DIRECT) {
 			const member = await this.prisma.conversationMember.findFirst({
 				where: { conversationId: message.conversation.id, userId: userId }
@@ -47,7 +44,6 @@ export class CanDeleteMessageGuard implements CanActivate {
 			if (member) return true
 		}
 
-		// 3. User is owner of the group/channel
 		if (message.conversation.type === ConversationType.GROUP) {
 			const group = await this.prisma.group.findFirst({
 				where: { id: message.conversation.id, ownerId: userId }

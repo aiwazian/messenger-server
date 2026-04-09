@@ -1,6 +1,6 @@
 import { Exclude, Expose } from 'class-transformer'
-import { OmitNull } from 'src/common/decorators/omit-null.decorator'
-import { GroupType } from 'generated/prisma/client'
+import { OmitNull } from '../../../common/decorators/omit-null.decorator'
+import { GroupType } from '../../../../generated/prisma/enums'
 
 @Exclude()
 export class GroupResponseDto {

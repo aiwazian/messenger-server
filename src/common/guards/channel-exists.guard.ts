@@ -1,11 +1,11 @@
 import { CanActivate, ExecutionContext, Injectable, NotFoundException } from '@nestjs/common'
 import { ChannelId } from '../types/channel-id.type'
-import { ChannelsService } from 'src/modules/channels/channels.service'
 import { PARAMS } from '../constants/param.constants'
+import { ChannelsService } from '../../modules/channels/channels.service'
 
 @Injectable()
 export class ChannelExistsGuard implements CanActivate {
-	constructor(private readonly channelsService: ChannelsService) {}
+	constructor(private readonly channelsService: ChannelsService) { }
 
 	async canActivate(context: ExecutionContext) {
 		const request = context.switchToHttp().getRequest()

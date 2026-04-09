@@ -2,11 +2,11 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@
 import { ChatId } from '../types/chat-id.type'
 import { UserId } from '../types/user-id.type'
 import { PARAMS } from '../constants/param.constants'
-import { ChatsService } from 'src/modules/chats/chats.service'
+import { ChatsService } from '../../modules/chats/chats.service'
 
 @Injectable()
 export class CanReadChatGuard implements CanActivate {
-	constructor(private readonly chatsService: ChatsService) {}
+	constructor(private readonly chatsService: ChatsService) { }
 
 	async canActivate(ctx: ExecutionContext): Promise<boolean> {
 		const request = ctx.switchToHttp().getRequest()

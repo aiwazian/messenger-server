@@ -11,19 +11,19 @@ import {
 	Delete
 } from '@nestjs/common'
 import { UsersService } from './users.service'
-import { AuthGuard } from 'src/common/guards/auth.guard'
 import { UpdateUserDto } from './dto/update-user.dto'
-import { UserId } from 'src/common/types/user-id.type'
-import { ParseUserIdPipe } from 'src/common/pipes/parse-user-id.pipe'
-import { CurrentUserId } from 'src/common/decorators/user-id.decorator'
-import { CurrentSession } from 'src/common/decorators/session.decorator'
 import { UserResponseDto } from './dto/user-response.dto'
-import { PARAMS } from 'src/common/constants/param.constants'
-import { UserExistsGuard } from 'src/common/guards/user-exists.guard'
 import { PrivacySettingsDto } from './dto/privacy-settings.dto'
 import { UpdatePrivacySettingsDto } from './dto/update-privacy-settings.dto'
-import { PrivacyGuard } from 'src/common/guards/privacy.guard'
 import { ChangePasswordDto } from './dto/change-password.dto'
+import { CurrentUserId } from '../../common/decorators/user-id.decorator'
+import { AuthGuard } from '../../common/guards/auth.guard'
+import { CurrentSession } from '../../common/decorators/session.decorator'
+import { UserId } from '../../common/types/user-id.type'
+import { UserExistsGuard } from '../../common/guards/user-exists.guard'
+import { PARAMS } from '../../common/constants/param.constants'
+import { PrivacyGuard } from '../../common/guards/privacy.guard'
+import { ParseUserIdPipe } from '../../common/pipes/parse-user-id.pipe'
 
 @Controller('users')
 @UseGuards(AuthGuard)
@@ -83,10 +83,10 @@ export class UsersController {
 
 		if (req.privacy) {
 			if (!req.privacy.canSeeBio) {
-				response.bio = null
+				response.bio = undefined
 			}
 			if (!req.privacy.canSeeDateOfBirth) {
-				response.dateOfBirth = null
+				response.dateOfBirth = undefined
 			}
 		}
 

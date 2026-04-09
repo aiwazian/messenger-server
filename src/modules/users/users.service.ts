@@ -8,19 +8,18 @@ import {
 	forwardRef
 } from '@nestjs/common'
 import { UpdateUserDto } from './dto/update-user.dto'
-import { UserId } from 'src/common/types/user-id.type'
-import { ChatId } from 'src/common/types/chat-id.type'
-import { ConversationType, Prisma, FileStatus } from 'generated/prisma/client'
 import { plainToInstance } from 'class-transformer'
 import { UserResponseDto } from './dto/user-response.dto'
-import { PrismaService } from 'src/providers/prisma/prisma.service'
 import { SearchService } from '../search/search.service'
 import { PrivacySettingsDto } from './dto/privacy-settings.dto'
 import { UpdatePrivacySettingsDto } from './dto/update-privacy-settings.dto'
-import { hashPassword, verifyPassword } from 'src/common/utils/password.util'
 import { ChangePasswordDto } from './dto/change-password.dto'
 import { StorageService } from '../storage/storage.service'
 import { SessionsService } from '../sessions/sessions.service'
+import { PrismaService } from '../../providers/prisma/prisma.service'
+import { UserId } from '../../common/types/user-id.type'
+import { ConversationType } from '../../../generated/prisma/enums'
+import { hashPassword } from '../../common/utils/password.util'
 
 @Injectable()
 export class UsersService {
@@ -30,7 +29,7 @@ export class UsersService {
 		@Inject(forwardRef(() => StorageService))
 		private readonly storageService: StorageService,
 		private readonly sessionsService: SessionsService
-	) {}
+	) { }
 
 	async deleteMe(userId: UserId, session: any): Promise<void> {
 		const currentTime = BigInt(Date.now())
@@ -127,10 +126,10 @@ export class UsersService {
 			const privacy = user.privacySettings
 			if (privacy) {
 				if (privacy.bio === 1) {
-					response.bio = null
+					response.bio = undefined
 				}
 				if (privacy.dateOfBirth === 1) {
-					response.dateOfBirth = null
+					response.dateOfBirth = undefined
 				}
 			}
 		}

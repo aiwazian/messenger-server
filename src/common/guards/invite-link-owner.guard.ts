@@ -5,11 +5,11 @@ import {
 	ForbiddenException,
 	NotFoundException
 } from '@nestjs/common'
-import { PrismaService } from 'src/providers/prisma/prisma.service'
+import { PrismaService } from '../../providers/prisma/prisma.service'
 
 @Injectable()
 export class InviteLinkOwnerGuard implements CanActivate {
-	constructor(private readonly prisma: PrismaService) {}
+	constructor(private readonly prisma: PrismaService) { }
 
 	async canActivate(context: ExecutionContext) {
 		const request = context.switchToHttp().getRequest()

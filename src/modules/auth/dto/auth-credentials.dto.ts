@@ -1,6 +1,5 @@
-import { Transform } from 'class-transformer'
 import { IsNotEmpty, IsString, Matches, MaxLength, MinLength } from 'class-validator'
-import { Trim } from 'src/common/decorators/trim.decorator'
+import { Trim } from '../../../common/decorators/trim.decorator'
 
 export class AuthCredentialsDto {
 	@IsString()

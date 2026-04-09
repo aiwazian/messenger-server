@@ -1,11 +1,11 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common'
-import { SessionsService } from 'src/modules/sessions/sessions.service'
 import { PARAMS } from '../constants/param.constants'
 import { SessionId } from '../types/session-id.type'
+import { SessionsService } from '../../modules/sessions/sessions.service'
 
 @Injectable()
 export class SessionOwnerGuard implements CanActivate {
-	constructor(private readonly sessionsService: SessionsService) {}
+	constructor(private readonly sessionsService: SessionsService) { }
 
 	async canActivate(context: ExecutionContext) {
 		const request = context.switchToHttp().getRequest()

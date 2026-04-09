@@ -1,5 +1,5 @@
 import { IsNumber, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator'
-import { Trim } from 'src/common/decorators/trim.decorator'
+import { Trim } from '../../../common/decorators/trim.decorator'
 
 export class UpdateUserDto {
 	@IsString()
@@ -12,7 +12,7 @@ export class UpdateUserDto {
 	@IsString()
 	@Trim()
 	@MaxLength(32)
-	lastName: string
+	lastName?: string
 
 	@IsOptional()
 	@IsString()
@@ -21,15 +21,15 @@ export class UpdateUserDto {
 	@Matches(/^[a-zA-Z0-9_]*$/, {
 		message: 'Username can only contain letters, numbers and underscores'
 	})
-	username: string | null
+	username?: string | null
 
 	@IsOptional()
 	@IsString()
 	@Trim()
 	@MaxLength(255)
-	bio: string
+	bio?: string
 
 	@IsOptional()
 	@IsNumber()
-	dateOfBirth: number
+	dateOfBirth?: number
 }

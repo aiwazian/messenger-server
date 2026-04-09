@@ -12,21 +12,21 @@ import {
 import { MessagesService } from './messages.service'
 import { TextMessageDto } from './dto/text-message.dto'
 import { MediaMessageDto } from './dto/media-message.dto'
-import { ParseChatIdPipe } from 'src/common/pipes/parse-chat-id.pipe'
-import { ChatId } from 'src/common/types/chat-id.type'
-import { AuthGuard } from 'src/common/guards/auth.guard'
-import { CurrentUserId } from 'src/common/decorators/user-id.decorator'
-import { UserId } from 'src/common/types/user-id.type'
-import { CanSendMessageGuard } from 'src/common/guards/can-send-message.guard'
-import { CanReadChatGuard } from 'src/common/guards/can-read-chat.guard'
-import { CanDeleteMessageGuard } from 'src/common/guards/can-delete-message.guard'
 import { FileInitDto } from './dto/file-init.dto'
 import { FileConfirmDto } from './dto/file-confirm.dto'
+import { AuthGuard } from '../../common/guards/auth.guard'
+import { CanSendMessageGuard } from '../../common/guards/can-send-message.guard'
+import { ParseChatIdPipe } from '../../common/pipes/parse-chat-id.pipe'
+import { ChatId } from '../../common/types/chat-id.type'
+import { CurrentUserId } from '../../common/decorators/user-id.decorator'
+import { UserId } from '../../common/types/user-id.type'
+import { CanReadChatGuard } from '../../common/guards/can-read-chat.guard'
+import { CanDeleteMessageGuard } from '../../common/guards/can-delete-message.guard'
 
 @Controller('chats/:chatId/messages')
 @UseGuards(AuthGuard)
 export class MessagesController {
-	constructor(private readonly messagesService: MessagesService) {}
+	constructor(private readonly messagesService: MessagesService) { }
 
 	@Post()
 	@UseGuards(CanSendMessageGuard)
@@ -120,8 +120,8 @@ export class MessagesController {
 	}
 
 	@Post('voice')
-	sendVoiceMessage() {}
+	sendVoiceMessage() { }
 
 	@Post('reaction')
-	sendReaction() {}
+	sendReaction() { }
 }

@@ -9,19 +9,19 @@ import {
 	NotFoundException
 } from '@nestjs/common'
 import { InviteLinksService } from '../chats/invite-links.service'
-import { AuthGuard } from 'src/common/guards/auth.guard'
-import { CurrentUserId } from 'src/common/decorators/user-id.decorator'
-import { UserId } from 'src/common/types/user-id.type'
 import { CreateInviteLinkDto } from '../chats/dto/create-invite-link.dto'
 import { plainToInstance } from 'class-transformer'
 import { InviteLinkResponseDto } from '../chats/dto/invite-link-response.dto'
-import { ParseChannelIdPipe } from 'src/common/pipes/parse-channel-id.pipe'
-import { ParseBigIntPipe } from 'src/common/pipes/parse-bigint.pipe'
-import { ChannelId } from 'src/common/types/channel-id.type'
-import { ChannelOwnerGuard } from 'src/common/guards/channel-owner.guard'
-import { ChannelExistsGuard } from 'src/common/guards/channel-exists.guard'
-import { PrismaService } from 'src/providers/prisma/prisma.service'
-import { PARAMS } from 'src/common/constants/param.constants'
+import { AuthGuard } from '../../common/guards/auth.guard'
+import { PrismaService } from '../../providers/prisma/prisma.service'
+import { ChannelOwnerGuard } from '../../common/guards/channel-owner.guard'
+import { ChannelExistsGuard } from '../../common/guards/channel-exists.guard'
+import { PARAMS } from '../../common/constants/param.constants'
+import { ParseChannelIdPipe } from '../../common/pipes/parse-channel-id.pipe'
+import { ChannelId } from '../../common/types/channel-id.type'
+import { UserId } from '../../common/types/user-id.type'
+import { CurrentUserId } from '../../common/decorators/user-id.decorator'
+import { ParseBigIntPipe } from '../../common/pipes/parse-bigint.pipe'
 
 @Controller('channels')
 @UseGuards(AuthGuard)
@@ -29,7 +29,7 @@ export class ChannelInviteLinksController {
 	constructor(
 		private readonly inviteLinksService: InviteLinksService,
 		private readonly prisma: PrismaService
-	) {}
+	) { }
 
 	@Get(`:${PARAMS.CHANNEL_ID}/invite-links`)
 	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)

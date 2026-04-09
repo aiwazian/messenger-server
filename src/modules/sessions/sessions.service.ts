@@ -1,11 +1,11 @@
 import { Injectable, NotFoundException, Inject, forwardRef } from '@nestjs/common'
 import { CreateSessionDto } from './dto/create-session.dto'
-import { UserId } from 'src/common/types/user-id.type'
 import { plainToInstance } from 'class-transformer'
 import { SessionResponseDto } from './dto/session-response.dto'
-import { SessionId } from 'src/common/types/session-id.type'
-import { PrismaService } from 'src/providers/prisma/prisma.service'
 import { RealtimeGateway } from '../realtime/realtime.gateway'
+import { PrismaService } from '../../providers/prisma/prisma.service'
+import { UserId } from '../../common/types/user-id.type'
+import { SessionId } from '../../common/types/session-id.type'
 
 @Injectable()
 export class SessionsService {
@@ -13,7 +13,7 @@ export class SessionsService {
 		private readonly prisma: PrismaService,
 		@Inject(forwardRef(() => RealtimeGateway))
 		private readonly realtimeGateway: RealtimeGateway
-	) {}
+	) { }
 
 	async getAll(userId: UserId, currentToken?: string): Promise<SessionResponseDto[]> {
 		const sessions = await this.prisma.session.findMany({

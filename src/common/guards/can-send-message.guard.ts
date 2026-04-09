@@ -1,14 +1,14 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common'
 import { ChatType } from '../enums/chat-type.enum'
-import { PrismaService } from 'src/providers/prisma/prisma.service'
 import { ChatId } from '../types/chat-id.type'
 import { UserId } from '../types/user-id.type'
 import { PARAMS } from '../constants/param.constants'
 import { detectChatType } from '../utils/detect-chat-type.util'
+import { PrismaService } from '../../providers/prisma/prisma.service'
 
 @Injectable()
 export class CanSendMessageGuard implements CanActivate {
-	constructor(private readonly prisma: PrismaService) {}
+	constructor(private readonly prisma: PrismaService) { }
 
 	async canActivate(ctx: ExecutionContext): Promise<boolean> {
 		const request = ctx.switchToHttp().getRequest()
