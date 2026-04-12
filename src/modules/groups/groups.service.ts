@@ -78,6 +78,15 @@ export class GroupsService {
 			return group
 		})
 
+		const chatPayload = plainToInstance(ChatResponseDto, {
+			id: group.id.toString(),
+			name: group.name,
+			isPinned: false,
+			lastMessage: null
+		})
+
+		this.realtimeGateway.sendToUser(ownerId, SocketEvent.CHAT_NEW, chatPayload)
+
 		return plainToInstance(GroupResponseDto, {
 			...group,
 			isMember: true,

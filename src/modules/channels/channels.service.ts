@@ -99,6 +99,15 @@ export class ChannelsService {
 				return channel
 			})
 
+			const chatPayload = plainToInstance(ChatResponseDto, {
+				id: channel.id.toString(),
+				name: channel.name,
+				isPinned: false,
+				lastMessage: null
+			})
+
+			this.realtimeGateway.sendToUser(ownerId, SocketEvent.CHAT_NEW, chatPayload)
+
 			return this.getById(ChannelId(channel.id), ownerId)
 		} catch (e) {
 			if (e instanceof Prisma.PrismaClientKnownRequestError) {
