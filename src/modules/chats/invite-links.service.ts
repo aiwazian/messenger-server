@@ -5,8 +5,10 @@ import { ChatsService } from './chats.service'
 import { ConfigService } from '@nestjs/config'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
+import { ChatId } from '../../common/types/chat-id.type'
 import { generateInviteLinkId } from '../../common/utils/id-generator.util'
-import { ConversationType } from '../../../generated/prisma/enums'
+import { ChatType } from '../../common/enums/chat-type.enum'
+import { detectChatType } from '../../common/utils/detect-chat-type.util'
 
 export interface InternalInviteLinkResponse {
 	id: bigint
@@ -27,37 +29,28 @@ export class InviteLinksService {
 	) { }
 
 	async create(creatorId: UserId, dto: CreateInviteLinkDto): Promise<InternalInviteLinkResponse> {
-		const conversation = await this.prisma.conversation.findUnique({
-			where: dto.channelId ? { channelId: BigInt(dto.channelId) } : { groupId: BigInt(dto.groupId) }
-		})
-
-		if (!conversation) {
-			throw new NotFoundException(`${dto.channelId ? 'Channel' : 'Group'} conversation not found`)
-		}
-
-		const conversationId = conversation.id
+		const chatId = dto.channelId
+			? ChatId(dto.channelId)
+			: ChatId(dto.groupId!)
 
 		const id = generateInviteLinkId()
 		const code = randomBytes(8).toString('hex')
-
 		const expiresAt = dto.expiresInSeconds ? BigInt(Date.now() + dto.expiresInSeconds * 1000) : null
 
 		const link = await this.prisma.inviteLink.create({
 			data: {
 				id,
 				code,
-				conversationId,
+				chatId,
 				creatorId,
 				maxUses: dto.maxUses,
 				expiresAt
 			}
 		})
 
-		const chatId = (conversation.channelId || conversation.groupId)?.toString() || ''
-
 		return {
 			id: link.id,
-			chatId,
+			chatId: chatId.toString(),
 			code: link.code,
 			link: `https://${this.config.get('SHORT_URL_DOMAIN')}/+${link.code}`,
 			expiresAt: link.expiresAt,
@@ -68,8 +61,7 @@ export class InviteLinksService {
 
 	async getInfo(userId: UserId, code: string) {
 		const link = await this.prisma.inviteLink.findUnique({
-			where: { code },
-			include: { conversation: true }
+			where: { code }
 		})
 
 		if (!link) {
@@ -84,18 +76,17 @@ export class InviteLinksService {
 			throw new BadRequestException('Invite link limit reached')
 		}
 
-		const { conversation } = link
+		const chatType = detectChatType(ChatId(link.chatId))
 
 		let name = ''
 		let description = ''
 		let membersCount = 0
 		let isBanned = false
 		let isJoined = false
-		let type = conversation.type
 
-		if (conversation.type === ConversationType.CHANNEL && conversation.channelId) {
+		if (chatType === ChatType.CHANNEL) {
 			const channel = await this.prisma.channel.findUnique({
-				where: { id: conversation.channelId }
+				where: { id: link.chatId }
 			})
 			if (!channel) throw new NotFoundException('Channel not found')
 
@@ -110,9 +101,9 @@ export class InviteLinksService {
 			isJoined = await this.prisma.channelSubscriber.count({
 				where: { channelId: channel.id, userId }
 			}) > 0
-		} else if (conversation.type === ConversationType.GROUP && conversation.groupId) {
+		} else if (chatType === ChatType.GROUP) {
 			const group = await this.prisma.group.findUnique({
-				where: { id: conversation.groupId }
+				where: { id: link.chatId }
 			})
 			if (!group) throw new NotFoundException('Group not found')
 
@@ -130,20 +121,19 @@ export class InviteLinksService {
 		}
 
 		return {
-			chatId: (conversation.channelId || conversation.groupId)?.toString(),
+			chatId: link.chatId.toString(),
 			name,
 			description,
 			membersCount,
 			isBanned,
 			isJoined,
-			type
+			type: chatType
 		}
 	}
 
 	async join(userId: UserId, code: string) {
 		const link = await this.prisma.inviteLink.findUnique({
-			where: { code },
-			include: { conversation: true }
+			where: { code }
 		})
 
 		if (!link) {
@@ -160,46 +150,44 @@ export class InviteLinksService {
 			throw new BadRequestException('Invite link limit reached')
 		}
 
-		const { conversation } = link
+		const chatType = detectChatType(ChatId(link.chatId))
 
-		if (conversation.type === ConversationType.GROUP && conversation.groupId) {
+		if (chatType === ChatType.GROUP) {
 			const isBanned = await this.prisma.groupBlackList.count({
-				where: { groupId: conversation.groupId, userId }
+				where: { groupId: link.chatId, userId }
 			})
 			if (isBanned) throw new BadRequestException('You are banned from this group')
-		} else if (conversation.type === ConversationType.CHANNEL && conversation.channelId) {
+		} else if (chatType === ChatType.CHANNEL) {
 			const isBanned = await this.prisma.channelBlackList.count({
-				where: { channelId: conversation.channelId, userId }
+				where: { channelId: link.chatId, userId }
 			})
 			if (isBanned) throw new BadRequestException('You are banned from this channel')
 		}
 
-		const existingMember = await this.prisma.conversationMember.findUnique({
-			where: { conversationId_userId: { conversationId: conversation.id, userId } }
+		const existingChat = await this.prisma.chat.findUnique({
+			where: { userId_chatId: { userId, chatId: link.chatId } }
 		})
 
-		if (existingMember) return conversation
+		if (existingChat) return link
 
 		await this.prisma.$transaction(async (tx) => {
-			if (conversation.type === ConversationType.GROUP && conversation.groupId) {
+			if (chatType === ChatType.GROUP) {
 				await tx.groupMember.create({
-					data: { groupId: conversation.groupId, userId }
+					data: { groupId: link.chatId, userId }
 				})
-			} else if (conversation.type === ConversationType.CHANNEL && conversation.channelId) {
+			} else if (chatType === ChatType.CHANNEL) {
 				await tx.channelSubscriber.create({
-					data: { channelId: conversation.channelId, userId }
+					data: { channelId: link.chatId, userId }
 				})
 			}
 
-			await tx.conversationMember.create({
+			await tx.chat.create({
 				data: {
-					conversationId: conversation.id,
 					userId,
-					joinedAt: Date.now()
+					chatId: link.chatId,
+					createdAt: Date.now()
 				}
 			})
-
-			await this.chatsService.create(tx, userId, conversation.id)
 
 			const updatedLink = await tx.inviteLink.update({
 				where: { id: link.id },
@@ -211,13 +199,22 @@ export class InviteLinksService {
 			}
 		})
 
-		return conversation
+		return link
 	}
 
-	async getByConversation(conversationId: number) {
+	async getByChatId(chatId: bigint) {
 		return await this.prisma.inviteLink.findMany({
-			where: { conversationId }
+			where: { chatId }
 		})
+	}
+
+	async getLinkForChannel(channelId: bigint): Promise<string | null> {
+		const link = await this.prisma.inviteLink.findFirst({
+			where: { chatId: channelId },
+			orderBy: { id: 'asc' },
+			take: 1
+		})
+		return link?.code ?? null
 	}
 
 	async delete(id: bigint) {

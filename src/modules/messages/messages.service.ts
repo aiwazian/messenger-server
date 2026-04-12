@@ -13,10 +13,9 @@ import { FileDownloadDto } from './dto/file-download.dto'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
-import { ConversationType, FileStatus } from '../../../generated/prisma/enums'
+import { FileStatus } from '../../../generated/prisma/enums'
 import { ChatType } from '../../common/enums/chat-type.enum'
 import { SocketEvent } from '../../common/socket/socket-events'
-import { detectChatType } from '../../common/utils/detect-chat-type.util'
 import { Prisma } from '../../../generated/prisma/client'
 
 @Injectable()
@@ -34,20 +33,17 @@ export class MessagesService {
 		chatId: ChatId,
 		dto: TextMessageDto
 	): Promise<MessageResponseDto> {
-		return this.withChat<MessageResponseDto>(senderId, chatId, async (tx, ctx) => {
-			const sequenceId = await tx.message.count({ where: { conversationId: ctx.conversationId } })
-
-			const actualSenderId =
-				ctx.conversationType === ConversationType.CHANNEL ? ctx.ownerId : senderId
-			const isSelfChat = ctx.chatType === ChatType.PRIVATE && senderId === (chatId as bigint)
+		return this.withChat<MessageResponseDto>(senderId, chatId, async (tx) => {
+			const sequenceId = await tx.message.count({ where: { chatId } })
+			const isSelfChat = BigInt(chatId) === BigInt(senderId)
 
 			const message = await tx.message.create({
 				data: {
 					sequenceId: sequenceId + 1,
-					conversationId: ctx.conversationId,
+					chatId,
 					text: dto.text,
 					sendTime: Date.now(),
-					senderId: actualSenderId,
+					senderId,
 					isRead: isSelfChat
 				},
 				include: { files: true }
@@ -60,7 +56,7 @@ export class MessagesService {
 				files: message.files.map((f: any) => ({ ...f, size: f.size.toString() }))
 			})
 
-			await this.notifyRecipients(senderId, chatId, ctx, messageInstance)
+			await this.notifyRecipients(senderId, chatId, messageInstance)
 
 			return messageInstance
 		})
@@ -71,7 +67,7 @@ export class MessagesService {
 		chatId: ChatId,
 		dto: MediaMessageDto
 	): Promise<MessageResponseDto[]> {
-		return this.withChat<MessageResponseDto[]>(senderId, chatId, async (tx, ctx) => {
+		return this.withChat<MessageResponseDto[]>(senderId, chatId, async (tx) => {
 			const files = await tx.file.findMany({
 				where: { id: { in: dto.fileIds }, status: FileStatus.COMPLETED }
 			})
@@ -80,14 +76,11 @@ export class MessagesService {
 				throw new NotFoundException('Some files were not found or not uploaded completely')
 			}
 
-			const actualSenderId =
-				ctx.conversationType === ConversationType.CHANNEL ? ctx.ownerId : senderId
-			const isSelfChat = ctx.chatType === ChatType.PRIVATE && senderId === (chatId as bigint)
-
+			const isSelfChat = BigInt(chatId) === BigInt(senderId)
 			const results: MessageResponseDto[] = []
 
 			const lastMessage = await tx.message.findFirst({
-				where: { conversationId: ctx.conversationId },
+				where: { chatId },
 				orderBy: { sequenceId: 'desc' },
 				select: { sequenceId: true }
 			})
@@ -97,14 +90,12 @@ export class MessagesService {
 				const message = await tx.message.create({
 					data: {
 						sequenceId: nextSequenceId++,
-						conversationId: ctx.conversationId,
+						chatId,
 						text: results.length === 0 ? dto.text : null,
 						sendTime: Date.now(),
-						senderId: actualSenderId,
+						senderId,
 						isRead: isSelfChat,
-						files: {
-							connect: { id: fileId }
-						}
+						files: { connect: { id: fileId } }
 					},
 					include: { files: true }
 				})
@@ -116,7 +107,7 @@ export class MessagesService {
 					files: message.files.map((f: any) => ({ ...f, size: f.size.toString() }))
 				})
 
-				await this.notifyRecipients(senderId, chatId, ctx, messageInstance)
+				await this.notifyRecipients(senderId, chatId, messageInstance)
 				results.push(messageInstance)
 			}
 
@@ -125,7 +116,7 @@ export class MessagesService {
 	}
 
 	async initFileUpload(userId: UserId, chatId: ChatId, dto: FileInitDto) {
-		return this.withChat(userId, chatId, async (tx, ctx) => {
+		return this.withChat(userId, chatId, async () => {
 			return this.storageService.initUpload(dto.name, dto.size, dto.mimeType)
 		})
 	}
@@ -135,26 +126,21 @@ export class MessagesService {
 		chatId: ChatId,
 		dto: FileConfirmDto
 	): Promise<MessageResponseDto> {
-		return this.withChat<MessageResponseDto>(userId, chatId, async (tx, ctx) => {
+		return this.withChat<MessageResponseDto>(userId, chatId, async (tx) => {
 			await this.storageService.confirmUpload(dto.fileId)
 
-			const sequenceId = await tx.message.count({ where: { conversationId: ctx.conversationId } })
-
-			const actualSenderId =
-				ctx.conversationType === ConversationType.CHANNEL ? ctx.ownerId : userId
-			const isSelfChat = ctx.chatType === ChatType.PRIVATE && userId === (chatId as bigint)
+			const sequenceId = await tx.message.count({ where: { chatId } })
+			const isSelfChat = BigInt(chatId) === BigInt(userId)
 
 			const message = await tx.message.create({
 				data: {
 					sequenceId: sequenceId + 1,
-					conversationId: ctx.conversationId,
+					chatId,
 					text: dto.text,
 					sendTime: Date.now(),
-					senderId: actualSenderId,
+					senderId: userId,
 					isRead: isSelfChat,
-					files: {
-						connect: { id: dto.fileId }
-					}
+					files: { connect: { id: dto.fileId } }
 				},
 				include: { files: true }
 			})
@@ -166,7 +152,7 @@ export class MessagesService {
 				files: message.files.map((f) => ({ ...f, size: f.size.toString() }))
 			})
 
-			await this.notifyRecipients(userId, chatId, ctx, messageInstance)
+			await this.notifyRecipients(userId, chatId, messageInstance)
 
 			return messageInstance
 		})
@@ -178,9 +164,9 @@ export class MessagesService {
 		messageId: number,
 		fileId: string
 	): Promise<FileDownloadDto> {
-		return this.withChat(userId, chatId, async (tx, ctx) => {
-			const message = await tx.message.findFirst({
-				where: { id: messageId, conversationId: ctx.conversationId },
+		return this.withChat(userId, chatId, async () => {
+			const message = await this.prisma.message.findFirst({
+				where: { id: messageId, chatId },
 				include: { files: true }
 			})
 
@@ -199,25 +185,18 @@ export class MessagesService {
 		limit: number = 50,
 		offset: number = 0
 	): Promise<MessageResponseDto[]> {
-		const conversation = await this.chatsService.findConversationByChatId(chatId, userId)
+		await this.chatsService.canReadChat(userId, chatId)
 
 		const messages = await this.prisma.message.findMany({
 			where: {
-				conversationId: conversation.id,
+				chatId,
 				AND: [
-					{
-						OR: [{ senderId: { not: userId } }, { deletedBySender: false }]
-					},
-					{
-						OR: [{ senderId: userId }, { deletedByReceiver: false }]
-					}
+					{ OR: [{ senderId: { not: userId } }, { deletedBySender: false }] },
+					{ OR: [{ senderId: userId }, { deletedByReceiver: false }] }
 				]
 			},
 			include: {
-				readReceipts: {
-					where: { userId },
-					select: { userId: true }
-				},
+				readReceipts: { where: { userId }, select: { userId: true } },
 				files: true
 			},
 			orderBy: { sendTime: 'desc' },
@@ -225,7 +204,7 @@ export class MessagesService {
 			skip: offset
 		})
 
-		const messagesEntity = messages.map((message) => {
+		return messages.reverse().map((message) => {
 			const isRead = message.isRead || message.readReceipts.length > 0
 			return plainToInstance(MessageResponseDto, {
 				...message,
@@ -234,19 +213,14 @@ export class MessagesService {
 				files: message.files.map((f) => ({ ...f, size: f.size.toString() }))
 			})
 		})
-
-		return messagesEntity.reverse()
 	}
 
 	async markRead(userId: UserId, messageId: number): Promise<void> {
 		const message = await this.prisma.message.findUnique({
-			where: { id: messageId },
-			include: { conversation: true }
+			where: { id: messageId }
 		})
 
-		if (!message) {
-			throw new NotFoundException('Message not found')
-		}
+		if (!message) throw new NotFoundException('Message not found')
 
 		const existing = await this.prisma.messageRead.findFirst({
 			where: { messageId, userId }
@@ -254,15 +228,12 @@ export class MessagesService {
 
 		if (!existing) {
 			await this.prisma.messageRead.create({
-				data: {
-					messageId,
-					userId,
-					readAt: Date.now()
-				}
+				data: { messageId, userId, readAt: Date.now() }
 			})
 		}
 
-		if (message.conversation.type === ConversationType.DIRECT) {
+		const chatType = this.detectChatTypeByChatId(message.chatId)
+		if (chatType === ChatType.PRIVATE) {
 			await this.prisma.message.update({
 				where: { id: messageId },
 				data: { isRead: true }
@@ -271,11 +242,11 @@ export class MessagesService {
 	}
 
 	async markAllRead(userId: UserId, chatId: ChatId): Promise<void> {
-		const conversation = await this.chatsService.findConversationByChatId(chatId, userId)
+		await this.chatsService.canReadChat(userId, chatId)
 
 		const unread = await this.prisma.message.findMany({
 			where: {
-				conversationId: conversation.id,
+				chatId,
 				readReceipts: { none: { userId } }
 			},
 			select: { id: true }
@@ -284,16 +255,12 @@ export class MessagesService {
 		if (unread.length === 0) return
 
 		const now = Date.now()
-
 		await this.prisma.messageRead.createMany({
-			data: unread.map((m) => ({
-				messageId: m.id,
-				userId,
-				readAt: now
-			}))
+			data: unread.map((m) => ({ messageId: m.id, userId, readAt: now }))
 		})
 
-		if (conversation.type === ConversationType.DIRECT) {
+		const chatType = this.detectChatTypeByChatId(chatId)
+		if (chatType === ChatType.PRIVATE) {
 			await this.prisma.message.updateMany({
 				where: { id: { in: unread.map((m) => m.id) } },
 				data: { isRead: true }
@@ -307,33 +274,26 @@ export class MessagesService {
 		messageId: number,
 		forEveryone: boolean = false
 	): Promise<void> {
-		const conversation = await this.chatsService.findConversationByChatId(chatId, userId)
-
 		const message = await this.prisma.message.findFirst({
-			where: { id: messageId, conversationId: conversation.id }
+			where: { id: messageId, chatId }
 		})
 
-		if (!message) {
-			throw new NotFoundException('Message not found')
-		}
+		if (!message) throw new NotFoundException('Message not found')
 
-		const isDirect = conversation.type === ConversationType.DIRECT
+		const chatType = this.detectChatTypeByChatId(chatId)
+		const isDirect = chatType === ChatType.PRIVATE
 
 		if (!isDirect || forEveryone) {
-			const files = await this.prisma.file.findMany({
-				where: { messageId: messageId }
-			})
-
+			const files = await this.prisma.file.findMany({ where: { messageId } })
 			for (const file of files) {
 				await this.storageService.deleteFile(file.id)
 			}
-
-			await this.prisma.message.delete({
-				where: { id: messageId }
-			})
+			await this.prisma.message.delete({ where: { id: messageId } })
 		} else {
 			const isSender = message.senderId === userId
-			const updateData = isSender ? { deletedBySender: true } : { deletedByReceiver: true }
+			const updateData = isSender
+				? { deletedBySender: true }
+				: { deletedByReceiver: true }
 
 			const updated = await this.prisma.message.update({
 				where: { id: messageId },
@@ -341,22 +301,15 @@ export class MessagesService {
 			})
 
 			if (updated.deletedBySender && updated.deletedByReceiver) {
-				const files = await this.prisma.file.findMany({
-					where: { messageId: messageId }
-				})
-
+				const files = await this.prisma.file.findMany({ where: { messageId } })
 				for (const file of files) {
 					await this.storageService.deleteFile(file.id)
 				}
-
-				await this.prisma.message.delete({
-					where: { id: messageId }
-				})
+				await this.prisma.message.delete({ where: { id: messageId } })
 			}
 		}
 
-		const ctx = await this.chatsService.resolveConversation(this.prisma, userId, chatId)
-		const recipients = await this.getRecipients(userId, chatId, ctx.chatType)
+		const recipients = await this.getRecipients(userId, chatId, this.detectChatTypeByChatId(chatId))
 
 		const senderPayload = { chatId: chatId.toString(), messageId }
 		this.realtimeGateway.sendToUser(userId, SocketEvent.MESSAGE_DELETE, senderPayload)
@@ -370,11 +323,10 @@ export class MessagesService {
 	}
 
 	async clearHistory(userId: UserId, chatId: ChatId): Promise<void> {
-		const conversation = await this.chatsService.findConversationByChatId(chatId, userId)
-		const chatType = detectChatType(chatId)
+		await this.chatsService.canReadChat(userId, chatId)
 
 		const messages = await this.prisma.message.findMany({
-			where: { conversationId: conversation.id },
+			where: { chatId },
 			include: { files: true }
 		})
 
@@ -384,14 +336,11 @@ export class MessagesService {
 			}
 		}
 
-		await this.prisma.message.deleteMany({
-			where: { conversationId: conversation.id }
-		})
+		await this.prisma.message.deleteMany({ where: { chatId } })
 
-		const ctx = await this.chatsService.resolveConversation(this.prisma, userId, chatId)
-		const recipients = await this.getRecipients(userId, chatId, ctx.chatType)
+		const chatType = this.detectChatTypeByChatId(chatId)
+		const recipients = await this.getRecipients(userId, chatId, chatType)
 		const targets = Array.from(new Set([...recipients, userId]))
-
 		const payload = { chatId: chatId.toString() }
 
 		this.realtimeGateway.sendToChat(chatId, SocketEvent.HISTORY_CLEAR, payload)
@@ -401,46 +350,26 @@ export class MessagesService {
 	private async withChat<T>(
 		userId: UserId,
 		chatId: ChatId,
-		fn: (
-			tx: Prisma.TransactionClient,
-			ctx: {
-				conversationId: number
-				conversationType: ConversationType
-				ownerId: bigint
-				chatType: ChatType
-			}
-		) => Promise<T>
+		fn: (tx: Prisma.TransactionClient) => Promise<T>
 	): Promise<T> {
 		return await this.prisma.$transaction(async (tx) => {
-			const ctx = await this.chatsService.resolveConversation(tx, userId, chatId)
+			await this.chatsService.create(tx, userId, chatId)
 
-			await this.chatsService.create(
-				tx,
-				userId,
-				ctx.conversationId,
-				ctx.chatType === ChatType.PRIVATE ? (chatId as bigint) : undefined
-			)
-
-			if (ctx.chatType === ChatType.PRIVATE) {
-				await this.chatsService.create(tx, UserId(chatId), ctx.conversationId, userId)
+			if (this.detectChatTypeByChatId(chatId) === ChatType.PRIVATE) {
+				await this.chatsService.create(tx, UserId(BigInt(chatId)), chatId)
 			}
 
-			return fn(tx, ctx)
+			return fn(tx)
 		})
 	}
 
 	private async notifyRecipients(
 		senderUserId: UserId,
 		chatId: ChatId,
-		ctx: {
-			conversationId: number
-			conversationType: ConversationType
-			ownerId: bigint
-			chatType: ChatType
-		},
 		message: MessageResponseDto
 	): Promise<void> {
-		const recipients = await this.getRecipients(senderUserId, chatId, ctx.chatType)
+		const chatType = this.detectChatTypeByChatId(chatId)
+		const recipients = await this.getRecipients(senderUserId, chatId, chatType)
 		const wsTargets = Array.from(new Set([...recipients, senderUserId]))
 
 		const online: UserId[] = []
@@ -454,7 +383,7 @@ export class MessagesService {
 			}
 		}
 
-		if (ChatId(senderUserId) == chatId) {
+		if (BigInt(chatId) === BigInt(senderUserId)) {
 			this.realtimeGateway.sendToUser(senderUserId, SocketEvent.MESSAGE_NEW, message)
 		} else {
 			this.realtimeGateway.sendToChat(chatId, SocketEvent.MESSAGE_NEW, message)
@@ -504,5 +433,12 @@ export class MessagesService {
 		}
 
 		return []
+	}
+
+	private detectChatTypeByChatId(chatId: bigint): ChatType {
+		const idStr = chatId.toString()
+		if (idStr.startsWith('grp_')) return ChatType.GROUP
+		if (idStr.startsWith('chn_')) return ChatType.CHANNEL
+		return ChatType.PRIVATE
 	}
 }

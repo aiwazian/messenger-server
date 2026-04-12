@@ -7,46 +7,14 @@ datasource db {
     provider = "sqlite"
 }
 
-enum SenderType {
-    USER
-    CHANNEL
-    BOT
-}
-
 enum ChannelType {
     PUBLIC
     PRIVATE
 }
 
-enum ConversationType {
-    DIRECT
-    GROUP
-    CHANNEL
-}
-
-enum ConversationRole {
-    OWNER
-    ADMIN
-    MEMBER
-}
-
 enum GroupType {
     PUBLIC
     PRIVATE
-}
-
-model Sender {
-    id   BigInt     @id
-    type SenderType
-
-    userId    BigInt? @unique
-    channelId BigInt? @unique
-    botId     BigInt? @unique
-
-    user    User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
-    channel Channel? @relation(fields: [channelId], references: [id], onDelete: Cascade)
-
-    messages Message[]
 }
 
 model User {
@@ -59,17 +27,16 @@ model User {
     password    String
     dateOfBirth BigInt?
 
-    sender Sender?
+    chats       Chat[]
+    sessions    Session[]
+    sentMessages Message[]
+    messageReads MessageRead[]
 
-    chats               Chat[]
-    sessions            Session[]
-    conversationMembers ConversationMember[]
-    messageReads        MessageRead[]
+    ownedGroups      Group[]
+    groupMemberships GroupMember[]
+    groupBlackLists  GroupBlackList[]
 
-    ownedGroups          Group[]
-    groupMemberships     GroupMember[]
-    groupBlackLists      GroupBlackList[]
-    ownedChannels        Channel[]
+    ownedChannels      Channel[]
     channelSubscriptions ChannelSubscriber[]
 
     privacySettings   PrivacySettings?
@@ -92,10 +59,26 @@ model Session {
     @@index([userId])
 }
 
+model Chat {
+    id        Int     @id @default(autoincrement())
+    userId    BigInt  // пользователь
+    chatId    BigInt  // либо userId собеседника, либо groupId, либо channelId
+    createdAt BigInt
+
+    isPinned   Boolean @default(false)
+    isArchived Boolean @default(false)
+
+    user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@unique([userId, chatId])
+    @@index([userId])
+    @@index([chatId])
+}
+
 model Message {
     id             Int     @id @default(autoincrement())
     sequenceId     BigInt
-    conversationId Int
+    chatId         BigInt
     text           String?
     sendTime       BigInt
     editedAt       BigInt?
@@ -105,16 +88,14 @@ model Message {
     deletedByReceiver Boolean @default(false)
 
     senderId BigInt
-    sender   Sender @relation(fields: [senderId], references: [id], onDelete: Cascade)
-
-    conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+    sender   User @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
     readReceipts MessageRead[]
     files        File[]
 
-    @@unique([conversationId, sequenceId])
-    @@index([conversationId, sendTime])
+    @@index([chatId, sendTime])
     @@index([senderId])
+    @@index([chatId])
 }
 
 model File {
@@ -153,56 +134,6 @@ model MessageRead {
     @@index([userId, readAt])
 }
 
-model Conversation {
-    id        Int              @id @default(autoincrement())
-    type      ConversationType
-    createdAt BigInt
-    isSelfConversation Boolean @default(false)
-
-    groupId   BigInt? @unique
-    channelId BigInt? @unique
-
-    group   Group?   @relation(fields: [groupId], references: [id], onDelete: Cascade)
-    channel Channel? @relation(fields: [channelId], references: [id], onDelete: Cascade)
-
-    members     ConversationMember[]
-    messages    Message[]
-    chats       Chat[]
-    inviteLinks InviteLink[]
-}
-
-model ConversationMember {
-    id             Int              @id @default(autoincrement())
-    conversationId Int
-    userId         BigInt
-    role           ConversationRole @default(MEMBER)
-    joinedAt       BigInt
-
-    conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-    user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-    @@unique([conversationId, userId])
-    @@index([userId])
-    @@index([conversationId])
-}
-
-model Chat {
-    id             Int    @id @default(autoincrement())
-    userId         BigInt
-    conversationId Int
-    targetId       BigInt?
-
-    isPinned   Boolean @default(false)
-    isArchived Boolean @default(false)
-
-    user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-    conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-
-    @@unique([userId, conversationId])
-    @@index([userId])
-    @@index([conversationId])
-}
-
 model Channel {
     id          BigInt      @id
     name        String
@@ -211,13 +142,10 @@ model Channel {
     channelType ChannelType @default(PRIVATE)
     username    String?     @unique
 
-    sender Sender?
     owner  User    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
     subscribers  ChannelSubscriber[]
     blockedUsers ChannelBlackList[]
-
-    conversations Conversation[]
 }
 
 model ChannelSubscriber {
@@ -255,8 +183,6 @@ model Group {
     owner   User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
     members GroupMember[]
     blocked GroupBlackList[]
-
-    conversations Conversation[]
 }
 
 model GroupMember {
@@ -284,15 +210,15 @@ model GroupBlackList {
 }
 
 model InviteLink {
-    id             BigInt  @id
-    code           String  @unique
-    conversationId Int
-    creatorId      BigInt
-    maxUses        Int?
-    uses           Int     @default(0)
-    expiresAt      BigInt?
+    id        BigInt  @id
+    code      String  @unique
+    chatId    BigInt
+    creatorId BigInt
+    maxUses   Int?
+    uses      Int     @default(0)
+    expiresAt BigInt?
 
-    conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+    @@index([chatId])
 }
 
 model FileCleanupTask {

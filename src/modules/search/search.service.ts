@@ -126,24 +126,27 @@ export class SearchService {
 		const limit = dto.limit || 20
 		const offset = dto.offset || 0
 
+		const userChats = await this.prisma.chat.findMany({
+			where: { userId },
+			select: { chatId: true }
+		})
+		const userChatIds = userChats.map((c) => c.chatId)
+
 		const files = await this.prisma.file.findMany({
 			where: {
 				name: { contains: query },
 				message: {
-					conversation: {
-						members: {
-							some: { userId }
-						}
-					}
+					chatId: { in: userChatIds }
 				}
 			},
 			include: {
 				message: {
 					include: {
 						sender: {
-							include: {
-								user: true,
-								channel: true
+							select: {
+								id: true,
+								firstName: true,
+								lastName: true
 							}
 						}
 					}
@@ -158,22 +161,19 @@ export class SearchService {
 
 		const results: SearchResponseDto[] = files.map((file) => {
 			const message = file.message
-			let senderName = 'Unknown'
-			if (message?.sender?.user) {
-				senderName = `${message.sender.user.firstName} ${message.sender.user.lastName || ''}`.trim()
-			} else if (message?.sender?.channel) {
-				senderName = message.sender.channel.name
-			}
+			const senderName = message?.sender
+				? `${message.sender.firstName ?? ''} ${message.sender.lastName ?? ''}`.trim()
+				: 'Unknown'
 
 			return {
 				type: SearchResultType.FILE,
-				chatId: ChatId(message?.senderId || 0n).toString(),
+				chatId: ChatId(message?.chatId || 0n).toString(),
 				name: file.name,
 				fileId: file.id,
 				size: file.size.toString(),
 				mimeType: file.mimeType,
 				messageId: message?.id.toString(),
-				senderName: senderName,
+				senderName,
 				createdAt: file.createdAt.toString()
 			}
 		})

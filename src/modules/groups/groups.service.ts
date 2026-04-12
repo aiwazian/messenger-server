@@ -15,10 +15,12 @@ import { RealtimeGateway } from '../realtime/realtime.gateway'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
 import { generateGroupId } from '../../common/utils/id-generator.util'
-import { ConversationRole, ConversationType, GroupType } from '../../../generated/prisma/enums'
+import { GroupType } from '../../../generated/prisma/enums'
 import { GroupId } from '../../common/types/group-id.type'
+import { ChatId } from '../../common/types/chat-id.type'
 import { Prisma } from '../../../generated/prisma/client'
 import { SocketEvent } from '../../common/socket/socket-events'
+import { ChatResponseDto } from '../chats/dto/chat-response.dto'
 
 @Injectable()
 export class GroupsService {
@@ -43,37 +45,27 @@ export class GroupsService {
 					id: groupId,
 					name: dto.name,
 					username: dto.username,
-					ownerId: ownerId,
+					ownerId,
 					bio: dto.bio,
 					groupType: dto.groupType || GroupType.PRIVATE
 				}
 			})
 
 			await tx.groupMember.create({
-				data: {
-					userId: ownerId,
-					groupId: group.id
-				}
+				data: { userId: ownerId, groupId: group.id }
 			})
 
-			const conversation = await tx.conversation.create({
+			await this.chatsService.create(tx, ownerId, ChatId(group.id))
+
+			await tx.message.create({
 				data: {
-					type: ConversationType.GROUP,
-					groupId: group.id,
-					createdAt: Date.now()
+					chatId: group.id,
+					text: 'Группа создана',
+					sendTime: Date.now(),
+					sequenceId: BigInt(Date.now()),
+					senderId: ownerId
 				}
 			})
-
-			await tx.conversationMember.create({
-				data: {
-					conversationId: conversation.id,
-					userId: ownerId,
-					role: ConversationRole.OWNER,
-					joinedAt: Date.now()
-				}
-			})
-
-			await this.chatsService.create(tx, ownerId, conversation.id)
 
 			return group
 		})
@@ -116,10 +108,7 @@ export class GroupsService {
 	}
 
 	async join(id: GroupId, userId: UserId): Promise<void> {
-		const group = await this.prisma.group.findUnique({
-			where: { id },
-			include: { conversations: true }
-		})
+		const group = await this.prisma.group.findUnique({ where: { id } })
 
 		if (group?.groupType !== GroupType.PUBLIC) {
 			throw new BadRequestException('This group is private. Use invite link to join.')
@@ -130,9 +119,6 @@ export class GroupsService {
 		})
 		if (isBanned) throw new BadRequestException('You are banned from this group')
 
-		const conversation = group.conversations[0]
-		if (!conversation) throw new NotFoundException('Group conversation not found')
-
 		await this.prisma.$transaction(async (tx) => {
 			const existingMember = await tx.groupMember.findUnique({
 				where: { groupId_userId: { groupId: id, userId } }
@@ -140,47 +126,23 @@ export class GroupsService {
 			if (existingMember) return
 
 			await tx.groupMember.create({ data: { groupId: id, userId } })
-			await tx.conversationMember.create({
-				data: {
-					conversationId: conversation.id,
-					userId,
-					joinedAt: Date.now()
-				}
-			})
-			await this.chatsService.create(tx, userId, conversation.id)
+			await this.chatsService.create(tx, userId, ChatId(id))
 		})
-	}
-
-	private async leaveInternal(
-		tx: Prisma.TransactionClient,
-		groupId: GroupId,
-		userId: UserId,
-		conversationId: number
-	): Promise<void> {
-		await tx.groupMember
-			.delete({ where: { groupId_userId: { groupId, userId } } })
-			.catch(() => { })
-
-		await tx.conversationMember
-			.delete({ where: { conversationId_userId: { conversationId, userId } } })
-			.catch(() => { })
-
-		await tx.chat.deleteMany({ where: { userId, conversationId } })
 	}
 
 	async leave(id: GroupId, userId: UserId): Promise<void> {
-		const group = await this.prisma.group.findUnique({
-			where: { id },
-			include: { conversations: true }
-		})
+		const group = await this.prisma.group.findUnique({ where: { id } })
 		if (group?.ownerId === userId)
 			throw new BadRequestException('Owner cannot leave group. Delete it instead.')
 
-		const conversation = group?.conversations[0]
-		if (!conversation) return
-
 		await this.prisma.$transaction(async (tx) => {
-			await this.leaveInternal(tx, id, userId, conversation.id)
+			await tx.groupMember
+				.delete({ where: { groupId_userId: { groupId: id, userId } } })
+				.catch(() => { })
+
+			await tx.chat.deleteMany({
+				where: { userId, chatId: id }
+			})
 		})
 
 		this.realtimeGateway.sendToUser(userId, SocketEvent.CHAT_UPDATED, { chatId: id })
@@ -197,23 +159,18 @@ export class GroupsService {
 	async ban(id: GroupId, ownerId: UserId, targetUserId: UserId): Promise<void> {
 		if (targetUserId === ownerId) throw new BadRequestException('Cannot ban yourself')
 
-		const group = await this.prisma.group.findUnique({
-			where: { id },
-			include: { conversations: true }
-		})
+		const group = await this.prisma.group.findUnique({ where: { id } })
 		if (group!.ownerId === targetUserId)
 			throw new BadRequestException('Owner cannot leave group. Delete it instead.')
 
-		const conversation = group!.conversations[0]
-
 		await this.prisma.$transaction(async (tx) => {
-			if (conversation) {
-				await this.leaveInternal(tx, id, targetUserId, conversation.id)
-			} else {
-				await tx.groupMember
-					.delete({ where: { groupId_userId: { groupId: id, userId: targetUserId } } })
-					.catch(() => { })
-			}
+			await tx.groupMember
+				.delete({ where: { groupId_userId: { groupId: id, userId: targetUserId } } })
+				.catch(() => { })
+
+			await tx.chat.deleteMany({
+				where: { userId: targetUserId, chatId: id }
+			})
 
 			await tx.groupBlackList.upsert({
 				where: { userId_groupId: { userId: targetUserId, groupId: id } },
@@ -229,14 +186,9 @@ export class GroupsService {
 		const group = await this.prisma.group.findUnique({
 			where: { id },
 			include: {
-				_count: {
-					select: { members: true }
-				},
+				_count: { select: { members: true } },
 				members: userId
-					? {
-						where: { userId },
-						select: { userId: true }
-					}
+					? { where: { userId }, select: { userId: true } }
 					: undefined
 			}
 		})
@@ -275,14 +227,8 @@ export class GroupsService {
 			where,
 			skip,
 			take,
-			include: {
-				user: true
-			},
-			orderBy: {
-				user: {
-					firstName: 'asc'
-				}
-			}
+			include: { user: true },
+			orderBy: { user: { firstName: 'asc' } }
 		})
 
 		return plainToInstance(
@@ -328,14 +274,8 @@ export class GroupsService {
 			where,
 			skip,
 			take,
-			include: {
-				user: true
-			},
-			orderBy: {
-				user: {
-					firstName: 'asc'
-				}
-			}
+			include: { user: true },
+			orderBy: { user: { firstName: 'asc' } }
 		})
 
 		return plainToInstance(

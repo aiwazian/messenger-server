@@ -34,12 +34,7 @@ export class GroupInviteLinksController {
 	@Get(`:${PARAMS.GROUP_ID}/invite-links`)
 	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
 	async getInviteLinks(@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId) {
-		const conversation = await this.prisma.conversation.findUnique({
-			where: { groupId: BigInt(id) }
-		})
-		if (!conversation) throw new NotFoundException('Group conversation not found')
-
-		const links = await this.inviteLinksService.getByConversation(conversation.id)
+		const links = await this.inviteLinksService.getByChatId(BigInt(id))
 		const domain = this.inviteLinksService.getShortUrlDomain()
 
 		const mappedLinks = links.map((link: any) => ({

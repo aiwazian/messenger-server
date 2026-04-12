@@ -6,6 +6,9 @@ import {
 	NotFoundException
 } from '@nestjs/common'
 import { PrismaService } from '../../providers/prisma/prisma.service'
+import { ChatType } from '../enums/chat-type.enum'
+import { detectChatType } from '../utils/detect-chat-type.util'
+import { ChatId } from '../types/chat-id.type'
 
 @Injectable()
 export class InviteLinkOwnerGuard implements CanActivate {
@@ -17,32 +20,31 @@ export class InviteLinkOwnerGuard implements CanActivate {
 		const inviteLinkId = BigInt(request.params.inviteLinkId)
 
 		const link = await this.prisma.inviteLink.findUnique({
-			where: { id: inviteLinkId },
-			include: { conversation: true }
+			where: { id: inviteLinkId }
 		})
 
 		if (!link) {
 			throw new NotFoundException('Invite link not found')
 		}
 
-		const { conversation } = link
+		const chatType = detectChatType(ChatId(link.chatId))
 
-		if (conversation.channelId) {
+		if (chatType === ChatType.CHANNEL) {
 			const channel = await this.prisma.channel.findUnique({
-				where: { id: conversation.channelId }
+				where: { id: link.chatId }
 			})
 			if (channel?.ownerId !== user.id) {
 				throw new ForbiddenException('You are not the owner of this channel')
 			}
-		} else if (conversation.groupId) {
+		} else if (chatType === ChatType.GROUP) {
 			const group = await this.prisma.group.findUnique({
-				where: { id: conversation.groupId }
+				where: { id: link.chatId }
 			})
 			if (group?.ownerId !== user.id) {
 				throw new ForbiddenException('You are not the owner of this group')
 			}
 		} else {
-			throw new ForbiddenException('Conversation type not supported for invite link ownership check')
+			throw new ForbiddenException('Invite links are not supported for direct chats')
 		}
 
 		return true

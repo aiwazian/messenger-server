@@ -18,7 +18,6 @@ import { StorageService } from '../storage/storage.service'
 import { SessionsService } from '../sessions/sessions.service'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
-import { ConversationType } from '../../../generated/prisma/enums'
 import { hashPassword } from '../../common/utils/password.util'
 
 @Injectable()
@@ -49,14 +48,12 @@ export class UsersService {
 		const files = await this.prisma.file.findMany({
 			where: {
 				message: {
-					sender: {
-						userId: userId
-					}
+					senderId: userId
 				}
 			}
 		})
 
-		// 2. Schedule files for deletion (now asynchronous and resilient in StorageService)
+		// 2. Schedule files for deletion
 		for (const file of files) {
 			await this.storageService.deleteFile(file.id)
 		}
@@ -65,17 +62,7 @@ export class UsersService {
 		await this.sessionsService.deleteAll(userId)
 
 		// 4. Delete user. Prisma cascade will handle the rest
-		await this.prisma.user.delete({
-			where: { id: userId }
-		})
-
-		// 5. Cleanup empty conversations (DIRECT chats where everyone left)
-		await this.prisma.conversation.deleteMany({
-			where: {
-				type: ConversationType.DIRECT,
-				members: { none: {} }
-			}
-		})
+		await this.prisma.user.delete({ where: { id: userId } })
 	}
 
 	async changePassword(id: UserId, dto: ChangePasswordDto): Promise<void> {

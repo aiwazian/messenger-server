@@ -2,7 +2,7 @@ import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/co
 import { SigninDto } from './dto/signin.dto'
 import { SignupDto } from './dto/signup.dto'
 import { SessionsService } from '../sessions/sessions.service'
-import { Prisma, SenderType } from '../../../generated/prisma/client'
+import { Prisma } from '../../../generated/prisma/client'
 import { AuthResponseDto } from './dto/auth-response.dto'
 import { plainToInstance } from 'class-transformer'
 import { LoginAvailableDto } from './dto/check-login.dto'
@@ -72,13 +72,6 @@ export class AuthService {
 						id: userId,
 						login: dto.login,
 						password: passwordHash
-					}
-				}),
-				this.prisma.sender.create({
-					data: {
-						id: userId,
-						type: SenderType.USER,
-						userId: userId
 					}
 				}),
 				this.prisma.privacySettings.create({

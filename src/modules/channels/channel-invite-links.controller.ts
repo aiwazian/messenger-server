@@ -34,12 +34,7 @@ export class ChannelInviteLinksController {
 	@Get(`:${PARAMS.CHANNEL_ID}/invite-links`)
 	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
 	async getInviteLinks(@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId) {
-		const conversation = await this.prisma.conversation.findUnique({
-			where: { channelId: BigInt(id) }
-		})
-		if (!conversation) throw new NotFoundException('Channel conversation not found')
-
-		const links = await this.inviteLinksService.getByConversation(conversation.id)
+		const links = await this.inviteLinksService.getByChatId(BigInt(id))
 		const domain = this.inviteLinksService.getShortUrlDomain()
 
 		const mappedLinks = links.map((link) => ({

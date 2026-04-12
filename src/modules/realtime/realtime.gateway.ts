@@ -210,26 +210,22 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		}
 
 		if (visibility === 1) {
-			const directMembers = await this.prisma.conversationMember.findMany({
+			const directChats = await this.prisma.chat.findMany({
 				where: {
-					conversation: {
-						type: 'DIRECT',
-						members: { some: { userId } }
-					},
-					userId: { not: userId }
+					userId,
+					chatId: userId
 				},
-				select: { userId: true }
+				select: { chatId: true }
 			})
-			return directMembers.map((d) => UserId(d.userId))
+			return directChats
+				.filter((c) => c.chatId !== userId)
+				.map((c) => UserId(c.chatId))
 		}
 
-		const [directMembers, groupMembers, channelSubs, channelOwners] = await Promise.all([
-			this.prisma.conversationMember.findMany({
-				where: {
-					conversation: { type: 'DIRECT', members: { some: { userId } } },
-					userId: { not: userId }
-				},
-				select: { userId: true }
+		const [directChats, groupMembers, channelSubs, channelOwners] = await Promise.all([
+			this.prisma.chat.findMany({
+				where: { userId },
+				select: { chatId: true }
 			}),
 			this.prisma.groupMember.findMany({
 				where: { userId },
@@ -267,8 +263,12 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 			.filter((c) => c.id !== userId)
 			.map((c) => ({ userId: c.id }))
 
+		const directChatIds = directChats
+			.filter((c) => c.chatId !== userId)
+			.map((c) => c.chatId.toString())
+
 		const allUserIds = [
-			...directMembers.map((d) => d.userId.toString()),
+			...directChatIds,
 			...otherGroupMembers.map((g) => g.userId.toString()),
 			...otherChannelSubs.map((s) => s.userId.toString()),
 			...otherChannelOwners.map((o) => o.userId.toString())

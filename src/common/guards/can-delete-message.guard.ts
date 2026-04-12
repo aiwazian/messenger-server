@@ -8,7 +8,9 @@ import {
 import { UserId } from '../types/user-id.type'
 import { PARAMS } from '../constants/param.constants'
 import { PrismaService } from '../../providers/prisma/prisma.service'
-import { ConversationType } from '../../../generated/prisma/enums'
+import { ChatType } from '../enums/chat-type.enum'
+import { detectChatType } from '../utils/detect-chat-type.util'
+import { ChatId } from '../types/chat-id.type'
 
 @Injectable()
 export class CanDeleteMessageGuard implements CanActivate {
@@ -24,8 +26,7 @@ export class CanDeleteMessageGuard implements CanActivate {
 		}
 
 		const message = await this.prisma.message.findUnique({
-			where: { id: messageId },
-			include: { conversation: true }
+			where: { id: messageId }
 		})
 
 		if (!message) {
@@ -37,23 +38,23 @@ export class CanDeleteMessageGuard implements CanActivate {
 			return true
 		}
 
-		if (message.conversation.type === ConversationType.DIRECT) {
-			const member = await this.prisma.conversationMember.findFirst({
-				where: { conversationId: message.conversation.id, userId: userId }
-			})
-			if (member) return true
+		const chatType = detectChatType(ChatId(message.chatId))
+
+		if (chatType === ChatType.PRIVATE) {
+			// In direct chat, either user can delete their own messages
+			throw new ForbiddenException('You cannot delete this message')
 		}
 
-		if (message.conversation.type === ConversationType.GROUP) {
+		if (chatType === ChatType.GROUP) {
 			const group = await this.prisma.group.findFirst({
-				where: { id: message.conversation.id, ownerId: userId }
+				where: { id: message.chatId, ownerId: userId }
 			})
 			if (group) return true
 		}
 
-		if (message.conversation.type === ConversationType.CHANNEL) {
+		if (chatType === ChatType.CHANNEL) {
 			const channel = await this.prisma.channel.findFirst({
-				where: { id: message.conversation.id, ownerId: userId }
+				where: { id: message.chatId, ownerId: userId }
 			})
 			if (channel) return true
 		}
