@@ -25,7 +25,7 @@ export class MessageResponseDto {
 	id: number
 
 	@Expose()
-	senderId: string
+	senderId: number
 
 	@Expose()
 	chatId: string
@@ -41,6 +41,7 @@ export class MessageResponseDto {
 	editedAt?: number
 
 	@Expose()
+	@OmitNull()
 	isRead?: boolean
 
 	@Expose()

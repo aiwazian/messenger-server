@@ -21,6 +21,7 @@ import { ChatId } from '../../common/types/chat-id.type'
 import { Prisma } from '../../../generated/prisma/client'
 import { SocketEvent } from '../../common/socket/socket-events'
 import { ChatResponseDto } from '../chats/dto/chat-response.dto'
+import { SYSTEM_USER_ID } from '../../providers/prisma/prisma.service'
 
 @Injectable()
 export class GroupsService {
@@ -63,7 +64,7 @@ export class GroupsService {
 					text: 'Группа создана',
 					sendTime: Date.now(),
 					sequenceId: BigInt(Date.now()),
-					senderId: ownerId
+					senderId: SYSTEM_USER_ID
 				}
 			})
 

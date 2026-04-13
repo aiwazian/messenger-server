@@ -26,6 +26,7 @@ import { ChannelId } from '../../common/types/channel-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
 import { Prisma } from '../../../generated/prisma/client'
 import { SocketEvent } from '../../common/socket/socket-events'
+import { SYSTEM_USER_ID } from '../../providers/prisma/prisma.service'
 
 @Injectable()
 export class ChannelsService {
@@ -74,7 +75,7 @@ export class ChannelsService {
 						text: 'Канал создан',
 						sendTime: Date.now(),
 						sequenceId: BigInt(Date.now()),
-						senderId: ownerId
+						senderId: SYSTEM_USER_ID
 					}
 				})
 
