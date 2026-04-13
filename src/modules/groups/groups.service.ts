@@ -238,6 +238,87 @@ export class GroupsService {
 		)
 	}
 
+	async getAvailableUsersForInvite(
+		id: GroupId,
+		ownerId: UserId
+	): Promise<UserResponseDto[]> {
+		// 1. Get all chatIds where ownerId has chats with other users (1-on-1 chats)
+		const chats = await this.prisma.chat.findMany({
+			where: { userId: ownerId },
+			select: { chatId: true }
+		})
+		const chatIds = chats.map((c) => c.chatId)
+
+		if (chatIds.length === 0) return []
+
+		// 2. Get existing member userIds in this group
+		const existingMembers = await this.prisma.groupMember.findMany({
+			where: { groupId: id },
+			select: { userId: true }
+		})
+		const existingMemberIds = new Set(existingMembers.map((m) => m.userId.toString()))
+
+		// 3. Get users who:
+		//    - Have a chat with the owner (chatId matches their userId)
+		//    - Have privacySettings.invites === 0 (everyone can invite)
+		//    - Are not already in the group
+		//    - Are not the owner themselves
+		const availableUsers = await this.prisma.user.findMany({
+			where: {
+				id: { in: chatIds },
+				NOT: { id: ownerId },
+				privacySettings: {
+					invites: 0
+				}
+			},
+			include: { privacySettings: true }
+		})
+
+		// 4. Filter out existing members in JS (simpler than complex NOT query)
+		const filtered = availableUsers.filter(
+			(u) => !existingMemberIds.has(u.id.toString())
+		)
+
+		return plainToInstance(UserResponseDto, filtered)
+	}
+
+	async addMembers(
+		id: GroupId,
+		dto: { userIds: string[] },
+		ownerId: UserId
+	): Promise<void> {
+		const userIdBigInts = dto.userIds.map((uid) => BigInt(uid))
+
+		// Check if users are banned
+		const bannedUsers = await this.prisma.groupBlackList.findMany({
+			where: {
+				groupId: id,
+				userId: { in: userIdBigInts }
+			}
+		})
+		if (bannedUsers.length > 0) {
+			throw new BadRequestException('Some users are banned from this group')
+		}
+
+		await this.prisma.$transaction(async (tx) => {
+			for (const userId of userIdBigInts) {
+				// Skip if already a member (idempotent)
+				const existing = await tx.groupMember.findUnique({
+					where: { groupId_userId: { groupId: id, userId } }
+				})
+				if (existing) continue
+
+				await tx.groupMember.create({
+					data: { groupId: id, userId }
+				})
+				await this.chatsService.create(tx, UserId(userId), ChatId(id))
+			}
+		})
+
+		// Notify group members about new members
+		this.realtimeGateway.sendToUser(ownerId, SocketEvent.CHAT_UPDATED, { chatId: id })
+	}
+
 	async delete(id: GroupId, userId: UserId): Promise<void> {
 		await this.prisma.group.delete({ where: { id } })
 	}
