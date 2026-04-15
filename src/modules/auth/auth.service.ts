@@ -2,7 +2,7 @@ import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/co
 import { SigninDto } from './dto/signin.dto'
 import { SignupDto } from './dto/signup.dto'
 import { SessionsService } from '../sessions/sessions.service'
-import { Prisma } from '../../../generated/prisma/client'
+import { Prisma, PrivacyRule } from '../../../generated/prisma/client'
 import { AuthResponseDto } from './dto/auth-response.dto'
 import { plainToInstance } from 'class-transformer'
 import { LoginAvailableDto } from './dto/check-login.dto'
@@ -18,7 +18,7 @@ export class AuthService {
 		private readonly prisma: PrismaService,
 		private readonly sessionService: SessionsService,
 		private readonly jwtAuth: JwtAuthService
-	) {}
+	) { }
 
 	async isLoginAvailable(login: string): Promise<LoginAvailableDto> {
 		const user = await this.prisma.user.findUnique({
@@ -77,11 +77,11 @@ export class AuthService {
 				this.prisma.privacySettings.create({
 					data: {
 						userId: userId,
-						lastSeen: 0,
-						messages: 0,
-						bio: 0,
-						dateOfBirth: 0,
-						invites: 0
+						lastSeen: PrivacyRule.EVERYBODY,
+						messages: PrivacyRule.EVERYBODY,
+						bio: PrivacyRule.EVERYBODY,
+						dateOfBirth: PrivacyRule.EVERYBODY,
+						invites: PrivacyRule.EVERYBODY
 					}
 				})
 			])

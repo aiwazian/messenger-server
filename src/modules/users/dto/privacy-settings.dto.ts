@@ -1,18 +1,19 @@
 import { Expose } from 'class-transformer'
+import { PrivacyRule } from '../../../../generated/prisma/enums'
 
 export class PrivacySettingsDto {
 	@Expose()
-	lastSeen: number
+	lastSeen: PrivacyRule
 
 	@Expose()
-	messages: number
+	messages: PrivacyRule
 
 	@Expose()
-	bio: number
+	bio: PrivacyRule
 
 	@Expose()
-	dateOfBirth: number
+	dateOfBirth: PrivacyRule
 
 	@Expose()
-	invites: number
+	invites: PrivacyRule
 }

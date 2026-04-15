@@ -19,6 +19,7 @@ import { SessionsService } from '../sessions/sessions.service'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
 import { hashPassword } from '../../common/utils/password.util'
+import { PrivacyRule } from '../../../generated/prisma/enums'
 
 @Injectable()
 export class UsersService {
@@ -28,7 +29,7 @@ export class UsersService {
 		@Inject(forwardRef(() => StorageService))
 		private readonly storageService: StorageService,
 		private readonly sessionsService: SessionsService
-	) {}
+	) { }
 
 	async deleteMe(userId: UserId, session: any): Promise<void> {
 		const currentTime = BigInt(Date.now())
@@ -110,10 +111,10 @@ export class UsersService {
 		if (currentUserId && currentUserId !== id) {
 			const privacy = user.privacySettings
 			if (privacy) {
-				if (privacy.bio === 1) {
+				if (privacy.bio === PrivacyRule.NOBODY) {
 					response.bio = undefined
 				}
-				if (privacy.dateOfBirth === 1) {
+				if (privacy.dateOfBirth === PrivacyRule.NOBODY) {
 					response.dateOfBirth = undefined
 				}
 			}
@@ -128,11 +129,11 @@ export class UsersService {
 		})
 		if (!settings) {
 			return plainToInstance(PrivacySettingsDto, {
-				lastSeen: 0,
-				messages: 0,
-				bio: 0,
-				dateOfBirth: 0,
-				invites: 0
+				lastSeen: PrivacyRule.EVERYBODY,
+				messages: PrivacyRule.EVERYBODY,
+				bio: PrivacyRule.EVERYBODY,
+				dateOfBirth: PrivacyRule.EVERYBODY,
+				invites: PrivacyRule.EVERYBODY
 			})
 		}
 		return plainToInstance(PrivacySettingsDto, settings)
@@ -147,11 +148,11 @@ export class UsersService {
 			update: dto,
 			create: {
 				userId,
-				lastSeen: dto.lastSeen ?? 0,
-				messages: dto.messages ?? 0,
-				bio: dto.bio ?? 0,
-				dateOfBirth: dto.dateOfBirth ?? 0,
-				invites: dto.invites ?? 0
+				lastSeen: dto.lastSeen ?? PrivacyRule.EVERYBODY,
+				messages: dto.messages ?? PrivacyRule.EVERYBODY,
+				bio: dto.bio ?? PrivacyRule.EVERYBODY,
+				dateOfBirth: dto.dateOfBirth ?? PrivacyRule.EVERYBODY,
+				invites: dto.invites ?? PrivacyRule.EVERYBODY
 			}
 		})
 		return plainToInstance(PrivacySettingsDto, settings)

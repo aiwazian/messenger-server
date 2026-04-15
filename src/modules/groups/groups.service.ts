@@ -15,7 +15,7 @@ import { RealtimeGateway } from '../realtime/realtime.gateway'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
 import { generateGroupId } from '../../common/utils/id-generator.util'
-import { GroupType } from '../../../generated/prisma/enums'
+import { GroupType, PrivacyRule } from '../../../generated/prisma/enums'
 import { GroupId } from '../../common/types/group-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
 import { Prisma } from '../../../generated/prisma/client'
@@ -30,7 +30,7 @@ export class GroupsService {
 		private readonly chatsService: ChatsService,
 		private readonly searchService: SearchService,
 		private readonly realtimeGateway: RealtimeGateway
-	) {}
+	) { }
 
 	async create(ownerId: UserId, dto: CreateGroupDto): Promise<GroupResponseDto> {
 		if (dto.username) {
@@ -139,7 +139,7 @@ export class GroupsService {
 		await this.prisma.$transaction(async (tx) => {
 			await tx.groupMember
 				.delete({ where: { groupId_userId: { groupId: id, userId } } })
-				.catch(() => {})
+				.catch(() => { })
 
 			await tx.chat.deleteMany({
 				where: { userId, chatId: id }
@@ -167,7 +167,7 @@ export class GroupsService {
 		await this.prisma.$transaction(async (tx) => {
 			await tx.groupMember
 				.delete({ where: { groupId_userId: { groupId: id, userId: targetUserId } } })
-				.catch(() => {})
+				.catch(() => { })
 
 			await tx.chat.deleteMany({
 				where: { userId: targetUserId, chatId: id }
@@ -213,12 +213,12 @@ export class GroupsService {
 			groupId: id,
 			user: search
 				? {
-						OR: [
-							{ firstName: { contains: search } },
-							{ lastName: { contains: search } },
-							{ username: { contains: search } }
-						]
-					}
+					OR: [
+						{ firstName: { contains: search } },
+						{ lastName: { contains: search } },
+						{ username: { contains: search } }
+					]
+				}
 				: undefined
 		}
 
@@ -255,7 +255,7 @@ export class GroupsService {
 
 		// 3. Get users who:
 		//    - Have a chat with the owner (chatId matches their userId)
-		//    - Have privacySettings.invites === 0 (everyone can invite)
+		//    - Have privacySettings.invites === EVERYONE (everyone can invite)
 		//    - Are not already in the group
 		//    - Are not the owner themselves
 		const availableUsers = await this.prisma.user.findMany({
@@ -263,7 +263,7 @@ export class GroupsService {
 				id: { in: chatIds },
 				NOT: { id: ownerId },
 				privacySettings: {
-					invites: 0
+					invites: PrivacyRule.EVERYBODY
 				}
 			},
 			include: { privacySettings: true }
@@ -332,12 +332,12 @@ export class GroupsService {
 			groupId: id,
 			user: search
 				? {
-						OR: [
-							{ firstName: { contains: search } },
-							{ lastName: { contains: search } },
-							{ username: { contains: search } }
-						]
-					}
+					OR: [
+						{ firstName: { contains: search } },
+						{ lastName: { contains: search } },
+						{ username: { contains: search } }
+					]
+				}
 				: undefined
 		}
 
@@ -360,6 +360,6 @@ export class GroupsService {
 			.delete({
 				where: { userId_groupId: { userId: targetUserId, groupId: id } }
 			})
-			.catch(() => {})
+			.catch(() => { })
 	}
 }

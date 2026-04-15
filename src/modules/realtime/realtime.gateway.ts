@@ -17,6 +17,7 @@ import { PrismaService } from '../../providers/prisma/prisma.service'
 import { SocketEvent, SocketEventType } from '../../common/socket/socket-events'
 import { UserId } from '../../common/types/user-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
+import { PrivacyRule } from '../../../generated/prisma/enums'
 
 @WebSocketGateway()
 export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
@@ -30,7 +31,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		private readonly sessionsService: SessionsService,
 		private readonly prisma: PrismaService,
 		private readonly chatsService: ChatsService
-	) {}
+	) { }
 
 	afterInit(server: Server) {
 		server.use(async (socket, next) => {
@@ -186,13 +187,12 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		if (typeof obj === 'object') {
 			if (obj instanceof Date) return obj.getTime()
 
-			const newObj = {}
-			for (const key in obj) {
-				if (Object.prototype.hasOwnProperty.call(obj, key)) {
-					newObj[key] = this.serializeBigInt(obj[key])
-				}
-			}
-			return newObj
+			return Object.fromEntries(
+				Object.entries(obj).map(([key, value]) => [
+					key,
+					this.serializeBigInt(value)
+				])
+			)
 		}
 		return obj
 	}
@@ -203,13 +203,13 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 			select: { lastSeen: true }
 		})
 
-		const visibility = settings?.lastSeen ?? 0
+		const visibility = settings?.lastSeen ?? PrivacyRule.EVERYBODY
 
-		if (visibility === 2) {
+		if (visibility === PrivacyRule.NOBODY) {
 			return []
 		}
 
-		if (visibility === 1) {
+		if (visibility === PrivacyRule.EVERYBODY) {
 			const directChats = await this.prisma.chat.findMany({
 				where: {
 					userId,

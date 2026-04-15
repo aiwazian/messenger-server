@@ -1,33 +1,24 @@
-import { IsNumber, IsOptional, Max, Min } from 'class-validator'
+import { IsEnum, IsOptional } from 'class-validator'
+import { PrivacyRule } from '../../../../generated/prisma/enums'
 
 export class UpdatePrivacySettingsDto {
 	@IsOptional()
-	@IsNumber()
-	@Min(0)
-	@Max(2)
-	lastSeen?: number
+	@IsEnum(PrivacyRule)
+	lastSeen?: PrivacyRule
 
 	@IsOptional()
-	@IsNumber()
-	@Min(0)
-	@Max(2)
-	messages?: number
+	@IsEnum(PrivacyRule)
+	messages?: PrivacyRule
 
 	@IsOptional()
-	@IsNumber()
-	@Min(0)
-	@Max(1)
-	bio?: number
+	@IsEnum(PrivacyRule)
+	bio?: PrivacyRule
 
 	@IsOptional()
-	@IsNumber()
-	@Min(0)
-	@Max(1)
-	dateOfBirth?: number
+	@IsEnum(PrivacyRule)
+	dateOfBirth?: PrivacyRule
 
 	@IsOptional()
-	@IsNumber()
-	@Min(0)
-	@Max(2)
-	invites?: number
+	@IsEnum(PrivacyRule)
+	invites?: PrivacyRule
 }

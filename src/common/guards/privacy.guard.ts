@@ -2,10 +2,11 @@ import { CanActivate, ExecutionContext, Injectable, NotFoundException } from '@n
 import { PARAMS } from '../constants/param.constants'
 import { UserId } from '../types/user-id.type'
 import { PrismaService } from '../../providers/prisma/prisma.service'
+import { PrivacyRule } from '../../../generated/prisma/enums'
 
 @Injectable()
 export class PrivacyGuard implements CanActivate {
-	constructor(private readonly prisma: PrismaService) {}
+	constructor(private readonly prisma: PrismaService) { }
 
 	async canActivate(context: ExecutionContext) {
 		const request = context.switchToHttp().getRequest()
@@ -39,8 +40,8 @@ export class PrivacyGuard implements CanActivate {
 		}
 
 		request.privacy = {
-			canSeeBio: settings.bio === 0,
-			canSeeDateOfBirth: settings.dateOfBirth === 0
+			canSeeBio: settings.bio === PrivacyRule.EVERYBODY,
+			canSeeDateOfBirth: settings.dateOfBirth === PrivacyRule.EVERYBODY
 		}
 
 		return true

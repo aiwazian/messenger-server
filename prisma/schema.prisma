@@ -27,8 +27,8 @@ model User {
     password    String
     dateOfBirth BigInt?
 
-    chats       Chat[]
-    sessions    Session[]
+    chats        Chat[]
+    sessions     Session[]
     sentMessages Message[]
     messageReads MessageRead[]
 
@@ -36,7 +36,7 @@ model User {
     groupMemberships GroupMember[]
     groupBlackLists  GroupBlackList[]
 
-    ownedChannels      Channel[]
+    ownedChannels        Channel[]
     channelSubscriptions ChannelSubscriber[]
 
     privacySettings   PrivacySettings?
@@ -60,15 +60,15 @@ model Session {
 }
 
 model Chat {
-    id        Int     @id @default(autoincrement())
-    userId    BigInt  // пользователь
-    chatId    BigInt  // либо userId собеседника, либо groupId, либо channelId
+    id        Int    @id @default(autoincrement())
+    userId    BigInt // пользователь
+    chatId    BigInt // либо userId собеседника, либо groupId, либо channelId
     createdAt BigInt
 
     isPinned   Boolean @default(false)
     isArchived Boolean @default(false)
 
-    user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
     @@unique([userId, chatId])
     @@index([userId])
@@ -76,19 +76,19 @@ model Chat {
 }
 
 model Message {
-    id             Int     @id @default(autoincrement())
-    sequenceId     BigInt
-    chatId         BigInt
-    text           String?
-    sendTime       BigInt
-    editedAt       BigInt?
+    id         Int     @id @default(autoincrement())
+    sequenceId BigInt
+    chatId     BigInt
+    text       String?
+    sendTime   BigInt
+    editedAt   BigInt?
 
     isRead            Boolean @default(false)
     deletedBySender   Boolean @default(false)
     deletedByReceiver Boolean @default(false)
 
     senderId BigInt
-    sender   User @relation(fields: [senderId], references: [id], onDelete: Cascade)
+    sender   User   @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
     readReceipts MessageRead[]
     files        File[]
@@ -142,7 +142,7 @@ model Channel {
     channelType ChannelType @default(PRIVATE)
     username    String?     @unique
 
-    owner  User    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+    owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
     subscribers  ChannelSubscriber[]
     blockedUsers ChannelBlackList[]
@@ -222,10 +222,10 @@ model InviteLink {
 }
 
 model FileCleanupTask {
-    id        Int      @id @default(autoincrement())
+    id        Int     @id @default(autoincrement())
     fileId    String
     filePath  String
-    attempts  Int      @default(0)
+    attempts  Int     @default(0)
     lastError String?
     createdAt BigInt
     nextRetry BigInt
@@ -233,15 +233,20 @@ model FileCleanupTask {
     @@index([nextRetry])
 }
 
+enum PrivacyRule {
+    EVERYBODY
+    NOBODY
+}
+
 model PrivacySettings {
     id     Int    @id @default(autoincrement())
     userId BigInt @unique
 
-    lastSeen    Int
-    messages    Int
-    bio         Int
-    dateOfBirth Int
-    invites     Int
+    lastSeen    PrivacyRule @default(EVERYBODY)
+    messages    PrivacyRule @default(EVERYBODY)
+    bio         PrivacyRule @default(EVERYBODY)
+    dateOfBirth PrivacyRule @default(EVERYBODY)
+    invites     PrivacyRule @default(EVERYBODY)
 
     user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
