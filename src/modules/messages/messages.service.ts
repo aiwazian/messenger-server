@@ -336,10 +336,22 @@ export class MessagesService {
 	}
 
 	async clearHistory(userId: UserId, chatId: ChatId): Promise<void> {
-		await this.chatsService.canReadChat(userId, chatId)
+		const chatType = detectChatType(chatId)
+
+		let messageWhere: Prisma.MessageWhereInput
+		if (chatType === ChatType.PRIVATE) {
+			messageWhere = {
+				OR: [
+					{ senderId: userId, chatId: chatId },
+					{ senderId: chatId, chatId: userId }
+				]
+			}
+		} else {
+			messageWhere = { chatId: chatId, senderId: { not: SYSTEM_USER_ID } }
+		}
 
 		const messages = await this.prisma.message.findMany({
-			where: { chatId },
+			where: messageWhere,
 			include: { files: true }
 		})
 
@@ -349,15 +361,25 @@ export class MessagesService {
 			}
 		}
 
-		await this.prisma.message.deleteMany({ where: { chatId } })
+		await this.prisma.message.deleteMany({ where: messageWhere })
 
-		const chatType = detectChatType(chatId)
 		const recipients = await this.getRecipients(userId, chatId, chatType)
 		const targets = Array.from(new Set([...recipients, userId]))
-		const payload = { chatId: chatId.toString() }
 
-		this.realtimeGateway.sendToChat(chatId, SocketEvent.HISTORY_CLEAR, payload)
-		this.realtimeGateway.sendToUsersExceptChat(targets, chatId, SocketEvent.HISTORY_CLEAR, payload)
+		if (chatType === ChatType.PRIVATE) {
+			const otherUserId = recipients[0]
+			const payloadForMe = { chatId: chatId.toString() }
+			this.realtimeGateway.sendToUser(userId, SocketEvent.HISTORY_CLEAR, payloadForMe)
+
+			if (otherUserId) {
+				const payloadForOther = { chatId: userId.toString() }
+				this.realtimeGateway.sendToUser(otherUserId, SocketEvent.HISTORY_CLEAR, payloadForOther)
+			}
+		} else {
+			const payload = { chatId: chatId.toString() }
+			this.realtimeGateway.sendToChat(chatId, SocketEvent.HISTORY_CLEAR, payload)
+			this.realtimeGateway.sendToUsersExceptChat(targets, chatId, SocketEvent.HISTORY_CLEAR, payload)
+		}
 	}
 
 	private async withChat<T>(

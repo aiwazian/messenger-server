@@ -66,25 +66,22 @@ export class AuthService {
 		const passwordHash = await hashPassword(dto.password)
 
 		try {
-			await this.prisma.$transaction([
-				this.prisma.user.create({
-					data: {
-						id: userId,
-						login: dto.login,
-						password: passwordHash
+			await this.prisma.user.create({
+				data: {
+					id: userId,
+					login: dto.login,
+					password: passwordHash,
+					privacySettings: {
+						create: {
+							lastSeen: PrivacyRule.EVERYBODY,
+							messages: PrivacyRule.EVERYBODY,
+							bio: PrivacyRule.EVERYBODY,
+							dateOfBirth: PrivacyRule.EVERYBODY,
+							invites: PrivacyRule.EVERYBODY
+						}
 					}
-				}),
-				this.prisma.privacySettings.create({
-					data: {
-						userId: userId,
-						lastSeen: PrivacyRule.EVERYBODY,
-						messages: PrivacyRule.EVERYBODY,
-						bio: PrivacyRule.EVERYBODY,
-						dateOfBirth: PrivacyRule.EVERYBODY,
-						invites: PrivacyRule.EVERYBODY
-					}
-				})
-			])
+				}
+			})
 		} catch (error) {
 			if (error instanceof Prisma.PrismaClientKnownRequestError) {
 				if (error.code === 'P2002') {

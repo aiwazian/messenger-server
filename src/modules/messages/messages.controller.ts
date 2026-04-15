@@ -22,6 +22,7 @@ import { CurrentUserId } from '../../common/decorators/user-id.decorator'
 import { UserId } from '../../common/types/user-id.type'
 import { CanReadChatGuard } from '../../common/guards/can-read-chat.guard'
 import { CanDeleteMessageGuard } from '../../common/guards/can-delete-message.guard'
+import { CanClearHistoryGuard } from '../../common/guards/can-clear-history.guard'
 
 @Controller('chats/:chatId/messages')
 @UseGuards(AuthGuard)
@@ -114,7 +115,7 @@ export class MessagesController {
 	}
 
 	@Delete()
-	@UseGuards(CanReadChatGuard)
+	@UseGuards(CanClearHistoryGuard)
 	clearHistory(@Param('chatId', ParseChatIdPipe) chatId: ChatId, @CurrentUserId() userId: UserId) {
 		return this.messagesService.clearHistory(userId, chatId)
 	}

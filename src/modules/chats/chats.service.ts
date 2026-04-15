@@ -238,6 +238,58 @@ export class ChatsService {
 		throw new ForbiddenException('Unsupported chat type')
 	}
 
+	async canClearHistory(userId: UserId, chatId: ChatId): Promise<boolean> {
+		const chatType = detectChatType(chatId)
+
+		if (chatType === ChatType.PRIVATE) {
+			const chat = await this.prisma.chat.findFirst({
+				where: { userId, chatId }
+			})
+
+			if (!chat) {
+				throw new ForbiddenException('User is not a chat participant')
+			}
+
+			return true
+		}
+
+		if (chatType === ChatType.GROUP) {
+			const group = await this.prisma.group.findUnique({
+				where: { id: chatId },
+				select: { ownerId: true }
+			})
+
+			if (!group) {
+				throw new NotFoundException('Group not found')
+			}
+
+			if (group.ownerId !== userId) {
+				throw new ForbiddenException('Only owner can clear group history')
+			}
+
+			return true
+		}
+
+		if (chatType === ChatType.CHANNEL) {
+			const channel = await this.prisma.channel.findUnique({
+				where: { id: chatId },
+				select: { ownerId: true }
+			})
+
+			if (!channel) {
+				throw new NotFoundException('Channel not found')
+			}
+
+			if (channel.ownerId !== userId) {
+				throw new ForbiddenException('Only owner can clear channel history')
+			}
+
+			return true
+		}
+
+		throw new ForbiddenException('Unsupported chat type')
+	}
+
 	async canReadMessage(userId: UserId, messageId: number, chatId?: ChatId): Promise<boolean> {
 		if (!chatId) {
 			throw new ForbiddenException('chatId is required')
