@@ -61,8 +61,8 @@ model Session {
 
 model Chat {
     id        Int    @id @default(autoincrement())
-    userId    BigInt // пользователь
-    chatId    BigInt // либо userId собеседника, либо groupId, либо channelId
+    userId    BigInt
+    chatId    BigInt
     createdAt BigInt
 
     isPinned   Boolean @default(false)

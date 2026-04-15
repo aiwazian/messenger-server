@@ -48,12 +48,13 @@ export class GroupsService {
 					username: dto.username,
 					ownerId,
 					bio: dto.bio,
-					groupType: dto.groupType || GroupType.PRIVATE
+					groupType: dto.groupType || GroupType.PRIVATE,
+					members: {
+						create: {
+							userId: ownerId
+						}
+					}
 				}
-			})
-
-			await tx.groupMember.create({
-				data: { userId: ownerId, groupId: group.id }
 			})
 
 			await this.chatsService.create(tx, ownerId, ChatId(group.id))

@@ -27,7 +27,7 @@ import { CanClearHistoryGuard } from '../../common/guards/can-clear-history.guar
 @Controller('chats/:chatId/messages')
 @UseGuards(AuthGuard)
 export class MessagesController {
-	constructor(private readonly messagesService: MessagesService) {}
+	constructor(private readonly messagesService: MessagesService) { }
 
 	@Post()
 	@UseGuards(CanSendMessageGuard)
@@ -108,10 +108,9 @@ export class MessagesController {
 	deleteMessage(
 		@Param('chatId', ParseChatIdPipe) chatId: ChatId,
 		@Param('messageId', ParseIntPipe) messageId: number,
-		@CurrentUserId() userId: UserId,
-		@Query('forEveryone') forEveryone?: string
+		@CurrentUserId() userId: UserId
 	) {
-		return this.messagesService.deleteMessage(userId, chatId, messageId, forEveryone === 'true')
+		return this.messagesService.deleteMessage(userId, chatId, messageId)
 	}
 
 	@Delete()
@@ -121,8 +120,8 @@ export class MessagesController {
 	}
 
 	@Post('voice')
-	sendVoiceMessage() {}
+	sendVoiceMessage() { }
 
 	@Post('reaction')
-	sendReaction() {}
+	sendReaction() { }
 }

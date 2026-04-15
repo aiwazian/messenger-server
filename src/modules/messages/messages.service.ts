@@ -286,11 +286,10 @@ export class MessagesService {
 	async deleteMessage(
 		userId: UserId,
 		chatId: ChatId,
-		messageId: number,
-		forEveryone: boolean = false
+		messageId: number
 	): Promise<void> {
 		const message = await this.prisma.message.findFirst({
-			where: { id: messageId, chatId }
+			where: { id: messageId, chatId: chatId }
 		})
 
 		if (!message) throw new NotFoundException('Message not found')
@@ -298,7 +297,7 @@ export class MessagesService {
 		const chatType = detectChatType(chatId)
 		const isDirect = chatType === ChatType.PRIVATE
 
-		if (!isDirect || forEveryone) {
+		if (!isDirect) {
 			const files = await this.prisma.file.findMany({ where: { messageId } })
 			for (const file of files) {
 				await this.storageService.deleteFile(file.id)
@@ -327,7 +326,7 @@ export class MessagesService {
 		const senderPayload = { chatId: chatId.toString(), messageId }
 		this.realtimeGateway.sendToUser(userId, SocketEvent.MESSAGE_DELETE, senderPayload)
 
-		if (!isDirect || forEveryone) {
+		if (!isDirect) {
 			const recipientPayload = { chatId: userId.toString(), messageId }
 			for (const recipientId of recipients) {
 				this.realtimeGateway.sendToUser(recipientId, SocketEvent.MESSAGE_DELETE, recipientPayload)

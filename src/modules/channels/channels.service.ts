@@ -37,7 +37,7 @@ export class ChannelsService {
 		private readonly realtimeGateway: RealtimeGateway,
 		private readonly searchService: SearchService,
 		private readonly inviteLinksService: InviteLinksService
-	) {}
+	) { }
 
 	async create(ownerId: UserId, dto: CreateChannelDto): Promise<ChannelResponseDto> {
 		if (dto.username && dto.channelType === ChannelType.PUBLIC) {
@@ -56,14 +56,12 @@ export class ChannelsService {
 						bio: dto.bio,
 						ownerId,
 						channelType: dto.channelType,
-						username: dto.channelType === ChannelType.PUBLIC ? dto.username : null
-					}
-				})
-
-				await tx.channelSubscriber.create({
-					data: {
-						userId: ownerId,
-						channelId: channel.id
+						username: dto.channelType === ChannelType.PUBLIC ? dto.username : null,
+						subscribers: {
+							create: {
+								userId: ownerId
+							}
+						}
 					}
 				})
 
@@ -168,9 +166,9 @@ export class ChannelsService {
 			isPinned: false,
 			lastMessage: lastMessage
 				? plainToInstance(MessageResponseDto, {
-						...lastMessage,
-						chatId: channel.id.toString()
-					})
+					...lastMessage,
+					chatId: channel.id.toString()
+				})
 				: null
 		})
 
@@ -185,7 +183,7 @@ export class ChannelsService {
 		await this.prisma.$transaction(async (tx) => {
 			await tx.channelSubscriber
 				.delete({ where: { userId_channelId: { userId, channelId } } })
-				.catch(() => {})
+				.catch(() => { })
 
 			await tx.chat.deleteMany({
 				where: { userId, chatId: channelId }
@@ -213,7 +211,7 @@ export class ChannelsService {
 		await this.prisma.$transaction(async (tx) => {
 			await tx.channelSubscriber
 				.delete({ where: { userId_channelId: { userId: targetUserId, channelId: id } } })
-				.catch(() => {})
+				.catch(() => { })
 
 			await tx.chat.deleteMany({
 				where: { userId: targetUserId, chatId: id }
@@ -274,12 +272,12 @@ export class ChannelsService {
 			channelId,
 			user: search
 				? {
-						OR: [
-							{ firstName: { contains: search } },
-							{ lastName: { contains: search } },
-							{ username: { contains: search } }
-						]
-					}
+					OR: [
+						{ firstName: { contains: search } },
+						{ lastName: { contains: search } },
+						{ username: { contains: search } }
+					]
+				}
 				: undefined
 		}
 
@@ -325,12 +323,12 @@ export class ChannelsService {
 			channelId,
 			user: search
 				? {
-						OR: [
-							{ firstName: { contains: search } },
-							{ lastName: { contains: search } },
-							{ username: { contains: search } }
-						]
-					}
+					OR: [
+						{ firstName: { contains: search } },
+						{ lastName: { contains: search } },
+						{ username: { contains: search } }
+					]
+				}
 				: undefined
 		}
 
