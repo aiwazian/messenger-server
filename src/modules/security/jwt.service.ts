@@ -8,7 +8,7 @@ const REFRESH_TOKEN_EXPIRY = '90d'
 
 @Injectable()
 export class JwtAuthService {
-	constructor(private readonly jwtService: NestJwtService) { }
+	constructor(private readonly jwtService: NestJwtService) {}
 
 	generateToken(userId: UserId, tokenType: 'access' | 'refresh' = 'access'): string {
 		const expiresIn = tokenType === 'access' ? ACCESS_TOKEN_EXPIRY : REFRESH_TOKEN_EXPIRY

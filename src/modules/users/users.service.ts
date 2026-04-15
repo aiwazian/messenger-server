@@ -28,7 +28,7 @@ export class UsersService {
 		@Inject(forwardRef(() => StorageService))
 		private readonly storageService: StorageService,
 		private readonly sessionsService: SessionsService
-	) { }
+	) {}
 
 	async deleteMe(userId: UserId, session: any): Promise<void> {
 		const currentTime = BigInt(Date.now())
@@ -36,9 +36,7 @@ export class UsersService {
 		const twentyFourHoursInMs = BigInt(24 * 60 * 60 * 1000)
 
 		if (currentTime - sessionCreatedAt < twentyFourHoursInMs) {
-			throw new ForbiddenException(
-				'Чтобы завершить сессию должно пройти 24 часа с начала сессии'
-			)
+			throw new ForbiddenException('Чтобы завершить сессию должно пройти 24 часа с начала сессии')
 		}
 
 		const user = await this.prisma.user.findUnique({ where: { id: userId } })

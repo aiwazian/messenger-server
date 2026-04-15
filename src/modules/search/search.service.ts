@@ -7,7 +7,7 @@ import { ChatId } from '../../common/types/chat-id.type'
 
 @Injectable()
 export class SearchService {
-	constructor(private readonly prisma: PrismaService) { }
+	constructor(private readonly prisma: PrismaService) {}
 
 	async isUsernameAvailable(username: string): Promise<boolean> {
 		const [userCount, groupCount, channelCount] = await Promise.all([
@@ -48,10 +48,7 @@ export class SearchService {
 				where: {
 					AND: [
 						{
-							OR: [
-								{ name: { contains: query } },
-								{ username: { contains: query } }
-							]
+							OR: [{ name: { contains: query } }, { username: { contains: query } }]
 						},
 						{
 							OR: [
@@ -74,17 +71,10 @@ export class SearchService {
 				where: {
 					AND: [
 						{
-							OR: [
-								{ name: { contains: query } },
-								{ username: { contains: query } }
-							]
+							OR: [{ name: { contains: query } }, { username: { contains: query } }]
 						},
 						{
-							OR: [
-								{ groupType: 'PUBLIC' },
-								{ ownerId: userId },
-								{ members: { some: { userId } } }
-							]
+							OR: [{ groupType: 'PUBLIC' }, { ownerId: userId }, { members: { some: { userId } } }]
 						},
 						{
 							NOT: {

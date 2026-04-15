@@ -13,7 +13,7 @@ export class AuthController {
 	constructor(
 		private readonly authService: AuthService,
 		private readonly sessionService: SessionsService
-	) { }
+	) {}
 
 	@Get('check/:login')
 	isLoginAvailable(@Param('login') login: string) {

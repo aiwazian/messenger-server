@@ -29,7 +29,7 @@ export class ChannelInviteLinksController {
 	constructor(
 		private readonly inviteLinksService: InviteLinksService,
 		private readonly prisma: PrismaService
-	) { }
+	) {}
 
 	@Get(`:${PARAMS.CHANNEL_ID}/invite-links`)
 	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)

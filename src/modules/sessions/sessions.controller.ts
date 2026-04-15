@@ -10,7 +10,7 @@ import { SessionOwnerGuard } from '../../common/guards/session-owner.guard'
 @Controller('sessions')
 @UseGuards(AuthGuard)
 export class SessionsController {
-	constructor(private readonly sessionsService: SessionsService) { }
+	constructor(private readonly sessionsService: SessionsService) {}
 
 	@Get()
 	getAll(@CurrentUserId() userId: UserId, @CurrentUserToken() token: string) {

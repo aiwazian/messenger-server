@@ -5,7 +5,7 @@ import { PrismaService } from '../../providers/prisma/prisma.service'
 
 @Injectable()
 export class PrivacyGuard implements CanActivate {
-	constructor(private readonly prisma: PrismaService) { }
+	constructor(private readonly prisma: PrismaService) {}
 
 	async canActivate(context: ExecutionContext) {
 		const request = context.switchToHttp().getRequest()

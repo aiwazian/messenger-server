@@ -13,4 +13,4 @@ import { StorageModule } from '../storage/storage.module'
 	providers: [MessagesService],
 	exports: [MessagesService]
 })
-export class MessagesModule {}
+export class MessagesModule { }

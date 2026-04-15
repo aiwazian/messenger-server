@@ -5,7 +5,7 @@ import { SessionsService } from '../../modules/sessions/sessions.service'
 
 @Injectable()
 export class SessionOwnerGuard implements CanActivate {
-	constructor(private readonly sessionsService: SessionsService) { }
+	constructor(private readonly sessionsService: SessionsService) {}
 
 	async canActivate(context: ExecutionContext) {
 		const request = context.switchToHttp().getRequest()

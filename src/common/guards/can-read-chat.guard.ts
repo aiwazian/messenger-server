@@ -6,7 +6,7 @@ import { ChatsService } from '../../modules/chats/chats.service'
 
 @Injectable()
 export class CanReadChatGuard implements CanActivate {
-	constructor(private readonly chatsService: ChatsService) { }
+	constructor(private readonly chatsService: ChatsService) {}
 
 	async canActivate(ctx: ExecutionContext): Promise<boolean> {
 		const request = ctx.switchToHttp().getRequest()

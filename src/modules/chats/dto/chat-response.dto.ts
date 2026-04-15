@@ -11,7 +11,7 @@ export class ChatResponseDto {
 	name: string
 
 	@Expose()
-	isPinned: string
+	isPinned: boolean
 
 	@Expose()
 	@OmitNull()

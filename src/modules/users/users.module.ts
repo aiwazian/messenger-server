@@ -12,4 +12,4 @@ import { JwtAuthModule } from '../security/jwt.module'
 	providers: [UsersService],
 	exports: [UsersService]
 })
-export class UsersModule { }
+export class UsersModule {}

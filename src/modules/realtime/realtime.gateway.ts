@@ -30,7 +30,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		private readonly sessionsService: SessionsService,
 		private readonly prisma: PrismaService,
 		private readonly chatsService: ChatsService
-	) { }
+	) {}
 
 	afterInit(server: Server) {
 		server.use(async (socket, next) => {
@@ -217,9 +217,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 				},
 				select: { chatId: true }
 			})
-			return directChats
-				.filter((c) => c.chatId !== userId)
-				.map((c) => UserId(c.chatId))
+			return directChats.filter((c) => c.chatId !== userId).map((c) => UserId(c.chatId))
 		}
 
 		const [directChats, groupMembers, channelSubs, channelOwners] = await Promise.all([

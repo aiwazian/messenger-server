@@ -8,7 +8,7 @@ export class PushService {
 	constructor(
 		private readonly prisma: PrismaService,
 		@Inject(PUSH_PROVIDER) private readonly provider: PushProvider
-	) { }
+	) {}
 
 	async sendToUsers(userIds: UserId[], payload: PushPayload): Promise<void> {
 		if (userIds.length === 0) return

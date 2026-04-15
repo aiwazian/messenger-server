@@ -26,12 +26,10 @@ export class InviteLinksService {
 		private readonly config: ConfigService,
 		private readonly prisma: PrismaService,
 		private readonly chatsService: ChatsService
-	) { }
+	) {}
 
 	async create(creatorId: UserId, dto: CreateInviteLinkDto): Promise<InternalInviteLinkResponse> {
-		const chatId = dto.channelId
-			? ChatId(dto.channelId)
-			: ChatId(dto.groupId!)
+		const chatId = dto.channelId ? ChatId(dto.channelId) : ChatId(dto.groupId)
 
 		const id = generateInviteLinkId()
 		const code = randomBytes(8).toString('hex')
@@ -95,12 +93,14 @@ export class InviteLinksService {
 			membersCount = await this.prisma.channelSubscriber.count({
 				where: { channelId: channel.id }
 			})
-			isBanned = await this.prisma.channelBlackList.count({
-				where: { channelId: channel.id, userId }
-			}) > 0
-			isJoined = await this.prisma.channelSubscriber.count({
-				where: { channelId: channel.id, userId }
-			}) > 0
+			isBanned =
+				(await this.prisma.channelBlackList.count({
+					where: { channelId: channel.id, userId }
+				})) > 0
+			isJoined =
+				(await this.prisma.channelSubscriber.count({
+					where: { channelId: channel.id, userId }
+				})) > 0
 		} else if (chatType === ChatType.GROUP) {
 			const group = await this.prisma.group.findUnique({
 				where: { id: link.chatId }
@@ -112,12 +112,14 @@ export class InviteLinksService {
 			membersCount = await this.prisma.groupMember.count({
 				where: { groupId: group.id }
 			})
-			isBanned = await this.prisma.groupBlackList.count({
-				where: { groupId: group.id, userId }
-			}) > 0
-			isJoined = await this.prisma.groupMember.count({
-				where: { groupId: group.id, userId }
-			}) > 0
+			isBanned =
+				(await this.prisma.groupBlackList.count({
+					where: { groupId: group.id, userId }
+				})) > 0
+			isJoined =
+				(await this.prisma.groupMember.count({
+					where: { groupId: group.id, userId }
+				})) > 0
 		}
 
 		return {

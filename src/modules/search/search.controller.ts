@@ -7,7 +7,7 @@ import { CurrentUserId } from '../../common/decorators/user-id.decorator'
 @Controller('search')
 @UseGuards(AuthGuard)
 export class SearchController {
-	constructor(private readonly searchService: SearchService) { }
+	constructor(private readonly searchService: SearchService) {}
 
 	@Get('check/:username')
 	async isUsernameAvailable(@Param('username') username: string) {

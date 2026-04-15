@@ -12,4 +12,4 @@ import { JwtAuthModule } from '../security/jwt.module'
 	controllers: [GroupsController, GroupInviteLinksController],
 	providers: [GroupsService]
 })
-export class GroupsModule { }
+export class GroupsModule {}

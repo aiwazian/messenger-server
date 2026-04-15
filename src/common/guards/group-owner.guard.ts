@@ -4,7 +4,7 @@ import { GroupsService } from '../../modules/groups/groups.service'
 
 @Injectable()
 export class GroupOwnerGuard implements CanActivate {
-	constructor(private readonly groupsService: GroupsService) { }
+	constructor(private readonly groupsService: GroupsService) {}
 
 	async canActivate(context: ExecutionContext) {
 		const request = context.switchToHttp().getRequest()

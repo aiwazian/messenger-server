@@ -18,7 +18,7 @@ export class AuthService {
 		private readonly prisma: PrismaService,
 		private readonly sessionService: SessionsService,
 		private readonly jwtAuth: JwtAuthService
-	) { }
+	) {}
 
 	async isLoginAvailable(login: string): Promise<LoginAvailableDto> {
 		const user = await this.prisma.user.findUnique({

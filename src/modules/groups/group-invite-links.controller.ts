@@ -29,7 +29,7 @@ export class GroupInviteLinksController {
 	constructor(
 		private readonly inviteLinksService: InviteLinksService,
 		private readonly prisma: PrismaService
-	) { }
+	) {}
 
 	@Get(`:${PARAMS.GROUP_ID}/invite-links`)
 	@UseGuards(GroupExistsGuard, GroupOwnerGuard)

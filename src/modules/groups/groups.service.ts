@@ -30,7 +30,7 @@ export class GroupsService {
 		private readonly chatsService: ChatsService,
 		private readonly searchService: SearchService,
 		private readonly realtimeGateway: RealtimeGateway
-	) { }
+	) {}
 
 	async create(ownerId: UserId, dto: CreateGroupDto): Promise<GroupResponseDto> {
 		if (dto.username) {
@@ -139,7 +139,7 @@ export class GroupsService {
 		await this.prisma.$transaction(async (tx) => {
 			await tx.groupMember
 				.delete({ where: { groupId_userId: { groupId: id, userId } } })
-				.catch(() => { })
+				.catch(() => {})
 
 			await tx.chat.deleteMany({
 				where: { userId, chatId: id }
@@ -161,13 +161,13 @@ export class GroupsService {
 		if (targetUserId === ownerId) throw new BadRequestException('Cannot ban yourself')
 
 		const group = await this.prisma.group.findUnique({ where: { id } })
-		if (group!.ownerId === targetUserId)
+		if (group.ownerId === targetUserId)
 			throw new BadRequestException('Owner cannot leave group. Delete it instead.')
 
 		await this.prisma.$transaction(async (tx) => {
 			await tx.groupMember
 				.delete({ where: { groupId_userId: { groupId: id, userId: targetUserId } } })
-				.catch(() => { })
+				.catch(() => {})
 
 			await tx.chat.deleteMany({
 				where: { userId: targetUserId, chatId: id }
@@ -188,18 +188,16 @@ export class GroupsService {
 			where: { id },
 			include: {
 				_count: { select: { members: true } },
-				members: userId
-					? { where: { userId }, select: { userId: true } }
-					: undefined
+				members: userId ? { where: { userId }, select: { userId: true } } : undefined
 			}
 		})
 
-		const isMember = userId ? group!.members.length > 0 : false
-		const isOwner = userId ? group!.ownerId === userId : false
+		const isMember = userId ? group.members.length > 0 : false
+		const isOwner = userId ? group.ownerId === userId : false
 
 		return plainToInstance(GroupResponseDto, {
 			...group,
-			membersCount: group!._count.members,
+			membersCount: group._count.members,
 			isMember,
 			isOwner
 		})
@@ -215,12 +213,12 @@ export class GroupsService {
 			groupId: id,
 			user: search
 				? {
-					OR: [
-						{ firstName: { contains: search } },
-						{ lastName: { contains: search } },
-						{ username: { contains: search } }
-					]
-				}
+						OR: [
+							{ firstName: { contains: search } },
+							{ lastName: { contains: search } },
+							{ username: { contains: search } }
+						]
+					}
 				: undefined
 		}
 
@@ -238,10 +236,7 @@ export class GroupsService {
 		)
 	}
 
-	async getAvailableUsersForInvite(
-		id: GroupId,
-		ownerId: UserId
-	): Promise<UserResponseDto[]> {
+	async getAvailableUsersForInvite(id: GroupId, ownerId: UserId): Promise<UserResponseDto[]> {
 		// 1. Get all chatIds where ownerId has chats with other users (1-on-1 chats)
 		const chats = await this.prisma.chat.findMany({
 			where: { userId: ownerId },
@@ -275,18 +270,12 @@ export class GroupsService {
 		})
 
 		// 4. Filter out existing members in JS (simpler than complex NOT query)
-		const filtered = availableUsers.filter(
-			(u) => !existingMemberIds.has(u.id.toString())
-		)
+		const filtered = availableUsers.filter((u) => !existingMemberIds.has(u.id.toString()))
 
 		return plainToInstance(UserResponseDto, filtered)
 	}
 
-	async addMembers(
-		id: GroupId,
-		dto: { userIds: string[] },
-		ownerId: UserId
-	): Promise<void> {
+	async addMembers(id: GroupId, dto: { userIds: string[] }, ownerId: UserId): Promise<void> {
 		const userIdBigInts = dto.userIds.map((uid) => BigInt(uid))
 
 		// Check if users are banned
@@ -343,12 +332,12 @@ export class GroupsService {
 			groupId: id,
 			user: search
 				? {
-					OR: [
-						{ firstName: { contains: search } },
-						{ lastName: { contains: search } },
-						{ username: { contains: search } }
-					]
-				}
+						OR: [
+							{ firstName: { contains: search } },
+							{ lastName: { contains: search } },
+							{ username: { contains: search } }
+						]
+					}
 				: undefined
 		}
 
@@ -371,6 +360,6 @@ export class GroupsService {
 			.delete({
 				where: { userId_groupId: { userId: targetUserId, groupId: id } }
 			})
-			.catch(() => { })
+			.catch(() => {})
 	}
 }

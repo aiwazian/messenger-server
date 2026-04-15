@@ -10,13 +10,16 @@ import { StorageService } from '../storage/storage.service'
 import { FileInitDto } from './dto/file-init.dto'
 import { FileConfirmDto } from './dto/file-confirm.dto'
 import { FileDownloadDto } from './dto/file-download.dto'
-import { PrismaService } from '../../providers/prisma/prisma.service'
+import { PrismaService, SYSTEM_USER_ID } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
 import { FileStatus } from '../../../generated/prisma/enums'
 import { ChatType } from '../../common/enums/chat-type.enum'
 import { SocketEvent } from '../../common/socket/socket-events'
 import { Prisma } from '../../../generated/prisma/client'
+import { detectChatType } from '../../common/utils/detect-chat-type.util'
+import { ChannelsService } from '../channels/channels.service'
+import { ChannelId } from '../../common/types/channel-id.type'
 
 @Injectable()
 export class MessagesService {
@@ -36,6 +39,7 @@ export class MessagesService {
 		return this.withChat<MessageResponseDto>(senderId, chatId, async (tx) => {
 			const sequenceId = await tx.message.count({ where: { chatId } })
 			const isSelfChat = BigInt(chatId) === BigInt(senderId)
+			const chatType = detectChatType(chatId)
 
 			const message = await tx.message.create({
 				data: {
@@ -51,8 +55,8 @@ export class MessagesService {
 
 			const messageInstance = plainToInstance(MessageResponseDto, {
 				...message,
-				chatId: chatId.toString(),
 				isRead: true,
+				senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
 				files: message.files.map((f: any) => ({ ...f, size: f.size.toString() }))
 			})
 
@@ -187,14 +191,25 @@ export class MessagesService {
 	): Promise<MessageResponseDto[]> {
 		await this.chatsService.canReadChat(userId, chatId)
 
-		const messages = await this.prisma.message.findMany({
-			where: {
-				chatId,
-				AND: [
-					{ OR: [{ senderId: { not: userId } }, { deletedBySender: false }] },
-					{ OR: [{ senderId: userId }, { deletedByReceiver: false }] }
+		const chatType = detectChatType(chatId)
+
+		let messageWhere: Prisma.MessageWhereInput
+
+		if (chatType === ChatType.PRIVATE) {
+			messageWhere = {
+				OR: [
+					{ senderId: userId, chatId: chatId },
+					{ senderId: chatId, chatId: userId }
 				]
-			},
+			}
+		} else {
+			messageWhere = {
+				chatId: chatId
+			}
+		}
+
+		const messages = await this.prisma.message.findMany({
+			where: messageWhere,
 			include: {
 				readReceipts: { where: { userId }, select: { userId: true } },
 				files: true
@@ -208,9 +223,9 @@ export class MessagesService {
 			const isRead = message.isRead || message.readReceipts.length > 0
 			return plainToInstance(MessageResponseDto, {
 				...message,
-				chatId: chatId.toString(),
 				isRead,
-				files: message.files.map((f) => ({ ...f, size: f.size.toString() }))
+				files: message.files.map((f) => ({ ...f, size: f.size.toString() })),
+				senderId: message.senderId === SYSTEM_USER_ID ? SYSTEM_USER_ID : chatType === ChatType.CHANNEL ? message.chatId : message.senderId
 			})
 		})
 	}
@@ -232,7 +247,7 @@ export class MessagesService {
 			})
 		}
 
-		const chatType = this.detectChatTypeByChatId(message.chatId)
+		const chatType = detectChatType(ChatId(message.chatId))
 		if (chatType === ChatType.PRIVATE) {
 			await this.prisma.message.update({
 				where: { id: messageId },
@@ -259,7 +274,7 @@ export class MessagesService {
 			data: unread.map((m) => ({ messageId: m.id, userId, readAt: now }))
 		})
 
-		const chatType = this.detectChatTypeByChatId(chatId)
+		const chatType = detectChatType(chatId)
 		if (chatType === ChatType.PRIVATE) {
 			await this.prisma.message.updateMany({
 				where: { id: { in: unread.map((m) => m.id) } },
@@ -280,7 +295,7 @@ export class MessagesService {
 
 		if (!message) throw new NotFoundException('Message not found')
 
-		const chatType = this.detectChatTypeByChatId(chatId)
+		const chatType = detectChatType(chatId)
 		const isDirect = chatType === ChatType.PRIVATE
 
 		if (!isDirect || forEveryone) {
@@ -291,9 +306,7 @@ export class MessagesService {
 			await this.prisma.message.delete({ where: { id: messageId } })
 		} else {
 			const isSender = message.senderId === userId
-			const updateData = isSender
-				? { deletedBySender: true }
-				: { deletedByReceiver: true }
+			const updateData = isSender ? { deletedBySender: true } : { deletedByReceiver: true }
 
 			const updated = await this.prisma.message.update({
 				where: { id: messageId },
@@ -309,7 +322,7 @@ export class MessagesService {
 			}
 		}
 
-		const recipients = await this.getRecipients(userId, chatId, this.detectChatTypeByChatId(chatId))
+		const recipients = await this.getRecipients(userId, chatId, detectChatType(chatId))
 
 		const senderPayload = { chatId: chatId.toString(), messageId }
 		this.realtimeGateway.sendToUser(userId, SocketEvent.MESSAGE_DELETE, senderPayload)
@@ -338,7 +351,7 @@ export class MessagesService {
 
 		await this.prisma.message.deleteMany({ where: { chatId } })
 
-		const chatType = this.detectChatTypeByChatId(chatId)
+		const chatType = detectChatType(chatId)
 		const recipients = await this.getRecipients(userId, chatId, chatType)
 		const targets = Array.from(new Set([...recipients, userId]))
 		const payload = { chatId: chatId.toString() }
@@ -355,8 +368,8 @@ export class MessagesService {
 		return await this.prisma.$transaction(async (tx) => {
 			await this.chatsService.create(tx, userId, chatId)
 
-			if (this.detectChatTypeByChatId(chatId) === ChatType.PRIVATE) {
-				await this.chatsService.create(tx, UserId(BigInt(chatId)), chatId)
+			if (detectChatType(chatId) === ChatType.PRIVATE) {
+				await this.chatsService.create(tx, UserId(BigInt(chatId)), ChatId(userId))
 			}
 
 			return fn(tx)
@@ -368,7 +381,7 @@ export class MessagesService {
 		chatId: ChatId,
 		message: MessageResponseDto
 	): Promise<void> {
-		const chatType = this.detectChatTypeByChatId(chatId)
+		const chatType = detectChatType(chatId)
 		const recipients = await this.getRecipients(senderUserId, chatId, chatType)
 		const wsTargets = Array.from(new Set([...recipients, senderUserId]))
 
@@ -433,12 +446,5 @@ export class MessagesService {
 		}
 
 		return []
-	}
-
-	private detectChatTypeByChatId(chatId: bigint): ChatType {
-		const idStr = chatId.toString()
-		if (idStr.startsWith('grp_')) return ChatType.GROUP
-		if (idStr.startsWith('chn_')) return ChatType.CHANNEL
-		return ChatType.PRIVATE
 	}
 }

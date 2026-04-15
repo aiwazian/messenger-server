@@ -28,14 +28,11 @@ import { ParseUserIdPipe } from '../../common/pipes/parse-user-id.pipe'
 @Controller('users')
 @UseGuards(AuthGuard)
 export class UsersController {
-	constructor(private readonly usersService: UsersService) { }
+	constructor(private readonly usersService: UsersService) {}
 
 	@Delete('me')
 	@HttpCode(HttpStatus.NO_CONTENT)
-	deleteMe(
-		@CurrentUserId() userId: UserId,
-		@CurrentSession() session: any
-	): Promise<void> {
+	deleteMe(@CurrentUserId() userId: UserId, @CurrentSession() session: any): Promise<void> {
 		return this.usersService.deleteMe(userId, session)
 	}
 

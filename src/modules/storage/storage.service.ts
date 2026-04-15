@@ -26,11 +26,11 @@ export class StorageService {
 		private readonly prisma: PrismaService
 	) {
 		this.s3Client = new S3Client({
-			region: config.get('S3_REGION')!,
-			endpoint: config.get('S3_END_POINT')!,
+			region: config.get('S3_REGION'),
+			endpoint: config.get('S3_END_POINT'),
 			credentials: {
-				accessKeyId: config.get('S3_ACCESS_KEY')!,
-				secretAccessKey: config.get('S3_SECRET_KEY')!
+				accessKeyId: config.get('S3_ACCESS_KEY'),
+				secretAccessKey: config.get('S3_SECRET_KEY')
 			},
 			forcePathStyle: true
 		})

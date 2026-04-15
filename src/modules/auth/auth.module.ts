@@ -9,4 +9,4 @@ import { JwtAuthModule } from '../security/jwt.module'
 	controllers: [AuthController],
 	providers: [AuthService]
 })
-export class AuthModule { }
+export class AuthModule {}

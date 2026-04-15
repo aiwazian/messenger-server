@@ -37,7 +37,7 @@ export class ChannelsService {
 		private readonly realtimeGateway: RealtimeGateway,
 		private readonly searchService: SearchService,
 		private readonly inviteLinksService: InviteLinksService
-	) { }
+	) {}
 
 	async create(ownerId: UserId, dto: CreateChannelDto): Promise<ChannelResponseDto> {
 		if (dto.username && dto.channelType === ChannelType.PUBLIC) {
@@ -109,14 +109,14 @@ export class ChannelsService {
 	async update(id: ChannelId, dto: UpdateChannelDto, userId: UserId): Promise<ChannelResponseDto> {
 		const existingChannel = await this.prisma.channel.findUnique({ where: { id } })
 
-		if (dto.username && dto.username !== existingChannel!.username) {
+		if (dto.username && dto.username !== existingChannel.username) {
 			const isAvailable = await this.searchService.isUsernameAvailable(dto.username)
 			if (!isAvailable) throw new ConflictException('Username is already taken')
 		}
 
-		const channelType = dto.channelType ?? existingChannel!.channelType
+		const channelType = dto.channelType ?? existingChannel.channelType
 		const username =
-			channelType === ChannelType.PRIVATE ? null : (dto.username ?? existingChannel!.username)
+			channelType === ChannelType.PRIVATE ? null : (dto.username ?? existingChannel.username)
 
 		await this.prisma.channel.update({
 			where: { id },
@@ -135,7 +135,7 @@ export class ChannelsService {
 			where: { id: channelId }
 		})
 
-		if (channel!.channelType !== ChannelType.PUBLIC) {
+		if (channel.channelType !== ChannelType.PUBLIC) {
 			throw new BadRequestException('This channel is private. Use invite link to join.')
 		}
 
@@ -163,14 +163,14 @@ export class ChannelsService {
 		})
 
 		const chatPayload = plainToInstance(ChatResponseDto, {
-			id: channel!.id.toString(),
-			name: channel!.name,
+			id: channel.id.toString(),
+			name: channel.name,
 			isPinned: false,
 			lastMessage: lastMessage
 				? plainToInstance(MessageResponseDto, {
-					...lastMessage,
-					chatId: channel!.id.toString()
-				})
+						...lastMessage,
+						chatId: channel.id.toString()
+					})
 				: null
 		})
 
@@ -179,13 +179,13 @@ export class ChannelsService {
 
 	async leave(channelId: ChannelId, userId: UserId): Promise<void> {
 		const channel = await this.prisma.channel.findUnique({ where: { id: channelId } })
-		if (channel!.ownerId === userId)
+		if (channel.ownerId === userId)
 			throw new BadRequestException('Owner cannot unsubscribe. Delete it instead.')
 
 		await this.prisma.$transaction(async (tx) => {
 			await tx.channelSubscriber
 				.delete({ where: { userId_channelId: { userId, channelId } } })
-				.catch(() => { })
+				.catch(() => {})
 
 			await tx.chat.deleteMany({
 				where: { userId, chatId: channelId }
@@ -207,13 +207,13 @@ export class ChannelsService {
 		if (targetUserId === ownerId) throw new BadRequestException('Cannot ban yourself')
 
 		const channel = await this.prisma.channel.findUnique({ where: { id } })
-		if (channel!.ownerId === targetUserId)
+		if (channel.ownerId === targetUserId)
 			throw new BadRequestException('Owner cannot unsubscribe. Delete it instead.')
 
 		await this.prisma.$transaction(async (tx) => {
 			await tx.channelSubscriber
 				.delete({ where: { userId_channelId: { userId: targetUserId, channelId: id } } })
-				.catch(() => { })
+				.catch(() => {})
 
 			await tx.chat.deleteMany({
 				where: { userId: targetUserId, chatId: id }
@@ -246,7 +246,7 @@ export class ChannelsService {
 			}
 		})
 
-		const isOwner = channel!.ownerId == userId
+		const isOwner = channel.ownerId == userId
 		const inviteLinkCode = await this.inviteLinksService.getLinkForChannel(channelId)
 
 		const inviteLink = inviteLinkCode
@@ -255,11 +255,11 @@ export class ChannelsService {
 
 		return plainToInstance(ChannelResponseDto, {
 			...channel,
-			id: channel!.id.toString(),
-			isSubscribed: channel!.subscribers.length > 0,
+			id: channel.id.toString(),
+			isSubscribed: channel.subscribers.length > 0,
 			isOwner,
-			subscribers: channel!._count.subscribers.toString(),
-			removedUser: channel!._count.blockedUsers.toString(),
+			subscribers: channel._count.subscribers.toString(),
+			removedUser: channel._count.blockedUsers.toString(),
 			inviteLink
 		})
 	}
@@ -274,12 +274,12 @@ export class ChannelsService {
 			channelId,
 			user: search
 				? {
-					OR: [
-						{ firstName: { contains: search } },
-						{ lastName: { contains: search } },
-						{ username: { contains: search } }
-					]
-				}
+						OR: [
+							{ firstName: { contains: search } },
+							{ lastName: { contains: search } },
+							{ username: { contains: search } }
+						]
+					}
 				: undefined
 		}
 
@@ -325,12 +325,12 @@ export class ChannelsService {
 			channelId,
 			user: search
 				? {
-					OR: [
-						{ firstName: { contains: search } },
-						{ lastName: { contains: search } },
-						{ username: { contains: search } }
-					]
-				}
+						OR: [
+							{ firstName: { contains: search } },
+							{ lastName: { contains: search } },
+							{ username: { contains: search } }
+						]
+					}
 				: undefined
 		}
 

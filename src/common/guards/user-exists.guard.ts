@@ -5,7 +5,7 @@ import { UsersService } from '../../modules/users/users.service'
 
 @Injectable()
 export class UserExistsGuard implements CanActivate {
-	constructor(private readonly usersService: UsersService) { }
+	constructor(private readonly usersService: UsersService) {}
 
 	async canActivate(context: ExecutionContext) {
 		const request = context.switchToHttp().getRequest()

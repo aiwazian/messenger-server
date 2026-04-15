@@ -5,7 +5,7 @@ import { ChannelsService } from '../../modules/channels/channels.service'
 
 @Injectable()
 export class ChannelExistsGuard implements CanActivate {
-	constructor(private readonly channelsService: ChannelsService) { }
+	constructor(private readonly channelsService: ChannelsService) {}
 
 	async canActivate(context: ExecutionContext) {
 		const request = context.switchToHttp().getRequest()

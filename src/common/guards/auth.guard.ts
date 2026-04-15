@@ -8,7 +8,7 @@ export class AuthGuard implements CanActivate {
 	constructor(
 		private readonly sessionService: SessionsService,
 		private readonly jwtService: JwtAuthService
-	) { }
+	) {}
 
 	async canActivate(context: ExecutionContext) {
 		const request = context.switchToHttp().getRequest()
