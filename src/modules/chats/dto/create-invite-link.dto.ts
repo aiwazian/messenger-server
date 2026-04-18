@@ -1,13 +1,8 @@
-import { IsOptional, IsString } from 'class-validator'
+import { IsNotEmpty, IsOptional } from 'class-validator'
 
 export class CreateInviteLinkDto {
-	@IsOptional()
-	@IsString()
-	channelId?: string
-
-	@IsOptional()
-	@IsString()
-	groupId?: string
+	@IsNotEmpty()
+	chatId: number
 
 	@IsOptional()
 	maxUses?: number

@@ -29,7 +29,7 @@ export class GroupInviteLinksController {
 	constructor(
 		private readonly inviteLinksService: InviteLinksService,
 		private readonly prisma: PrismaService
-	) {}
+	) { }
 
 	@Get(`:${PARAMS.GROUP_ID}/invite-links`)
 	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
@@ -53,9 +53,8 @@ export class GroupInviteLinksController {
 		@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId,
 		@Body() dto: CreateInviteLinkDto
 	) {
-		dto.groupId = id.toString()
-		const link = await this.inviteLinksService.create(userId, dto)
-		return plainToInstance(InviteLinkResponseDto, link)
+		dto.chatId = Number(id)
+		return await this.inviteLinksService.create(userId, dto)
 	}
 
 	@Delete(`:${PARAMS.GROUP_ID}/invite-links/:inviteLinkId`)

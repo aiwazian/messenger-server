@@ -9,27 +9,19 @@ import { ChatId } from '../../common/types/chat-id.type'
 import { generateInviteLinkId } from '../../common/utils/id-generator.util'
 import { ChatType } from '../../common/enums/chat-type.enum'
 import { detectChatType } from '../../common/utils/detect-chat-type.util'
-
-export interface InternalInviteLinkResponse {
-	id: bigint
-	chatId: string
-	code: string
-	link: string
-	expiresAt: bigint | null
-	maxUses: number | null
-	uses: number
-}
+import { InviteLinkResponseDto } from './dto/invite-link-response.dto'
+import { plainToInstance } from 'class-transformer'
+import { InternalInviteLinkResponse } from './dto/Internal-invite-link-response'
 
 @Injectable()
 export class InviteLinksService {
 	constructor(
 		private readonly config: ConfigService,
-		private readonly prisma: PrismaService,
-		private readonly chatsService: ChatsService
-	) {}
+		private readonly prisma: PrismaService
+	) { }
 
-	async create(creatorId: UserId, dto: CreateInviteLinkDto): Promise<InternalInviteLinkResponse> {
-		const chatId = dto.channelId ? ChatId(dto.channelId) : ChatId(dto.groupId)
+	async create(creatorId: UserId, dto: CreateInviteLinkDto): Promise<InviteLinkResponseDto> {
+		const chatId = dto.chatId
 
 		const id = generateInviteLinkId()
 		const code = randomBytes(8).toString('hex')
@@ -46,18 +38,18 @@ export class InviteLinksService {
 			}
 		})
 
-		return {
+		return plainToInstance(InviteLinkResponseDto, {
 			id: link.id,
-			chatId: chatId.toString(),
+			chatId: chatId,
 			code: link.code,
 			link: `https://${this.config.get('SHORT_URL_DOMAIN')}/+${link.code}`,
 			expiresAt: link.expiresAt,
 			maxUses: link.maxUses,
 			uses: link.uses
-		}
+		})
 	}
 
-	async getInfo(userId: UserId, code: string) {
+	async getInfo(userId: UserId, code: string): Promise<InternalInviteLinkResponse> {
 		const link = await this.prisma.inviteLink.findUnique({
 			where: { code }
 		})
@@ -79,8 +71,6 @@ export class InviteLinksService {
 		let name = ''
 		let description = ''
 		let membersCount = 0
-		let isBanned = false
-		let isJoined = false
 
 		if (chatType === ChatType.CHANNEL) {
 			const channel = await this.prisma.channel.findUnique({
@@ -88,49 +78,74 @@ export class InviteLinksService {
 			})
 			if (!channel) throw new NotFoundException('Channel not found')
 
+			const isBanned = !!await this.prisma.channelBlackList.findFirst({
+				where: { channelId: channel.id, userId }
+			})
+
+			if (isBanned) {
+				return plainToInstance(InternalInviteLinkResponse, {
+					chatId: channel.id,
+					isBanned: true
+				})
+			}
+
+			const isJoined = !!await this.prisma.channelSubscriber.findFirst({
+				where: { channelId: channel.id, userId }
+			})
+
+			if (isJoined) {
+				return plainToInstance(InternalInviteLinkResponse, {
+					chatId: channel.id,
+					isJoined: true
+				})
+			}
+
 			name = channel.name
 			description = channel.bio || ''
 			membersCount = await this.prisma.channelSubscriber.count({
 				where: { channelId: channel.id }
 			})
-			isBanned =
-				(await this.prisma.channelBlackList.count({
-					where: { channelId: channel.id, userId }
-				})) > 0
-			isJoined =
-				(await this.prisma.channelSubscriber.count({
-					where: { channelId: channel.id, userId }
-				})) > 0
 		} else if (chatType === ChatType.GROUP) {
 			const group = await this.prisma.group.findUnique({
 				where: { id: link.chatId }
 			})
 			if (!group) throw new NotFoundException('Group not found')
 
+			const isBanned = !!await this.prisma.groupBlackList.findFirst({
+				where: { groupId: group.id, userId }
+			})
+
+			if (isBanned) {
+				return plainToInstance(InternalInviteLinkResponse, {
+					chatId: group.id,
+					isBanned: true
+				})
+			}
+
+			const isJoined = !!await this.prisma.groupMember.findFirst({
+				where: { groupId: group.id, userId }
+			})
+
+			if (isJoined) {
+				return plainToInstance(InternalInviteLinkResponse, {
+					chatId: group.id,
+					isJoined: true
+				})
+			}
+
 			name = group.name
 			description = group.bio || ''
 			membersCount = await this.prisma.groupMember.count({
 				where: { groupId: group.id }
 			})
-			isBanned =
-				(await this.prisma.groupBlackList.count({
-					where: { groupId: group.id, userId }
-				})) > 0
-			isJoined =
-				(await this.prisma.groupMember.count({
-					where: { groupId: group.id, userId }
-				})) > 0
 		}
 
-		return {
-			chatId: link.chatId.toString(),
+		return plainToInstance(InternalInviteLinkResponse, {
+			chatId: link.chatId,
 			name,
 			description,
-			membersCount,
-			isBanned,
-			isJoined,
-			type: chatType
-		}
+			membersCount
+		})
 	}
 
 	async join(userId: UserId, code: string) {

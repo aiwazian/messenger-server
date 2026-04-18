@@ -4,7 +4,6 @@ import { OmitNull } from '../../../common/decorators/omit-null.decorator'
 @Exclude()
 export class InviteLinkResponseDto {
 	@Expose()
-	@Transform(({ value }) => value.toString())
 	id: string
 
 	@Expose()
@@ -18,7 +17,6 @@ export class InviteLinkResponseDto {
 
 	@Expose()
 	@OmitNull()
-	@Transform(({ value }) => value?.toString())
 	expiresAt?: string
 
 	@Expose()

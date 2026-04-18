@@ -77,10 +77,6 @@ export class ChannelsService {
 					}
 				})
 
-				if (dto.channelType === ChannelType.PRIVATE) {
-					await this.inviteLinksService.create(ownerId, { channelId: channel.id.toString() })
-				}
-
 				return channel
 			})
 

@@ -29,7 +29,7 @@ export class ChannelInviteLinksController {
 	constructor(
 		private readonly inviteLinksService: InviteLinksService,
 		private readonly prisma: PrismaService
-	) {}
+	) { }
 
 	@Get(`:${PARAMS.CHANNEL_ID}/invite-links`)
 	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
@@ -53,9 +53,8 @@ export class ChannelInviteLinksController {
 		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
 		@Body() dto: CreateInviteLinkDto
 	) {
-		dto.channelId = id.toString()
-		const link = await this.inviteLinksService.create(userId, dto)
-		return plainToInstance(InviteLinkResponseDto, link)
+		dto.chatId = Number(id)
+		return await this.inviteLinksService.create(userId, dto)
 	}
 
 	@Delete(`:${PARAMS.CHANNEL_ID}/invite-links/:inviteLinkId`)
