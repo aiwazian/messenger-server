@@ -117,7 +117,14 @@ export class UsersService {
 				if (privacy.dateOfBirth === PrivacyRule.NOBODY) {
 					response.dateOfBirth = undefined
 				}
+				if (privacy.lastSeen === PrivacyRule.NOBODY) {
+					response.lastSeen = undefined
+				} else if (user.lastSeen) {
+					response.lastSeen = Number(user.lastSeen)
+				}
 			}
+		} else if (user.lastSeen) {
+			response.lastSeen = Number(user.lastSeen)
 		}
 
 		return response

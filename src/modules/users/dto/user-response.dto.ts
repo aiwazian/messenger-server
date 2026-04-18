@@ -25,4 +25,8 @@ export class UserResponseDto {
 	@Expose()
 	@OmitNull()
 	dateOfBirth?: number
+
+	@Expose()
+	@OmitNull()
+	lastSeen?: number
 }

@@ -1,6 +1,7 @@
-import { Expose } from 'class-transformer'
+import { Exclude, Expose } from 'class-transformer'
 import { PrivacyRule } from '../../../../generated/prisma/enums'
 
+@Exclude()
 export class PrivacySettingsDto {
 	@Expose()
 	lastSeen: PrivacyRule

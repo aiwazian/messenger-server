@@ -123,6 +123,11 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		const sockets = await this.server.in(room).allSockets()
 		if (sockets.size > 0) return
 
+		await this.prisma.user.update({
+			where: { id: userId },
+			data: { lastSeen: BigInt(Date.now()) }
+		})
+
 		const recipients = await this.getPresenceRecipients(userId)
 		if (recipients.length > 0) {
 			this.server

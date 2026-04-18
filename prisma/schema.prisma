@@ -17,6 +17,17 @@ enum GroupType {
     PRIVATE
 }
 
+enum PrivacyRule {
+    EVERYBODY
+    NOBODY
+}
+
+enum FileStatus {
+    PENDING
+    COMPLETED
+    FAILED
+}
+
 model User {
     id          BigInt  @id
     firstName   String  @default("")
@@ -26,6 +37,7 @@ model User {
     login       String  @unique
     password    String
     dateOfBirth BigInt?
+    lastSeen    BigInt?
 
     chats        Chat[]
     sessions     Session[]
@@ -41,6 +53,8 @@ model User {
 
     privacySettings   PrivacySettings?
     channelBlackLists ChannelBlackList[]
+    channelAdmins     ChannelAdmin[]
+    groupAdmins       GroupAdmin[]
 }
 
 model Session {
@@ -83,10 +97,6 @@ model Message {
     sendTime   BigInt
     editedAt   BigInt?
 
-    isRead            Boolean @default(false)
-    deletedBySender   Boolean @default(false)
-    deletedByReceiver Boolean @default(false)
-
     senderId BigInt
     sender   User   @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
@@ -115,12 +125,6 @@ model File {
     @@index([status])
 }
 
-enum FileStatus {
-    PENDING
-    COMPLETED
-    FAILED
-}
-
 model MessageRead {
     id        Int    @id @default(autoincrement())
     messageId Int
@@ -144,8 +148,9 @@ model Channel {
 
     owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
-    subscribers  ChannelSubscriber[]
-    blockedUsers ChannelBlackList[]
+    subscribers   ChannelSubscriber[]
+    blockedUsers  ChannelBlackList[]
+    channelAdmins ChannelAdmin[]
 }
 
 model ChannelSubscriber {
@@ -172,6 +177,17 @@ model ChannelBlackList {
     @@unique([userId, channelId])
 }
 
+model ChannelAdmin {
+    id        Int    @id @default(autoincrement())
+    userId    BigInt
+    channelId BigInt
+
+    member  User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+    channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+    @@unique([userId, channelId])
+}
+
 model Group {
     id        BigInt    @id
     ownerId   BigInt
@@ -180,9 +196,10 @@ model Group {
     bio       String?
     groupType GroupType @default(PRIVATE)
 
-    owner   User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-    members GroupMember[]
-    blocked GroupBlackList[]
+    owner       User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+    members     GroupMember[]
+    blocked     GroupBlackList[]
+    groupAdmins GroupAdmin[]
 }
 
 model GroupMember {
@@ -199,6 +216,17 @@ model GroupMember {
 }
 
 model GroupBlackList {
+    id      Int    @id @default(autoincrement())
+    userId  BigInt
+    groupId BigInt
+
+    user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+    group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+    @@unique([userId, groupId])
+}
+
+model GroupAdmin {
     id      Int    @id @default(autoincrement())
     userId  BigInt
     groupId BigInt
@@ -231,11 +259,6 @@ model FileCleanupTask {
     nextRetry BigInt
 
     @@index([nextRetry])
-}
-
-enum PrivacyRule {
-    EVERYBODY
-    NOBODY
 }
 
 model PrivacySettings {

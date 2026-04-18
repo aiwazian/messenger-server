@@ -38,7 +38,6 @@ export class MessagesService {
 	): Promise<MessageResponseDto> {
 		return this.withChat<MessageResponseDto>(senderId, chatId, async (tx) => {
 			const sequenceId = await tx.message.count({ where: { chatId } })
-			const isSelfChat = BigInt(chatId) === BigInt(senderId)
 			const chatType = detectChatType(chatId)
 
 			const message = await tx.message.create({
@@ -47,8 +46,7 @@ export class MessagesService {
 					chatId,
 					text: dto.text,
 					sendTime: Date.now(),
-					senderId,
-					isRead: isSelfChat
+					senderId
 				},
 				include: { files: true }
 			})
@@ -80,7 +78,6 @@ export class MessagesService {
 				throw new NotFoundException('Some files were not found or not uploaded completely')
 			}
 
-			const isSelfChat = BigInt(chatId) === BigInt(senderId)
 			const results: MessageResponseDto[] = []
 
 			const lastMessage = await tx.message.findFirst({
@@ -98,7 +95,6 @@ export class MessagesService {
 						text: results.length === 0 ? dto.text : null,
 						sendTime: Date.now(),
 						senderId,
-						isRead: isSelfChat,
 						files: { connect: { id: fileId } }
 					},
 					include: { files: true }
@@ -134,7 +130,6 @@ export class MessagesService {
 			await this.storageService.confirmUpload(dto.fileId)
 
 			const sequenceId = await tx.message.count({ where: { chatId } })
-			const isSelfChat = BigInt(chatId) === BigInt(userId)
 
 			const message = await tx.message.create({
 				data: {
@@ -143,7 +138,6 @@ export class MessagesService {
 					text: dto.text,
 					sendTime: Date.now(),
 					senderId: userId,
-					isRead: isSelfChat,
 					files: { connect: { id: dto.fileId } }
 				},
 				include: { files: true }
@@ -220,7 +214,7 @@ export class MessagesService {
 		})
 
 		return messages.reverse().map((message) => {
-			const isRead = message.isRead || message.readReceipts.length > 0
+			const isRead = true // TODO
 			return plainToInstance(MessageResponseDto, {
 				...message,
 				isRead,
@@ -249,10 +243,9 @@ export class MessagesService {
 
 		const chatType = detectChatType(ChatId(message.chatId))
 		if (chatType === ChatType.PRIVATE) {
-			await this.prisma.message.update({
-				where: { id: messageId },
-				data: { isRead: true }
-			})
+			// await this.prisma.message.update({
+			// 	where: { id: messageId }
+			// }) TODO
 		}
 	}
 
@@ -276,10 +269,10 @@ export class MessagesService {
 
 		const chatType = detectChatType(chatId)
 		if (chatType === ChatType.PRIVATE) {
-			await this.prisma.message.updateMany({
-				where: { id: { in: unread.map((m) => m.id) } },
-				data: { isRead: true }
-			})
+			// await this.prisma.message.updateMany({
+			// 	where: { id: { in: unread.map((m) => m.id) } },
+			// 	data: { isRead: true }
+			// }) TODO
 		}
 	}
 
@@ -297,29 +290,11 @@ export class MessagesService {
 		const chatType = detectChatType(chatId)
 		const isDirect = chatType === ChatType.PRIVATE
 
-		if (!isDirect) {
-			const files = await this.prisma.file.findMany({ where: { messageId } })
-			for (const file of files) {
-				await this.storageService.deleteFile(file.id)
-			}
-			await this.prisma.message.delete({ where: { id: messageId } })
-		} else {
-			const isSender = message.senderId === userId
-			const updateData = isSender ? { deletedBySender: true } : { deletedByReceiver: true }
-
-			const updated = await this.prisma.message.update({
-				where: { id: messageId },
-				data: updateData
-			})
-
-			if (updated.deletedBySender && updated.deletedByReceiver) {
-				const files = await this.prisma.file.findMany({ where: { messageId } })
-				for (const file of files) {
-					await this.storageService.deleteFile(file.id)
-				}
-				await this.prisma.message.delete({ where: { id: messageId } })
-			}
+		const files = await this.prisma.file.findMany({ where: { messageId } })
+		for (const file of files) {
+			await this.storageService.deleteFile(file.id)
 		}
+		await this.prisma.message.delete({ where: { id: messageId } })
 
 		const recipients = await this.getRecipients(userId, chatId, detectChatType(chatId))
 

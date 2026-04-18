@@ -8,8 +8,6 @@ import { ChatId } from '../../common/types/chat-id.type'
 import { ChatType } from '../../common/enums/chat-type.enum'
 import { detectChatType } from '../../common/utils/detect-chat-type.util'
 import { Prisma } from '../../../generated/prisma/client'
-import { ChannelId } from '../../common/types/channel-id.type'
-import { GroupId } from '../../common/types/group-id.type'
 
 @Injectable()
 export class ChatsService {
@@ -88,7 +86,7 @@ export class ChatsService {
 			}
 		}))
 
-		return plainToInstance(ChatResponseDto, resChats)
+		return plainToInstance(ChatResponseDto, resChats.filter(chat => chat != null))
 	}
 
 	async create(tx: Prisma.TransactionClient, userId: UserId, chatId: ChatId): Promise<void> {
