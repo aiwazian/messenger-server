@@ -15,6 +15,7 @@ import { FileDownloadDto } from '../messages/dto/file-download.dto'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { FileStatus } from '../../../generated/prisma/enums'
+import { FileType } from '../../common/enums/file-type.enum'
 
 @Injectable()
 export class StorageService {
@@ -26,20 +27,20 @@ export class StorageService {
 		private readonly prisma: PrismaService
 	) {
 		this.s3Client = new S3Client({
-			region: config.get('S3_REGION'),
-			endpoint: config.get('S3_END_POINT'),
+			region: config.get('S3_REGION')!,
+			endpoint: config.get('S3_END_POINT')!,
 			credentials: {
-				accessKeyId: config.get('S3_ACCESS_KEY'),
-				secretAccessKey: config.get('S3_SECRET_KEY')
+				accessKeyId: config.get('S3_ACCESS_KEY')!,
+				secretAccessKey: config.get('S3_SECRET_KEY')!
 			},
 			forcePathStyle: true
 		})
 		this.bucketName = config.get('S3_BUCKET_NAME')!
 	}
 
-	async initUpload(name: string, size: number, mimeType: string): Promise<InitUploadDto> {
+	async initUpload(name: string, size: number, mimeType: string, fileType: FileType = FileType.CHAT_ATTACHMENT): Promise<InitUploadDto> {
 		const id = uuidv4()
-		const path = `files/${id}/${name}`
+		const path = `${fileType}/${id}/${name}`
 
 		const file = await this.prisma.file.create({
 			data: {
@@ -171,5 +172,17 @@ export class StorageService {
 			size: file.size.toString(),
 			mimeType: file.mimeType
 		})
+	}
+
+	async initUserAvatarUpload(name: string, size: number, mimeType: string): Promise<InitUploadDto> {
+		return this.initUpload(name, size, mimeType, FileType.USER_AVATAR)
+	}
+
+	async initChannelAvatarUpload(name: string, size: number, mimeType: string): Promise<InitUploadDto> {
+		return this.initUpload(name, size, mimeType, FileType.CHANNEL_AVATAR)
+	}
+
+	async initGroupAvatarUpload(name: string, size: number, mimeType: string): Promise<InitUploadDto> {
+		return this.initUpload(name, size, mimeType, FileType.GROUP_AVATAR)
 	}
 }

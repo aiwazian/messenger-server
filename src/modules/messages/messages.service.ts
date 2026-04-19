@@ -7,6 +7,7 @@ import { MessageResponseDto } from './dto/message-response.dto'
 import { PushService } from '../push/push.service'
 import { RealtimeGateway } from '../realtime/realtime.gateway'
 import { StorageService } from '../storage/storage.service'
+import { FileType } from '../../common/enums/file-type.enum'
 import { FileInitDto } from './dto/file-init.dto'
 import { FileConfirmDto } from './dto/file-confirm.dto'
 import { FileDownloadDto } from './dto/file-download.dto'
@@ -117,7 +118,7 @@ export class MessagesService {
 
 	async initFileUpload(userId: UserId, chatId: ChatId, dto: FileInitDto) {
 		return this.withChat(userId, chatId, async () => {
-			return this.storageService.initUpload(dto.name, dto.size, dto.mimeType)
+			return this.storageService.initUpload(dto.name, dto.size, dto.mimeType, FileType.CHAT_ATTACHMENT)
 		})
 	}
 
