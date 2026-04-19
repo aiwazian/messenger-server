@@ -74,7 +74,7 @@ export class StorageService {
 		const file = await this.prisma.file.update({
 			where: { id: fileId },
 			data: {
-				status: FileStatus.COMPLETED,
+				status: FileStatus.UPLOADED,
 				updatedAt: Date.now()
 			}
 		})
@@ -154,7 +154,7 @@ export class StorageService {
 		const file = await this.prisma.file.findUnique({ where: { id: fileId } })
 		if (!file) throw new NotFoundException('File not found')
 
-		if (file.status !== FileStatus.COMPLETED) {
+		if (file.status !== FileStatus.UPLOADED) {
 			throw new Error('File upload not completed')
 		}
 

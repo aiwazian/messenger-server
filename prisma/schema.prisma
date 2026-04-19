@@ -24,7 +24,7 @@ enum PrivacyRule {
 
 enum FileStatus {
     PENDING
-    COMPLETED
+    UPLOADED
     FAILED
 }
 

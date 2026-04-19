@@ -301,7 +301,7 @@ export class ChatsService {
 			throw new NotFoundException('Message not found')
 		}
 
-		if (message.chatId !== chatId) {
+		if (message.senderId !== userId && message.chatId !== chatId) {
 			throw new ForbiddenException('Message does not belong to the specified chat')
 		}
 

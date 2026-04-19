@@ -71,7 +71,7 @@ export class MessagesService {
 	): Promise<MessageResponseDto[]> {
 		return this.withChat<MessageResponseDto[]>(senderId, chatId, async (tx) => {
 			const files = await tx.file.findMany({
-				where: { id: { in: dto.fileIds }, status: FileStatus.COMPLETED }
+				where: { id: { in: dto.fileIds }, status: FileStatus.UPLOADED }
 			})
 
 			if (files.length !== dto.fileIds.length) {
