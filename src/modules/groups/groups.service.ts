@@ -15,13 +15,14 @@ import { RealtimeGateway } from '../realtime/realtime.gateway'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
 import { generateGroupId } from '../../common/utils/id-generator.util'
-import { GroupType, PrivacyRule } from '../../../generated/prisma/enums'
+import { GroupType, PrivacyRule, SystemEventType } from '../../../generated/prisma/enums'
 import { GroupId } from '../../common/types/group-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
 import { Prisma } from '../../../generated/prisma/client'
 import { SocketEvent } from '../../common/socket/socket-events'
 import { ChatResponseDto } from '../chats/dto/chat-response.dto'
 import { SYSTEM_USER_ID } from '../../providers/prisma/prisma.service'
+import { EncryptionService } from '../encryption/encryption.service'
 
 @Injectable()
 export class GroupsService {
@@ -29,7 +30,8 @@ export class GroupsService {
 		private readonly prisma: PrismaService,
 		private readonly chatsService: ChatsService,
 		private readonly searchService: SearchService,
-		private readonly realtimeGateway: RealtimeGateway
+		private readonly realtimeGateway: RealtimeGateway,
+		private readonly encryption: EncryptionService
 	) { }
 
 	async create(ownerId: UserId, dto: CreateGroupDto): Promise<GroupResponseDto> {
@@ -65,7 +67,13 @@ export class GroupsService {
 					text: 'Группа создана',
 					sendTime: Date.now(),
 					sequenceId: BigInt(Date.now()),
-					senderId: SYSTEM_USER_ID
+					senderId: ownerId,
+					encryptionKeyVersion: this.encryption.currentVersion,
+					systemEvent: {
+						create: {
+							eventType: SystemEventType.GROUP_CREATED
+						}
+					}
 				}
 			})
 

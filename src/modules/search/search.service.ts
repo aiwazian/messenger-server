@@ -4,10 +4,11 @@ import { plainToInstance } from 'class-transformer'
 import { SearchQueryDto, SearchType } from './dto/search-query.dto'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { ChatId } from '../../common/types/chat-id.type'
+import { ChannelType, GroupType } from '../../../generated/prisma/enums'
 
 @Injectable()
 export class SearchService {
-	constructor(private readonly prisma: PrismaService) {}
+	constructor(private readonly prisma: PrismaService) { }
 
 	async isUsernameAvailable(username: string): Promise<boolean> {
 		const [userCount, groupCount, channelCount] = await Promise.all([
@@ -52,7 +53,7 @@ export class SearchService {
 						},
 						{
 							OR: [
-								{ channelType: 'PUBLIC' },
+								{ channelType: ChannelType.PUBLIC },
 								{ ownerId: userId },
 								{ subscribers: { some: { userId } } }
 							]
@@ -74,7 +75,7 @@ export class SearchService {
 							OR: [{ name: { contains: query } }, { username: { contains: query } }]
 						},
 						{
-							OR: [{ groupType: 'PUBLIC' }, { ownerId: userId }, { members: { some: { userId } } }]
+							OR: [{ groupType: GroupType.PUBLIC }, { ownerId: userId }, { members: { some: { userId } } }]
 						},
 						{
 							NOT: {

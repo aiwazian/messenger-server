@@ -36,7 +36,7 @@ export class ChatsService {
 								]
 							},
 							include: {
-								files: true
+								attachments: true
 							},
 							orderBy: {
 								sendTime: 'desc'
@@ -54,7 +54,7 @@ export class ChatsService {
 								chatId: chat.chatId
 							},
 							include: {
-								files: true
+								attachments: true
 							},
 							orderBy: {
 								sendTime: 'desc'
@@ -72,7 +72,7 @@ export class ChatsService {
 								chatId: chat.chatId
 							},
 							include: {
-								files: true
+								attachments: true
 							},
 							orderBy: {
 								sendTime: 'desc'
@@ -320,7 +320,7 @@ export class ChatsService {
 		const message = await this.prisma.message.findFirst({
 			where: { chatId },
 			orderBy: { sendTime: 'desc' },
-			include: { files: true }
+			include: { attachments: true }
 		})
 
 		if (!message) return null
@@ -328,7 +328,7 @@ export class ChatsService {
 		return plainToInstance(MessageResponseDto, {
 			...message,
 			chatId: chatId.toString(),
-			files: message.files.map((f) => ({ ...f, size: f.size.toString() }))
+			files: message.attachments.map((f) => ({ ...f, size: f.size.toString() }))
 		})
 	}
 }

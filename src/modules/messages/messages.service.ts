@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
+import { Injectable, NotFoundException } from '@nestjs/common'
 import { TextMessageDto } from './dto/text-message.dto'
 import { MediaMessageDto } from './dto/media-message.dto'
 import { plainToInstance } from 'class-transformer'
@@ -14,13 +14,12 @@ import { FileDownloadDto } from './dto/file-download.dto'
 import { PrismaService, SYSTEM_USER_ID } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
-import { FileStatus } from '../../../generated/prisma/enums'
+import { FileStatus, MessageType } from '../../../generated/prisma/enums'
 import { ChatType } from '../../common/enums/chat-type.enum'
 import { SocketEvent } from '../../common/socket/socket-events'
 import { Prisma } from '../../../generated/prisma/client'
 import { detectChatType } from '../../common/utils/detect-chat-type.util'
-import { ChannelsService } from '../channels/channels.service'
-import { ChannelId } from '../../common/types/channel-id.type'
+import { EncryptionService } from '../encryption/encryption.service'
 
 @Injectable()
 export class MessagesService {
@@ -29,7 +28,8 @@ export class MessagesService {
 		private readonly chatsService: ChatsService,
 		private readonly pushService: PushService,
 		private readonly realtimeGateway: RealtimeGateway,
-		private readonly storageService: StorageService
+		private readonly storageService: StorageService,
+		private readonly encryption: EncryptionService
 	) { }
 
 	async sendTextMessage(
@@ -38,25 +38,26 @@ export class MessagesService {
 		dto: TextMessageDto
 	): Promise<MessageResponseDto> {
 		return this.withChat<MessageResponseDto>(senderId, chatId, async (tx) => {
+			const { encrypted, version } = this.encryption.encrypt(dto.text)
 			const sequenceId = await tx.message.count({ where: { chatId } })
 			const chatType = detectChatType(chatId)
 
 			const message = await tx.message.create({
 				data: {
 					sequenceId: sequenceId + 1,
-					chatId,
-					text: dto.text,
+					chatId: chatId,
+					text: encrypted,
 					sendTime: Date.now(),
-					senderId
-				},
-				include: { files: true }
+					senderId: senderId,
+					messageType: MessageType.TEXT,
+					encryptionKeyVersion: version
+				}
 			})
 
 			const messageInstance = plainToInstance(MessageResponseDto, {
 				...message,
 				isRead: true,
-				senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
-				files: message.files.map((f: any) => ({ ...f, size: f.size.toString() }))
+				senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId
 			})
 
 			await this.notifyRecipients(senderId, chatId, messageInstance)
@@ -92,20 +93,21 @@ export class MessagesService {
 				const message = await tx.message.create({
 					data: {
 						sequenceId: nextSequenceId++,
-						chatId,
+						chatId: chatId,
 						text: results.length === 0 ? dto.text : null,
 						sendTime: Date.now(),
-						senderId,
-						files: { connect: { id: fileId } }
+						senderId: senderId,
+						encryptionKeyVersion: this.encryption.currentVersion,
+						attachments: { connect: { fileId: fileId } }
 					},
-					include: { files: true }
+					include: { attachments: true }
 				})
 
 				const messageInstance = plainToInstance(MessageResponseDto, {
 					...message,
 					chatId: chatId.toString(),
 					isRead: true,
-					files: message.files.map((f: any) => ({ ...f, size: f.size.toString() }))
+					files: message.attachments.map((f: any) => ({ ...f, size: f.size.toString() }))
 				})
 
 				await this.notifyRecipients(senderId, chatId, messageInstance)
@@ -139,16 +141,17 @@ export class MessagesService {
 					text: dto.text,
 					sendTime: Date.now(),
 					senderId: userId,
-					files: { connect: { id: dto.fileId } }
+					encryptionKeyVersion: this.encryption.currentVersion,
+					attachments: { connect: { fileId: dto.fileId } }
 				},
-				include: { files: true }
+				include: { attachments: true }
 			})
 
 			const messageInstance = plainToInstance(MessageResponseDto, {
 				...message,
 				chatId: chatId.toString(),
 				isRead: true,
-				files: message.files.map((f) => ({ ...f, size: f.size.toString() }))
+				files: message.attachments.map((f) => ({ ...f, size: f.size.toString() }))
 			})
 
 			await this.notifyRecipients(userId, chatId, messageInstance)
@@ -166,12 +169,12 @@ export class MessagesService {
 		return this.withChat(userId, chatId, async () => {
 			const message = await this.prisma.message.findFirst({
 				where: { id: messageId, chatId },
-				include: { files: true }
+				include: { attachments: true }
 			})
 
 			if (!message) throw new NotFoundException('Message not found')
 
-			const file = message.files.find((f) => f.id === fileId)
+			const file = message.attachments.find((f) => f.fileId === fileId)
 			if (!file) throw new NotFoundException('File not found in this message')
 
 			return this.storageService.getDownloadUrl(fileId)
@@ -207,7 +210,7 @@ export class MessagesService {
 			where: messageWhere,
 			include: {
 				readReceipts: { where: { userId }, select: { userId: true } },
-				files: true
+				attachments: true
 			},
 			orderBy: { sendTime: 'desc' },
 			take: limit,
@@ -219,7 +222,7 @@ export class MessagesService {
 			return plainToInstance(MessageResponseDto, {
 				...message,
 				isRead,
-				files: message.files.map((f) => ({ ...f, size: f.size.toString() })),
+				files: message.attachments.map((f) => ({ ...f, size: f.size.toString() })),
 				senderId: message.senderId === SYSTEM_USER_ID ? SYSTEM_USER_ID : chatType === ChatType.CHANNEL ? message.chatId : message.senderId
 			})
 		})
@@ -291,7 +294,7 @@ export class MessagesService {
 		const chatType = detectChatType(chatId)
 		const isDirect = chatType === ChatType.PRIVATE
 
-		const files = await this.prisma.file.findMany({ where: { messageId } })
+		const files = await this.prisma.file.findMany({ where: {} })
 		for (const file of files) {
 			await this.storageService.deleteFile(file.id)
 		}
@@ -327,12 +330,12 @@ export class MessagesService {
 
 		const messages = await this.prisma.message.findMany({
 			where: messageWhere,
-			include: { files: true }
+			include: { attachments: true }
 		})
 
 		for (const message of messages) {
-			for (const file of message.files) {
-				await this.storageService.deleteFile(file.id)
+			for (const file of message.attachments) {
+				await this.storageService.deleteFile(file.fileId)
 			}
 		}
 

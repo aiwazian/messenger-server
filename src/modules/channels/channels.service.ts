@@ -19,14 +19,14 @@ import { UserResponseDto } from '../users/dto/user-response.dto'
 import { ConfigService } from '@nestjs/config'
 import { IsBannedDto } from './dto/is-banned.dto'
 import { PrismaService } from '../../providers/prisma/prisma.service'
-import { ChannelType } from '../../../generated/prisma/enums'
+import { ChannelType, SystemEventType } from '../../../generated/prisma/enums'
 import { UserId } from '../../common/types/user-id.type'
 import { generateChannelId } from '../../common/utils/id-generator.util'
 import { ChannelId } from '../../common/types/channel-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
 import { Prisma } from '../../../generated/prisma/client'
 import { SocketEvent } from '../../common/socket/socket-events'
-import { SYSTEM_USER_ID } from '../../providers/prisma/prisma.service'
+import { EncryptionService } from '../encryption/encryption.service'
 
 @Injectable()
 export class ChannelsService {
@@ -36,7 +36,8 @@ export class ChannelsService {
 		private readonly chatsService: ChatsService,
 		private readonly realtimeGateway: RealtimeGateway,
 		private readonly searchService: SearchService,
-		private readonly inviteLinksService: InviteLinksService
+		private readonly inviteLinksService: InviteLinksService,
+		private readonly encryption: EncryptionService
 	) { }
 
 	async create(ownerId: UserId, dto: CreateChannelDto): Promise<ChannelResponseDto> {
@@ -70,10 +71,16 @@ export class ChannelsService {
 				await tx.message.create({
 					data: {
 						chatId: channel.id,
-						text: 'Канал создан',
+						text: null,
 						sendTime: Date.now(),
 						sequenceId: BigInt(Date.now()),
-						senderId: SYSTEM_USER_ID
+						senderId: ownerId,
+						encryptionKeyVersion: this.encryption.currentVersion,
+						systemEvent: {
+							create: {
+								eventType: SystemEventType.CHANNEL_CREATED
+							}
+						}
 					}
 				})
 

@@ -18,6 +18,7 @@ import { StorageModule } from './modules/storage/storage.module'
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
 import { APP_GUARD } from '@nestjs/core'
 import { ScheduleModule } from '@nestjs/schedule'
+import { EncryptionModule } from './modules/encryption/encryption.module';
 
 @Module({
 	imports: [
@@ -40,7 +41,8 @@ import { ScheduleModule } from '@nestjs/schedule'
 		MessagesModule,
 		SearchModule,
 		PushModule,
-		StorageModule
+		StorageModule,
+		EncryptionModule
 	],
 	controllers: [AppController],
 	providers: [

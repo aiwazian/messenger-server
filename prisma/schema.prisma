@@ -28,6 +28,34 @@ enum FileStatus {
     FAILED
 }
 
+enum MessageType {
+    TEXT
+    STICKER
+    SYSTEM
+}
+
+enum SystemEventType {
+    CHANNEL_CREATED
+    GROUP_CREATED
+    USER_JOINED
+    USER_LEFT
+    USER_KICKED
+    USER_ADDED
+    GROUP_RENAMED
+    CHANNEL_RENAMED
+    AVATAR_CHANGED
+    MESSAGE_PINNED
+    MESSAGE_UNPINNED
+}
+
+enum AttachmentType {
+    IMAGE
+    VIDEO
+    VOICE
+    FILE
+    STICKER
+}
+
 model User {
     id          BigInt  @id
     firstName   String  @default("")
@@ -44,17 +72,33 @@ model User {
     sentMessages Message[]
     messageReads MessageRead[]
 
+    photos UserPhoto[]
+
     ownedGroups      Group[]
     groupMemberships GroupMember[]
     groupBlackLists  GroupBlackList[]
+    groupPermissions GroupMemberPermission[]
 
     ownedChannels        Channel[]
     channelSubscriptions ChannelSubscriber[]
+    channelBlackLists    ChannelBlackList[]
+    channelPermissions   ChannelMemberPermission[]
 
-    privacySettings   PrivacySettings?
-    channelBlackLists ChannelBlackList[]
-    channelAdmins     ChannelAdmin[]
-    groupAdmins       GroupAdmin[]
+    privacySettings          PrivacySettings?
+    scheduledAccountDeletion ScheduledAccountDeletion?
+}
+
+model UserPhoto {
+    id         Int     @id @default(autoincrement())
+    userId     BigInt
+    fileId     String  @unique
+    isCurrent  Boolean @default(false)
+    uploadedAt BigInt
+
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+    file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+    @@index([userId, isCurrent])
 }
 
 model Session {
@@ -89,40 +133,51 @@ model Chat {
     @@index([chatId])
 }
 
+model EncryptionKey {
+    id        Int     @id @default(autoincrement())
+    version   Int     @unique
+    createdAt BigInt
+    retiredAt BigInt?
+
+    messages Message[]
+
+    @@index([retiredAt])
+}
+
 model Message {
-    id         Int     @id @default(autoincrement())
-    sequenceId BigInt
-    chatId     BigInt
-    text       String?
-    sendTime   BigInt
-    editedAt   BigInt?
+    id          Int         @id @default(autoincrement())
+    sequenceId  BigInt
+    chatId      BigInt
+    text        String?
+    sendTime    BigInt
+    editedAt    BigInt?
+    messageType MessageType @default(TEXT)
+
+    encryptionKeyVersion Int
+    encryptionKey        EncryptionKey? @relation(fields: [encryptionKeyVersion], references: [version])
 
     senderId BigInt
     sender   User   @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
     readReceipts MessageRead[]
-    files        File[]
+    attachments  MessageAttachment[]
+    systemEvent  SystemMessageEvent?
 
     @@index([chatId, sendTime])
     @@index([senderId])
     @@index([chatId])
+    @@index([chatId, messageType])
+    @@index([encryptionKeyVersion])
 }
 
-model File {
-    id        String     @id @default(uuid())
-    name      String
-    size      BigInt
-    mimeType  String
-    path      String
-    status    FileStatus @default(PENDING)
-    createdAt BigInt
-    updatedAt BigInt
+model SystemMessageEvent {
+    id        Int             @id @default(autoincrement())
+    messageId Int             @unique
+    eventType SystemEventType
 
-    messageId Int?
-    message   Message? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+    message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
-    @@index([messageId])
-    @@index([status])
+    @@index([eventType])
 }
 
 model MessageRead {
@@ -138,6 +193,38 @@ model MessageRead {
     @@index([userId, readAt])
 }
 
+model File {
+    id        String     @id @default(uuid())
+    name      String
+    size      BigInt
+    mimeType  String
+    path      String
+    status    FileStatus @default(PENDING)
+    createdAt BigInt
+    updatedAt BigInt
+
+    attachments   MessageAttachment[]
+    userPhotos    UserPhoto[]
+    channelPhotos ChannelPhoto[]
+    groupPhotos   GroupPhoto[]
+
+    @@index([status])
+}
+
+model MessageAttachment {
+    id        Int            @id @default(autoincrement())
+    messageId Int
+    fileId    String         @unique
+    type      AttachmentType
+    sortOrder Int            @default(0)
+
+    message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+    file    File    @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+    @@unique([messageId, fileId])
+    @@index([messageId])
+}
+
 model Channel {
     id          BigInt      @id
     name        String
@@ -148,9 +235,23 @@ model Channel {
 
     owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
-    subscribers   ChannelSubscriber[]
-    blockedUsers  ChannelBlackList[]
-    channelAdmins ChannelAdmin[]
+    photos       ChannelPhoto[]
+    subscribers  ChannelSubscriber[]
+    blockedUsers ChannelBlackList[]
+    permissions  ChannelMemberPermission[]
+}
+
+model ChannelPhoto {
+    id         Int     @id @default(autoincrement())
+    channelId  BigInt
+    fileId     String  @unique
+    isCurrent  Boolean @default(false)
+    uploadedAt BigInt
+
+    channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+    file    File    @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+    @@index([channelId, isCurrent])
 }
 
 model ChannelSubscriber {
@@ -177,15 +278,27 @@ model ChannelBlackList {
     @@unique([userId, channelId])
 }
 
-model ChannelAdmin {
+model ChannelMemberPermission {
     id        Int    @id @default(autoincrement())
-    userId    BigInt
     channelId BigInt
+    userId    BigInt
 
-    member  User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+    canPostMessages Boolean @default(false)
+    canSendMedia    Boolean @default(false)
+    canPinMessages  Boolean @default(false)
+    canInviteUsers  Boolean @default(false)
+    canDeleteUsers  Boolean @default(false)
+    canEditInfo     Boolean @default(false)
+    canManageAdmins Boolean @default(false)
+
+    grantedBy BigInt?
+    grantedAt BigInt
+
     channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+    user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    @@unique([userId, channelId])
+    @@unique([channelId, userId])
+    @@index([channelId])
 }
 
 model Group {
@@ -196,10 +309,24 @@ model Group {
     bio       String?
     groupType GroupType @default(PRIVATE)
 
-    owner       User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+    owner       User                    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+    photos      GroupPhoto[]
     members     GroupMember[]
     blocked     GroupBlackList[]
-    groupAdmins GroupAdmin[]
+    permissions GroupMemberPermission[]
+}
+
+model GroupPhoto {
+    id         Int     @id @default(autoincrement())
+    groupId    BigInt
+    fileId     String  @unique
+    isCurrent  Boolean @default(false)
+    uploadedAt BigInt
+
+    group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+    file  File  @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+    @@index([groupId, isCurrent])
 }
 
 model GroupMember {
@@ -226,15 +353,27 @@ model GroupBlackList {
     @@unique([userId, groupId])
 }
 
-model GroupAdmin {
+model GroupMemberPermission {
     id      Int    @id @default(autoincrement())
-    userId  BigInt
     groupId BigInt
+    userId  BigInt
 
-    user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+    canPostMessages Boolean @default(true)
+    canSendMedia    Boolean @default(true)
+    canPinMessages  Boolean @default(false)
+    canInviteUsers  Boolean @default(true)
+    canDeleteUsers  Boolean @default(false)
+    canEditInfo     Boolean @default(false)
+    canManageAdmins Boolean @default(false)
+
+    grantedBy BigInt?
+    grantedAt BigInt
+
     group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+    user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    @@unique([userId, groupId])
+    @@unique([groupId, userId])
+    @@index([groupId])
 }
 
 model InviteLink {
@@ -249,18 +388,6 @@ model InviteLink {
     @@index([chatId])
 }
 
-model FileCleanupTask {
-    id        Int     @id @default(autoincrement())
-    fileId    String
-    filePath  String
-    attempts  Int     @default(0)
-    lastError String?
-    createdAt BigInt
-    nextRetry BigInt
-
-    @@index([nextRetry])
-}
-
 model PrivacySettings {
     id     Int    @id @default(autoincrement())
     userId BigInt @unique
@@ -271,5 +398,30 @@ model PrivacySettings {
     dateOfBirth PrivacyRule @default(EVERYBODY)
     invites     PrivacyRule @default(EVERYBODY)
 
+    deleteAfterDays Int @default(365)
+
     user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ScheduledAccountDeletion {
+    id          Int    @id @default(autoincrement())
+    userId      BigInt @unique
+    scheduledAt BigInt
+    deleteAt    BigInt
+
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@index([deleteAt])
+}
+
+model FileCleanupTask {
+    id        Int     @id @default(autoincrement())
+    fileId    String
+    filePath  String
+    attempts  Int     @default(0)
+    lastError String?
+    createdAt BigInt
+    nextRetry BigInt
+
+    @@index([nextRetry])
 }
