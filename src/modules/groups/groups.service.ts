@@ -2,8 +2,7 @@ import { plainToInstance } from 'class-transformer'
 import {
 	BadRequestException,
 	ConflictException,
-	Injectable,
-	NotFoundException
+	Injectable
 } from '@nestjs/common'
 import { CreateGroupDto } from './dto/create-group.dto'
 import { GroupResponseDto } from './dto/group-response.dto'
@@ -21,7 +20,6 @@ import { ChatId } from '../../common/types/chat-id.type'
 import { Prisma } from '../../../generated/prisma/client'
 import { SocketEvent } from '../../common/socket/socket-events'
 import { ChatResponseDto } from '../chats/dto/chat-response.dto'
-import { SYSTEM_USER_ID } from '../../providers/prisma/prisma.service'
 import { EncryptionService } from '../encryption/encryption.service'
 
 @Injectable()
@@ -64,7 +62,7 @@ export class GroupsService {
 			await tx.message.create({
 				data: {
 					chatId: group.id,
-					text: 'Группа создана',
+					text: null,
 					sendTime: Date.now(),
 					sequenceId: BigInt(Date.now()),
 					senderId: ownerId,

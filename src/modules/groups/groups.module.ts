@@ -6,10 +6,11 @@ import { SearchModule } from '../search/search.module'
 import { ChatsModule } from '../chats/chats.module'
 import { GroupInviteLinksController } from './group-invite-links.controller'
 import { JwtAuthModule } from '../security/jwt.module'
+import { EncryptionService } from '../encryption/encryption.service'
 
 @Module({
 	imports: [JwtAuthModule, SessionsModule, SearchModule, ChatsModule],
 	controllers: [GroupsController, GroupInviteLinksController],
-	providers: [GroupsService]
+	providers: [GroupsService, EncryptionService]
 })
-export class GroupsModule {}
+export class GroupsModule { }

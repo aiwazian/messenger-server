@@ -3,7 +3,7 @@ import { TextMessageDto } from './dto/text-message.dto'
 import { MediaMessageDto } from './dto/media-message.dto'
 import { plainToInstance } from 'class-transformer'
 import { ChatsService } from '../chats/chats.service'
-import { MessageResponseDto } from './dto/message-response.dto'
+import { MessageFileDto, MessageResponseDto } from './dto/message-response.dto'
 import { PushService } from '../push/push.service'
 import { RealtimeGateway } from '../realtime/realtime.gateway'
 import { StorageService } from '../storage/storage.service'
@@ -11,15 +11,16 @@ import { FileType } from '../../common/enums/file-type.enum'
 import { FileInitDto } from './dto/file-init.dto'
 import { FileConfirmDto } from './dto/file-confirm.dto'
 import { FileDownloadDto } from './dto/file-download.dto'
-import { PrismaService, SYSTEM_USER_ID } from '../../providers/prisma/prisma.service'
+import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
-import { FileStatus, MessageType } from '../../../generated/prisma/enums'
+import { AttachmentType, FileStatus, MessageType, SystemEventType } from '../../../generated/prisma/enums'
 import { ChatType } from '../../common/enums/chat-type.enum'
 import { SocketEvent } from '../../common/socket/socket-events'
 import { Prisma } from '../../../generated/prisma/client'
 import { detectChatType } from '../../common/utils/detect-chat-type.util'
 import { EncryptionService } from '../encryption/encryption.service'
+import { send } from 'node:process'
 
 @Injectable()
 export class MessagesService {
@@ -39,7 +40,14 @@ export class MessagesService {
 	): Promise<MessageResponseDto> {
 		return this.withChat<MessageResponseDto>(senderId, chatId, async (tx) => {
 			const { encrypted, version } = this.encryption.encrypt(dto.text)
-			const sequenceId = await tx.message.count({ where: { chatId } })
+			const sequenceId = await tx.message.count({
+				where: {
+					OR: [
+						{ chatId: chatId, senderId: senderId },
+						{ chatId: senderId, senderId: chatId }
+					]
+				}
+			})
 			const chatType = detectChatType(chatId)
 
 			const message = await tx.message.create({
@@ -56,6 +64,7 @@ export class MessagesService {
 
 			const messageInstance = plainToInstance(MessageResponseDto, {
 				...message,
+				text: dto.text,
 				isRead: true,
 				senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId
 			})
@@ -98,16 +107,25 @@ export class MessagesService {
 						sendTime: Date.now(),
 						senderId: senderId,
 						encryptionKeyVersion: this.encryption.currentVersion,
-						attachments: { connect: { fileId: fileId } }
+						attachments: {
+							create: {
+								fileId: fileId,
+								type: AttachmentType.FILE
+							}
+						}
 					},
-					include: { attachments: true }
+					include: {
+						attachments: {
+							include: { file: true }
+						}
+					}
 				})
 
 				const messageInstance = plainToInstance(MessageResponseDto, {
 					...message,
 					chatId: chatId.toString(),
 					isRead: true,
-					files: message.attachments.map((f: any) => ({ ...f, size: f.size.toString() }))
+					files: message.attachments.map((a) => (plainToInstance(MessageFileDto, a.file)))
 				})
 
 				await this.notifyRecipients(senderId, chatId, messageInstance)
@@ -132,7 +150,14 @@ export class MessagesService {
 		return this.withChat<MessageResponseDto>(userId, chatId, async (tx) => {
 			await this.storageService.confirmUpload(dto.fileId)
 
-			const sequenceId = await tx.message.count({ where: { chatId } })
+			const sequenceId = await tx.message.count({
+				where: {
+					OR: [
+						{ chatId: chatId, senderId: userId },
+						{ chatId: userId, senderId: chatId }
+					]
+				}
+			})
 
 			const message = await tx.message.create({
 				data: {
@@ -142,16 +167,21 @@ export class MessagesService {
 					sendTime: Date.now(),
 					senderId: userId,
 					encryptionKeyVersion: this.encryption.currentVersion,
-					attachments: { connect: { fileId: dto.fileId } }
+					attachments: {
+						create: {
+							fileId: dto.fileId,
+							type: AttachmentType.FILE
+						}
+					}
 				},
-				include: { attachments: true }
+				include: { attachments: { include: { file: true } } }
 			})
+
+			const fileData = await tx.file.findUnique({ where: { id: dto.fileId } })
 
 			const messageInstance = plainToInstance(MessageResponseDto, {
 				...message,
-				chatId: chatId.toString(),
-				isRead: true,
-				files: message.attachments.map((f) => ({ ...f, size: f.size.toString() }))
+				files: message.attachments.map((f) => (plainToInstance(MessageFileDto, f.file)))
 			})
 
 			await this.notifyRecipients(userId, chatId, messageInstance)
@@ -210,7 +240,7 @@ export class MessagesService {
 			where: messageWhere,
 			include: {
 				readReceipts: { where: { userId }, select: { userId: true } },
-				attachments: true
+				attachments: { include: { file: true } }
 			},
 			orderBy: { sendTime: 'desc' },
 			take: limit,
@@ -221,9 +251,10 @@ export class MessagesService {
 			const isRead = true // TODO
 			return plainToInstance(MessageResponseDto, {
 				...message,
-				isRead,
-				files: message.attachments.map((f) => ({ ...f, size: f.size.toString() })),
-				senderId: message.senderId === SYSTEM_USER_ID ? SYSTEM_USER_ID : chatType === ChatType.CHANNEL ? message.chatId : message.senderId
+				text: message.text ? this.encryption.decrypt(message.text, this.encryption.currentVersion) : null,
+				isRead: isRead,
+				files: message.attachments.map((f) => (plainToInstance(MessageFileDto, { ...f.file }))),
+				senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId
 			})
 		})
 	}
@@ -325,7 +356,7 @@ export class MessagesService {
 				]
 			}
 		} else {
-			messageWhere = { chatId: chatId, senderId: { not: SYSTEM_USER_ID } }
+			messageWhere = { chatId: chatId, systemEvent: { NOT: { OR: [{ eventType: SystemEventType.CHANNEL_CREATED }, { eventType: SystemEventType.GROUP_CREATED }] } } }
 		}
 
 		const messages = await this.prisma.message.findMany({

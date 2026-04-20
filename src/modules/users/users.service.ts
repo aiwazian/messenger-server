@@ -46,8 +46,12 @@ export class UsersService {
 		// 1. Find all files associated with messages from this user
 		const files = await this.prisma.file.findMany({
 			where: {
-				message: {
-					senderId: userId
+				attachments: {
+					some: {
+						message: {
+							senderId: userId
+						}
+					}
 				}
 			}
 		})

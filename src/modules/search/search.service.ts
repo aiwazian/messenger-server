@@ -126,18 +126,26 @@ export class SearchService {
 		const files = await this.prisma.file.findMany({
 			where: {
 				name: { contains: query },
-				message: {
-					chatId: { in: userChatIds }
+				attachments: {
+					some: {
+						message: {
+							chatId: { in: userChatIds }
+						}
+					}
 				}
 			},
 			include: {
-				message: {
+				attachments: {
 					include: {
-						sender: {
-							select: {
-								id: true,
-								firstName: true,
-								lastName: true
+						message: {
+							include: {
+								sender: {
+									select: {
+										id: true,
+										firstName: true,
+										lastName: true
+									}
+								}
 							}
 						}
 					}
@@ -151,7 +159,7 @@ export class SearchService {
 		})
 
 		const results: SearchResponseDto[] = files.map((file) => {
-			const message = file.message
+			const message = file.attachments[0]?.message
 			const senderName = message?.sender
 				? `${message.sender.firstName ?? ''} ${message.sender.lastName ?? ''}`.trim()
 				: 'Unknown'

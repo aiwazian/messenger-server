@@ -320,7 +320,7 @@ export class ChatsService {
 		const message = await this.prisma.message.findFirst({
 			where: { chatId },
 			orderBy: { sendTime: 'desc' },
-			include: { attachments: true }
+			include: { attachments: { include: { file: true } } }
 		})
 
 		if (!message) return null
@@ -328,7 +328,7 @@ export class ChatsService {
 		return plainToInstance(MessageResponseDto, {
 			...message,
 			chatId: chatId.toString(),
-			files: message.attachments.map((f) => ({ ...f, size: f.size.toString() }))
+			files: message.attachments.map((f) => ({ ...f, size: f.file.size.toString() }))
 		})
 	}
 }
