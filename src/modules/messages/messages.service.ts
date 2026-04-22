@@ -1,9 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common'
 import { TextMessageDto } from './dto/text-message.dto'
 import { MediaMessageDto } from './dto/media-message.dto'
 import { plainToInstance } from 'class-transformer'
 import { ChatsService } from '../chats/chats.service'
-import { MessageFileDto, MessageResponseDto } from './dto/message-response.dto'
+import { MessageAttachmentDto, MessageResponseDto } from './dto/message-response.dto'
 import { PushService } from '../push/push.service'
 import { RealtimeGateway } from '../realtime/realtime.gateway'
 import { StorageService } from '../storage/storage.service'
@@ -20,12 +20,12 @@ import { SocketEvent } from '../../common/socket/socket-events'
 import { Prisma } from '../../../generated/prisma/client'
 import { detectChatType } from '../../common/utils/detect-chat-type.util'
 import { EncryptionService } from '../encryption/encryption.service'
-import { send } from 'node:process'
 
 @Injectable()
 export class MessagesService {
 	constructor(
 		private readonly prisma: PrismaService,
+		@Inject(forwardRef(() => ChatsService))
 		private readonly chatsService: ChatsService,
 		private readonly pushService: PushService,
 		private readonly realtimeGateway: RealtimeGateway,
@@ -66,7 +66,8 @@ export class MessagesService {
 				...message,
 				text: dto.text,
 				isRead: true,
-				senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId
+				senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
+				messageType: MessageType.TEXT
 			})
 
 			await this.notifyRecipients(senderId, chatId, messageInstance)
@@ -106,6 +107,7 @@ export class MessagesService {
 						text: results.length === 0 ? dto.text : null,
 						sendTime: Date.now(),
 						senderId: senderId,
+						messageType: MessageType.TEXT,
 						encryptionKeyVersion: this.encryption.currentVersion,
 						attachments: {
 							create: {
@@ -125,7 +127,8 @@ export class MessagesService {
 					...message,
 					chatId: chatId.toString(),
 					isRead: true,
-					files: message.attachments.map((a) => (plainToInstance(MessageFileDto, a.file)))
+					attachments: message.attachments.map((a) => (plainToInstance(MessageAttachmentDto, a.file))),
+					messageType: message.messageType
 				})
 
 				await this.notifyRecipients(senderId, chatId, messageInstance)
@@ -166,6 +169,7 @@ export class MessagesService {
 					text: dto.text,
 					sendTime: Date.now(),
 					senderId: userId,
+					messageType: MessageType.TEXT,
 					encryptionKeyVersion: this.encryption.currentVersion,
 					attachments: {
 						create: {
@@ -177,11 +181,10 @@ export class MessagesService {
 				include: { attachments: { include: { file: true } } }
 			})
 
-			const fileData = await tx.file.findUnique({ where: { id: dto.fileId } })
-
 			const messageInstance = plainToInstance(MessageResponseDto, {
 				...message,
-				files: message.attachments.map((f) => (plainToInstance(MessageFileDto, f.file)))
+				attachments: message.attachments.map((f) => (plainToInstance(MessageAttachmentDto, f.file))),
+				messageType: MessageType.TEXT
 			})
 
 			await this.notifyRecipients(userId, chatId, messageInstance)
@@ -240,7 +243,8 @@ export class MessagesService {
 			where: messageWhere,
 			include: {
 				readReceipts: { where: { userId }, select: { userId: true } },
-				attachments: { include: { file: true } }
+				attachments: { include: { file: true } },
+				systemEvent: { select: { eventType: true } }
 			},
 			orderBy: { sendTime: 'desc' },
 			take: limit,
@@ -253,8 +257,10 @@ export class MessagesService {
 				...message,
 				text: message.text ? this.encryption.decrypt(message.text, this.encryption.currentVersion) : null,
 				isRead: isRead,
-				files: message.attachments.map((f) => (plainToInstance(MessageFileDto, { ...f.file }))),
-				senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId
+				systemEventType: message.systemEvent?.eventType,
+				attachments: message.attachments.map((f) => (plainToInstance(MessageAttachmentDto, f.file))),
+				senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
+				messageType: message.messageType
 			})
 		})
 	}

@@ -37,15 +37,7 @@ enum MessageType {
 enum SystemEventType {
     CHANNEL_CREATED
     GROUP_CREATED
-    USER_JOINED
-    USER_LEFT
-    USER_KICKED
-    USER_ADDED
-    GROUP_RENAMED
-    CHANNEL_RENAMED
-    AVATAR_CHANGED
-    MESSAGE_PINNED
-    MESSAGE_UNPINNED
+    HISTORY_CLEARED
 }
 
 enum AttachmentType {
@@ -53,7 +45,6 @@ enum AttachmentType {
     VIDEO
     VOICE
     FILE
-    STICKER
 }
 
 model User {
@@ -151,7 +142,7 @@ model Message {
     text        String?
     sendTime    BigInt
     editedAt    BigInt?
-    messageType MessageType @default(TEXT)
+    messageType MessageType
 
     encryptionKeyVersion Int
     encryptionKey        EncryptionKey? @relation(fields: [encryptionKeyVersion], references: [version])

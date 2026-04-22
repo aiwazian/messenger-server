@@ -1,17 +1,21 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import { ChatResponseDto } from './dto/chat-response.dto'
 import { plainToInstance } from 'class-transformer'
-import { MessageResponseDto } from '../messages/dto/message-response.dto'
+import { MessageAttachmentDto, MessageResponseDto } from '../messages/dto/message-response.dto'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
 import { ChatType } from '../../common/enums/chat-type.enum'
 import { detectChatType } from '../../common/utils/detect-chat-type.util'
 import { Prisma } from '../../../generated/prisma/client'
+import { EncryptionService } from '../encryption/encryption.service'
 
 @Injectable()
 export class ChatsService {
-	constructor(private readonly prisma: PrismaService) { }
+	constructor(
+		private readonly prisma: PrismaService,
+		private readonly encryption: EncryptionService
+	) { }
 
 	async getAll(userId: UserId): Promise<ChatResponseDto[]> {
 		const chats = await this.prisma.chat.findMany({
@@ -28,58 +32,37 @@ export class ChatsService {
 				case ChatType.PRIVATE: {
 					const user = await this.prisma.user.findUnique({ where: { id: chat.chatId } })
 					if (user != null) {
-						const lastMessage = await this.prisma.message.findFirst({
-							where: {
-								OR: [
-									{ senderId: userId, chatId: chat.chatId },
-									{ senderId: chat.chatId, chatId: userId }
-								]
-							},
-							include: {
-								attachments: true
-							},
-							orderBy: {
-								sendTime: 'desc'
-							}
+						const lastMessage = await this.getLastMessage(userId, ChatId(chat.chatId))
+						return plainToInstance(ChatResponseDto, {
+							id: chat.chatId,
+							name: user.firstName,
+							isPinned: chat.isPinned,
+							lastMessage: lastMessage
 						})
-						const lastMessage1 = plainToInstance(MessageResponseDto, lastMessage)
-						return plainToInstance(ChatResponseDto, { id: chat.chatId, name: user.firstName, isPinned: chat.isPinned, lastMessage: lastMessage1 })
 					}
 				}
 				case ChatType.CHANNEL: {
 					const channel = await this.prisma.channel.findUnique({ where: { id: chat.chatId } })
 					if (channel != null) {
-						const lastMessage = await this.prisma.message.findFirst({
-							where: {
-								chatId: chat.chatId
-							},
-							include: {
-								attachments: true
-							},
-							orderBy: {
-								sendTime: 'desc'
-							}
+						const lastMessage = await this.getLastMessage(userId, ChatId(chat.chatId))
+						return plainToInstance(ChatResponseDto, {
+							id: chat.chatId,
+							name: channel.name,
+							isPinned: chat.isPinned,
+							lastMessage: lastMessage
 						})
-						const lastMessage1 = plainToInstance(MessageResponseDto, lastMessage)
-						return plainToInstance(ChatResponseDto, { id: chat.chatId, name: channel.name, isPinned: chat.isPinned, lastMessage: lastMessage1 })
 					}
 				}
 				case ChatType.GROUP: {
 					const group = await this.prisma.group.findUnique({ where: { id: chat.chatId } })
 					if (group != null) {
-						const lastMessage = await this.prisma.message.findFirst({
-							where: {
-								chatId: chat.chatId
-							},
-							include: {
-								attachments: true
-							},
-							orderBy: {
-								sendTime: 'desc'
-							}
+						const lastMessage = await this.getLastMessage(userId, ChatId(chat.chatId))
+						return plainToInstance(ChatResponseDto, {
+							id: chat.chatId,
+							name: group.name,
+							isPinned: chat.isPinned,
+							lastMessage: lastMessage
 						})
-						const lastMessage1 = plainToInstance(MessageResponseDto, lastMessage)
-						return plainToInstance(ChatResponseDto, { id: chat.chatId, name: group.name, isPinned: chat.isPinned, lastMessage: lastMessage1 })
 					}
 				}
 				default: return null
@@ -136,7 +119,7 @@ export class ChatsService {
 			title = channel?.name ?? 'Deleted Channel'
 		}
 
-		const lastMessage = await this.getLastMessage(chatId)
+		const lastMessage = await this.getLastMessage(userId, chatId)
 
 		return plainToInstance(ChatResponseDto, {
 			id: resolvedChatId.toString(),
@@ -316,19 +299,43 @@ export class ChatsService {
 		return !!chat
 	}
 
-	private async getLastMessage(chatId: bigint): Promise<MessageResponseDto | null> {
+	private async getLastMessage(userId: UserId, chatId: ChatId): Promise<MessageResponseDto | null> {
 		const message = await this.prisma.message.findFirst({
-			where: { chatId },
-			orderBy: { sendTime: 'desc' },
-			include: { attachments: { include: { file: true } } }
+			where: {
+				OR: [
+					{ senderId: userId, chatId: chatId },
+					{ senderId: chatId, chatId: userId }
+				]
+			},
+			include: {
+				attachments: {
+					include: {
+						file: {
+							select: {
+								name: true
+							}
+						}
+					}
+				},
+				systemEvent: true
+			},
+			orderBy: {
+				sendTime: 'desc'
+			}
 		})
 
-		if (!message) return null
+		if (message == null) {
+			return null
+		}
 
 		return plainToInstance(MessageResponseDto, {
 			...message,
-			chatId: chatId.toString(),
-			files: message.attachments.map((f) => ({ ...f, size: f.file.size.toString() }))
+			text: message.text ? this.encryption.decrypt(message.text, this.encryption.currentVersion) : null,
+			isRead: true,
+			systemEventType: message.systemEvent?.eventType,
+			attachments: message.attachments.map((f) => (plainToInstance(MessageAttachmentDto, f.file))),
+			senderId: detectChatType(ChatId(message.chatId)) === ChatType.CHANNEL ? message.chatId : message.senderId,
+			messageType: message.messageType
 		})
 	}
 }

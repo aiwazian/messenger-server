@@ -1,8 +1,9 @@
 import { Exclude, Expose } from 'class-transformer'
 import { OmitNull } from '../../../common/decorators/omit-null.decorator'
+import { MessageType } from '../../../../generated/prisma/enums'
 
 @Exclude()
-export class MessageFileDto {
+export class MessageAttachmentDto {
 	@Expose()
 	id: string
 
@@ -45,5 +46,12 @@ export class MessageResponseDto {
 	isRead?: boolean
 
 	@Expose()
-	files: MessageFileDto[]
+	attachments: MessageAttachmentDto[]
+
+	@Expose()
+	messageType: MessageType
+
+	@Expose()
+	@OmitNull()
+	systemEventType?: string
 }

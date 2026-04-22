@@ -14,7 +14,7 @@ import { RealtimeGateway } from '../realtime/realtime.gateway'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
 import { generateGroupId } from '../../common/utils/id-generator.util'
-import { GroupType, PrivacyRule, SystemEventType } from '../../../generated/prisma/enums'
+import { GroupType, MessageType, PrivacyRule, SystemEventType } from '../../../generated/prisma/enums'
 import { GroupId } from '../../common/types/group-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
 import { Prisma } from '../../../generated/prisma/client'
@@ -66,6 +66,7 @@ export class GroupsService {
 					sendTime: Date.now(),
 					sequenceId: BigInt(Date.now()),
 					senderId: ownerId,
+					messageType: MessageType.SYSTEM,
 					encryptionKeyVersion: this.encryption.currentVersion,
 					systemEvent: {
 						create: {

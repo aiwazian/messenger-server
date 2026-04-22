@@ -39,15 +39,15 @@ export class MessagesController {
 		return this.messagesService.sendTextMessage(userId, chatId, dto)
 	}
 
-	@Post('media')
-	@UseGuards(CanSendMessageGuard)
-	sendMediaMessage(
-		@Param('chatId', ParseChatIdPipe) chatId: ChatId,
-		@Body() dto: MediaMessageDto,
-		@CurrentUserId() userId: UserId
-	) {
-		return this.messagesService.sendMediaMessage(userId, chatId, dto)
-	}
+	// @Post('media')
+	// @UseGuards(CanSendMessageGuard)
+	// sendMediaMessage(
+	// 	@Param('chatId', ParseChatIdPipe) chatId: ChatId,
+	// 	@Body() dto: MediaMessageDto,
+	// 	@CurrentUserId() userId: UserId
+	// ) {
+	// 	return this.messagesService.sendMediaMessage(userId, chatId, dto)
+	// }
 
 	@Post('files/init')
 	@UseGuards(CanSendMessageGuard)

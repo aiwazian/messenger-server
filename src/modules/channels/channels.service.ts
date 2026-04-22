@@ -19,7 +19,7 @@ import { UserResponseDto } from '../users/dto/user-response.dto'
 import { ConfigService } from '@nestjs/config'
 import { IsBannedDto } from './dto/is-banned.dto'
 import { PrismaService } from '../../providers/prisma/prisma.service'
-import { ChannelType, SystemEventType } from '../../../generated/prisma/enums'
+import { ChannelType, MessageType, SystemEventType } from '../../../generated/prisma/enums'
 import { UserId } from '../../common/types/user-id.type'
 import { generateChannelId } from '../../common/utils/id-generator.util'
 import { ChannelId } from '../../common/types/channel-id.type'
@@ -75,6 +75,7 @@ export class ChannelsService {
 						sendTime: Date.now(),
 						sequenceId: BigInt(Date.now()),
 						senderId: ownerId,
+						messageType: MessageType.SYSTEM,
 						encryptionKeyVersion: this.encryption.currentVersion,
 						systemEvent: {
 							create: {
