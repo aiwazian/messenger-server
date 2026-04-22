@@ -28,7 +28,7 @@ import { ParseUserIdPipe } from '../../common/pipes/parse-user-id.pipe'
 @Controller('groups')
 @UseGuards(AuthGuard)
 export class GroupsController {
-	constructor(private readonly groupsService: GroupsService) {}
+	constructor(private readonly groupsService: GroupsService) { }
 
 	@Post()
 	createGroup(@CurrentUserId() userId: UserId, @Body() dto: CreateGroupDto) {

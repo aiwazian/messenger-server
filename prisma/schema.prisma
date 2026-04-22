@@ -368,7 +368,7 @@ model GroupMemberPermission {
 }
 
 model InviteLink {
-    id        BigInt  @id
+    id        Int     @id @default(autoincrement())
     code      String  @unique
     chatId    BigInt
     creatorId BigInt

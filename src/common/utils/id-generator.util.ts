@@ -1,5 +1,4 @@
 import { randomInt } from 'crypto'
-import { ChatType } from '../enums/chat-type.enum'
 import { ChannelId } from '../types/channel-id.type'
 import { GroupId } from '../types/group-id.type'
 import { UserId } from '../types/user-id.type'
@@ -7,8 +6,7 @@ import { UserId } from '../types/user-id.type'
 const prefixes = {
 	user: 1,
 	channel: 2,
-	group: 3,
-	invite: 4
+	group: 3
 }
 
 export function generateUserId(): UserId {
@@ -21,10 +19,6 @@ export function generateChannelId(): ChannelId {
 
 export function generateGroupId(): GroupId {
 	return generateUniqueId<GroupId>(prefixes.group)
-}
-
-export function generateInviteLinkId(): bigint {
-	return generateUniqueId<bigint>(prefixes.invite)
 }
 
 function generateUniqueId<T>(prefix: number): T {

@@ -1,17 +1,15 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
-import { CreateInviteLinkDto } from './dto/create-invite-link.dto'
 import { randomBytes } from 'crypto'
-import { ChatsService } from './chats.service'
 import { ConfigService } from '@nestjs/config'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
-import { generateInviteLinkId } from '../../common/utils/id-generator.util'
 import { ChatType } from '../../common/enums/chat-type.enum'
 import { detectChatType } from '../../common/utils/detect-chat-type.util'
 import { InviteLinkResponseDto } from './dto/invite-link-response.dto'
 import { plainToInstance } from 'class-transformer'
 import { InternalInviteLinkResponse } from './dto/Internal-invite-link-response'
+import { CreateInviteLinkDto } from '../chats/dto/create-invite-link.dto'
 
 @Injectable()
 export class InviteLinksService {
@@ -20,32 +18,23 @@ export class InviteLinksService {
 		private readonly prisma: PrismaService
 	) { }
 
-	async create(creatorId: UserId, dto: CreateInviteLinkDto): Promise<InviteLinkResponseDto> {
-		const chatId = dto.chatId
-
-		const id = generateInviteLinkId()
+	async create(creatorId: UserId, chatId: ChatId, dto: CreateInviteLinkDto): Promise<InviteLinkResponseDto> {
 		const code = randomBytes(8).toString('hex')
 		const expiresAt = dto.expiresInSeconds ? BigInt(Date.now() + dto.expiresInSeconds * 1000) : null
 
 		const link = await this.prisma.inviteLink.create({
 			data: {
-				id,
-				code,
-				chatId,
-				creatorId,
+				code: code,
+				chatId: chatId,
+				creatorId: creatorId,
 				maxUses: dto.maxUses,
-				expiresAt
+				expiresAt: expiresAt
 			}
 		})
 
 		return plainToInstance(InviteLinkResponseDto, {
-			id: link.id,
-			chatId: chatId,
-			code: link.code,
+			...link,
 			link: `https://${this.config.get('SHORT_URL_DOMAIN')}/+${link.code}`,
-			expiresAt: link.expiresAt,
-			maxUses: link.maxUses,
-			uses: link.uses
 		})
 	}
 
@@ -219,10 +208,19 @@ export class InviteLinksService {
 		return link
 	}
 
-	async getByChatId(chatId: bigint) {
-		return await this.prisma.inviteLink.findMany({
+	async getByChatId(chatId: ChatId): Promise<InviteLinkResponseDto[]> {
+		const links = await this.prisma.inviteLink.findMany({
 			where: { chatId }
 		})
+
+		const domain = this.config.get('SHORT_URL_DOMAIN')
+
+		const mappedLinks = links.map((link: any) => ({
+			...link,
+			link: `https://${domain}/+${link.code}`
+		}))
+
+		return plainToInstance(InviteLinkResponseDto, mappedLinks)
 	}
 
 	async getLinkForChannel(channelId: bigint): Promise<string | null> {
@@ -234,11 +232,7 @@ export class InviteLinksService {
 		return link?.code ?? null
 	}
 
-	async delete(id: bigint) {
-		await this.prisma.inviteLink.delete({ where: { id } })
-	}
-
-	getShortUrlDomain() {
-		return this.config.get('SHORT_URL_DOMAIN')
+	async delete(id: number) {
+		await this.prisma.inviteLink.delete({ where: { id: id } })
 	}
 }

@@ -12,12 +12,12 @@ import { ChatId } from '../types/chat-id.type'
 
 @Injectable()
 export class InviteLinkOwnerGuard implements CanActivate {
-	constructor(private readonly prisma: PrismaService) {}
+	constructor(private readonly prisma: PrismaService) { }
 
 	async canActivate(context: ExecutionContext) {
 		const request = context.switchToHttp().getRequest()
 		const user = request.user
-		const inviteLinkId = BigInt(request.params.inviteLinkId)
+		const inviteLinkId = request.params.inviteLinkId
 
 		const link = await this.prisma.inviteLink.findUnique({
 			where: { id: inviteLinkId }
