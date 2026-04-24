@@ -127,7 +127,7 @@ export class MessagesService {
 					...message,
 					chatId: chatId.toString(),
 					isRead: true,
-					attachments: message.attachments.map((a) => (plainToInstance(MessageAttachmentDto, a.file))),
+					attachments: message.attachments.map((a) => plainToInstance(MessageAttachmentDto, a.file)),
 					messageType: message.messageType
 				})
 
@@ -153,6 +153,17 @@ export class MessagesService {
 		return this.withChat<MessageResponseDto>(userId, chatId, async (tx) => {
 			await this.storageService.confirmUpload(dto.fileId)
 
+			const file = await tx.file.findUnique({ where: { id: dto.fileId } })
+			if (!file) throw new NotFoundException('File not found')
+
+			let attachmentType = dto.type || AttachmentType.FILE
+
+			if (attachmentType === AttachmentType.IMAGE && !file.mimeType.startsWith('image/')) {
+				attachmentType = AttachmentType.FILE
+			} else if (attachmentType === AttachmentType.VIDEO && !file.mimeType.startsWith('video/')) {
+				attachmentType = AttachmentType.FILE
+			}
+
 			const sequenceId = await tx.message.count({
 				where: {
 					OR: [
@@ -174,7 +185,7 @@ export class MessagesService {
 					attachments: {
 						create: {
 							fileId: dto.fileId,
-							type: AttachmentType.FILE
+							type: attachmentType
 						}
 					}
 				},
@@ -183,7 +194,7 @@ export class MessagesService {
 
 			const messageInstance = plainToInstance(MessageResponseDto, {
 				...message,
-				attachments: message.attachments.map((f) => (plainToInstance(MessageAttachmentDto, f.file))),
+				attachments: message.attachments.map((f) => plainToInstance(MessageAttachmentDto, { ...f.file, type: f.type })),
 				messageType: MessageType.TEXT
 			})
 
@@ -258,7 +269,7 @@ export class MessagesService {
 				text: message.text ? this.encryption.decrypt(message.text, this.encryption.currentVersion) : null,
 				isRead: isRead,
 				systemEventType: message.systemEvent?.eventType,
-				attachments: message.attachments.map((f) => (plainToInstance(MessageAttachmentDto, f.file))),
+				attachments: message.attachments.map((f) => plainToInstance(MessageAttachmentDto, f.file)),
 				senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
 				messageType: message.messageType
 			})

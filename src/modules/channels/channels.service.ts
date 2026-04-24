@@ -168,12 +168,7 @@ export class ChannelsService {
 			id: channel.id.toString(),
 			name: channel.name,
 			isPinned: false,
-			lastMessage: lastMessage
-				? plainToInstance(MessageResponseDto, {
-					...lastMessage,
-					chatId: channel.id.toString()
-				})
-				: null
+			lastMessage: plainToInstance(MessageResponseDto, lastMessage)
 		})
 
 		this.realtimeGateway.sendToUser(userId, SocketEvent.CHAT_NEW, chatPayload)

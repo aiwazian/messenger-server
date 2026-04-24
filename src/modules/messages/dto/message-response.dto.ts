@@ -18,6 +18,9 @@ export class MessageAttachmentDto {
 
 	@Expose()
 	status: string
+
+	@Expose()
+	type: string
 }
 
 @Exclude()
@@ -32,7 +35,8 @@ export class MessageResponseDto {
 	chatId: string
 
 	@Expose()
-	text: string
+	@OmitNull()
+	text?: string
 
 	@Expose()
 	sendTime: number
