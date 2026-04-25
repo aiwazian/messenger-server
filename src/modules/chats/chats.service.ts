@@ -329,7 +329,7 @@ export class ChatsService {
 			text: message.text ? this.encryption.decrypt(message.text, this.encryption.currentVersion) : null,
 			isRead: true,
 			systemEventType: message.systemEvent?.eventType,
-			attachments: message.attachments.map((f) => plainToInstance(MessageAttachmentDto, f.file)),
+			attachments: message.attachments.map((f) => plainToInstance(MessageAttachmentDto, { ...f.file, type: f.type })),
 			senderId: detectChatType(ChatId(message.chatId)) === ChatType.CHANNEL ? message.chatId : message.senderId,
 			messageType: message.messageType
 		})

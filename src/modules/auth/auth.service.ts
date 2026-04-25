@@ -11,6 +11,7 @@ import { JwtAuthService } from '../security/jwt.service'
 import { hashPassword, verifyPassword } from '../../common/utils/password.util'
 import { UserId } from '../../common/types/user-id.type'
 import { generateUserId } from '../../common/utils/id-generator.util'
+import { CreateSessionDto } from '../sessions/dto/create-session.dto'
 
 @Injectable()
 export class AuthService {
@@ -46,18 +47,18 @@ export class AuthService {
 
 		const tokens = this.jwtAuth.generateTokenPair(userId)
 
-		const session = await this.sessionService.create({
+		const session = await this.sessionService.create(plainToInstance(CreateSessionDto, {
 			userId: userId,
 			token: tokens.accessToken,
 			deviceModel: dto.deviceModel,
 			osVersion: dto.osVersion,
 			osName: dto.osName
-		})
+		}))
 
 		return plainToInstance(AuthResponseDto, {
 			token: tokens.accessToken,
 			userId: userId,
-			createdAt: session.createdAt.toString()
+			createdAt: session.createdAt
 		})
 	}
 

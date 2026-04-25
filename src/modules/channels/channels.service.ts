@@ -109,16 +109,17 @@ export class ChannelsService {
 	}
 
 	async update(id: ChannelId, dto: UpdateChannelDto, userId: UserId): Promise<ChannelResponseDto> {
-		const existingChannel = await this.prisma.channel.findUnique({ where: { id } })
+		const channel = await this.prisma.channel.findUnique({ where: { id } })
+		if (!channel) throw new NotFoundException('Channel not found')
 
-		if (dto.username && dto.username !== existingChannel.username) {
+		if (dto.username && dto.username !== channel.username) {
 			const isAvailable = await this.searchService.isUsernameAvailable(dto.username)
 			if (!isAvailable) throw new ConflictException('Username is already taken')
 		}
 
-		const channelType = dto.channelType ?? existingChannel.channelType
+		const channelType = dto.channelType ?? channel.channelType
 		const username =
-			channelType === ChannelType.PRIVATE ? null : (dto.username ?? existingChannel.username)
+			channelType === ChannelType.PRIVATE ? null : (dto.username ?? channel.username)
 
 		await this.prisma.channel.update({
 			where: { id },
@@ -133,9 +134,8 @@ export class ChannelsService {
 	}
 
 	async join(channelId: ChannelId, userId: UserId): Promise<void> {
-		const channel = await this.prisma.channel.findUnique({
-			where: { id: channelId }
-		})
+		const channel = await this.prisma.channel.findUnique({ where: { id: channelId } })
+		if (!channel) throw new NotFoundException('Channel not found')
 
 		if (channel.channelType !== ChannelType.PUBLIC) {
 			throw new BadRequestException('This channel is private. Use invite link to join.')
@@ -176,8 +176,9 @@ export class ChannelsService {
 
 	async leave(channelId: ChannelId, userId: UserId): Promise<void> {
 		const channel = await this.prisma.channel.findUnique({ where: { id: channelId } })
-		if (channel.ownerId === userId)
-			throw new BadRequestException('Owner cannot unsubscribe. Delete it instead.')
+		if (!channel) throw new NotFoundException('Channel not found')
+
+		if (channel.ownerId === userId) throw new BadRequestException('Owner cannot unsubscribe. Delete it instead.')
 
 		await this.prisma.$transaction(async (tx) => {
 			await tx.channelSubscriber
@@ -204,8 +205,11 @@ export class ChannelsService {
 		if (targetUserId === ownerId) throw new BadRequestException('Cannot ban yourself')
 
 		const channel = await this.prisma.channel.findUnique({ where: { id } })
-		if (channel.ownerId === targetUserId)
+		if (!channel) throw new NotFoundException('Channel not found')
+
+		if (channel.ownerId === targetUserId) {
 			throw new BadRequestException('Owner cannot unsubscribe. Delete it instead.')
+		}
 
 		await this.prisma.$transaction(async (tx) => {
 			await tx.channelSubscriber
@@ -243,6 +247,8 @@ export class ChannelsService {
 			}
 		})
 
+		if (!channel) throw new NotFoundException('Channel not found')
+
 		const isOwner = channel.ownerId == userId
 		const inviteLinkCode = await this.inviteLinksService.getLinkForChannel(channelId)
 
@@ -257,7 +263,7 @@ export class ChannelsService {
 			isOwner,
 			subscribers: channel._count.subscribers.toString(),
 			removedUser: channel._count.blockedUsers.toString(),
-			inviteLink
+			inviteLink: inviteLink
 		})
 	}
 

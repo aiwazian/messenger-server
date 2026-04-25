@@ -4,7 +4,7 @@ generator client {
 }
 
 datasource db {
-    provider = "sqlite"
+    provider = "postgresql"
 }
 
 enum ChannelType {
@@ -136,7 +136,7 @@ model EncryptionKey {
 }
 
 model Message {
-    id          Int         @id @default(autoincrement())
+    id          BigInt      @id @default(autoincrement())
     sequenceId  BigInt
     chatId      BigInt
     text        String?
@@ -163,7 +163,7 @@ model Message {
 
 model SystemMessageEvent {
     id        Int             @id @default(autoincrement())
-    messageId Int             @unique
+    messageId BigInt          @unique
     eventType SystemEventType
 
     message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
@@ -173,7 +173,7 @@ model SystemMessageEvent {
 
 model MessageRead {
     id        Int    @id @default(autoincrement())
-    messageId Int
+    messageId BigInt
     userId    BigInt
     readAt    BigInt
 
@@ -204,7 +204,7 @@ model File {
 
 model MessageAttachment {
     id        Int            @id @default(autoincrement())
-    messageId Int
+    messageId BigInt
     fileId    String         @unique
     type      AttachmentType
     sortOrder Int            @default(0)

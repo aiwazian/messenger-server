@@ -1,7 +1,7 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common'
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3'
 import { ConfigService } from '@nestjs/config'
 import { PrismaClient } from '../../../generated/prisma/client'
+import { PrismaPg } from '@prisma/adapter-pg'
 import { EncryptionService } from '../../modules/encryption/encryption.service'
 
 
@@ -14,7 +14,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
 		private readonly config: ConfigService,
 		private readonly encryption: EncryptionService
 	) {
-		const adapter = new PrismaBetterSqlite3({ url: config.get('DATABASE_URL') })
+		const adapter = new PrismaPg({
+			connectionString: config.get('DATABASE_URL')
+		})
 		super({ adapter })
 	}
 

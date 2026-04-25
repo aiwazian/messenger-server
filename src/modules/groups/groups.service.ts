@@ -2,7 +2,8 @@ import { plainToInstance } from 'class-transformer'
 import {
 	BadRequestException,
 	ConflictException,
-	Injectable
+	Injectable,
+	NotFoundException
 } from '@nestjs/common'
 import { CreateGroupDto } from './dto/create-group.dto'
 import { GroupResponseDto } from './dto/group-response.dto'
@@ -169,8 +170,11 @@ export class GroupsService {
 		if (targetUserId === ownerId) throw new BadRequestException('Cannot ban yourself')
 
 		const group = await this.prisma.group.findUnique({ where: { id } })
-		if (group.ownerId === targetUserId)
+
+		if (!group) throw new NotFoundException('Group not found')
+		if (group.ownerId === targetUserId) {
 			throw new BadRequestException('Owner cannot leave group. Delete it instead.')
+		}
 
 		await this.prisma.$transaction(async (tx) => {
 			await tx.groupMember
@@ -199,6 +203,9 @@ export class GroupsService {
 				members: userId ? { where: { userId }, select: { userId: true } } : undefined
 			}
 		})
+
+		if (!group) throw new NotFoundException('Group not found')
+
 
 		const isMember = userId ? group.members.length > 0 : false
 		const isOwner = userId ? group.ownerId === userId : false

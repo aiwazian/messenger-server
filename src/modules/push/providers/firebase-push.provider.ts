@@ -43,6 +43,8 @@ export class FirebasePushProvider implements PushProvider {
 
 		const serviceAccountPath = this.config.get<string>('FIREBASE_SERVICE_ACCOUNT_PATH')
 
+		if (!serviceAccountPath) return
+
 		const fullPath = path.resolve(process.cwd(), serviceAccountPath)
 
 		admin.initializeApp({

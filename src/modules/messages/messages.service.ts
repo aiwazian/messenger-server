@@ -127,7 +127,7 @@ export class MessagesService {
 					...message,
 					chatId: chatId.toString(),
 					isRead: true,
-					attachments: message.attachments.map((a) => plainToInstance(MessageAttachmentDto, a.file)),
+					attachments: message.attachments.map((a) => plainToInstance(MessageAttachmentDto, { ...a.file, fileId: a.fileId })),
 					messageType: message.messageType
 				})
 
@@ -194,7 +194,7 @@ export class MessagesService {
 
 			const messageInstance = plainToInstance(MessageResponseDto, {
 				...message,
-				attachments: message.attachments.map((f) => plainToInstance(MessageAttachmentDto, { ...f.file, type: f.type })),
+				attachments: message.attachments.map((f) => plainToInstance(MessageAttachmentDto, { ...f.file, fileId: f.fileId, type: f.type })),
 				messageType: MessageType.TEXT
 			})
 
@@ -269,7 +269,7 @@ export class MessagesService {
 				text: message.text ? this.encryption.decrypt(message.text, this.encryption.currentVersion) : null,
 				isRead: isRead,
 				systemEventType: message.systemEvent?.eventType,
-				attachments: message.attachments.map((f) => plainToInstance(MessageAttachmentDto, f.file)),
+				attachments: message.attachments.map((f) => plainToInstance(MessageAttachmentDto, { ...f.file, fileId: f.fileId, type: f.type })),
 				senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
 				messageType: message.messageType
 			})

@@ -34,7 +34,7 @@ async function bootstrap() {
 		logger.error(`Unhandled Rejection: ${reason instanceof Error ? reason.message : reason}`)
 	})
 
-	const port = configService.get<number>('SERVER_PORT')
+	const port = configService.get<number>('SERVER_PORT')!
 	await app.listen(port)
 }
 bootstrap()
