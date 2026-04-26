@@ -55,17 +55,28 @@ export class MessagesService {
 	): Promise<MessageResponseDto> {
 		this.chatsService.create(userId, chatId)
 
-		await this.storageService.confirmUpload(dto.fileId)
+		const attachmentsToCreate = []
 
-		const file = await this.prisma.file.findUnique({ where: { id: dto.fileId } })
-		if (!file) throw new NotFoundException('File not found')
+		for (let i = 0; i < dto.attachments.length; i++) {
+			const att = dto.attachments[i]
+			await this.storageService.confirmUpload(att.fileId)
 
-		let attachmentType = dto.type || AttachmentType.FILE
+			const file = await this.prisma.file.findUnique({ where: { id: att.fileId } })
+			if (!file) throw new NotFoundException(`File ${att.fileId} not found`)
 
-		if (attachmentType === AttachmentType.IMAGE && !file.mimeType.startsWith('image/')) {
-			attachmentType = AttachmentType.FILE
-		} else if (attachmentType === AttachmentType.VIDEO && !file.mimeType.startsWith('video/')) {
-			attachmentType = AttachmentType.FILE
+			let attachmentType = att.type || AttachmentType.FILE
+
+			if (attachmentType === AttachmentType.IMAGE && !file.mimeType.startsWith('image/')) {
+				attachmentType = AttachmentType.FILE
+			} else if (attachmentType === AttachmentType.VIDEO && !file.mimeType.startsWith('video/')) {
+				attachmentType = AttachmentType.FILE
+			}
+
+			attachmentsToCreate.push({
+				fileId: att.fileId,
+				type: attachmentType,
+				sortOrder: i
+			})
 		}
 
 		const sequenceId = await this.prisma.message.count({
@@ -87,9 +98,8 @@ export class MessagesService {
 				messageType: MessageType.TEXT,
 				encryptionKeyVersion: this.encryption.currentVersion,
 				attachments: {
-					create: {
-						fileId: dto.fileId,
-						type: attachmentType
+					createMany: {
+						data: attachmentsToCreate
 					}
 				}
 			},
