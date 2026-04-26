@@ -66,7 +66,7 @@ export class ChannelsService {
 					}
 				})
 
-				await this.chatsService.create(tx, ownerId, ChatId(channel.id))
+				await this.chatsService.create(ownerId, ChatId(channel.id))
 
 				await tx.message.create({
 					data: {
@@ -118,8 +118,7 @@ export class ChannelsService {
 		}
 
 		const channelType = dto.channelType ?? channel.channelType
-		const username =
-			channelType === ChannelType.PRIVATE ? null : (dto.username ?? channel.username)
+		const username = channelType === ChannelType.PRIVATE ? null : (dto.username ?? channel.username)
 
 		await this.prisma.channel.update({
 			where: { id },
@@ -146,17 +145,17 @@ export class ChannelsService {
 		})
 		if (isBanned) throw new BadRequestException('You are banned from this channel')
 
-		await this.prisma.$transaction(async (tx) => {
+		this.prisma.$transaction(async (tx) => {
 			const existingMember = await tx.channelSubscriber.findUnique({
 				where: { userId_channelId: { userId, channelId } }
 			})
 			if (existingMember) return
 
-			await tx.channelSubscriber.create({
+			tx.channelSubscriber.create({
 				data: { channelId, userId }
 			})
 
-			await this.chatsService.create(tx, userId, ChatId(channelId))
+			this.chatsService.create(userId, ChatId(channelId))
 		})
 
 		const lastMessage = await this.prisma.message.findFirst({

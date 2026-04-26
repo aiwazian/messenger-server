@@ -109,10 +109,9 @@ model Session {
 }
 
 model Chat {
-    id        Int    @id @default(autoincrement())
-    userId    BigInt
-    chatId    BigInt
-    createdAt BigInt
+    id     Int    @id @default(autoincrement())
+    userId BigInt
+    chatId BigInt
 
     isPinned   Boolean @default(false)
     isArchived Boolean @default(false)

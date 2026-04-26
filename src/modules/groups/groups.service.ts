@@ -58,7 +58,7 @@ export class GroupsService {
 				}
 			})
 
-			await this.chatsService.create(tx, ownerId, ChatId(group.id))
+			await this.chatsService.create(ownerId, ChatId(group.id))
 
 			await tx.message.create({
 				data: {
@@ -129,14 +129,14 @@ export class GroupsService {
 		})
 		if (isBanned) throw new BadRequestException('You are banned from this group')
 
-		await this.prisma.$transaction(async (tx) => {
+		this.prisma.$transaction(async (tx) => {
 			const existingMember = await tx.groupMember.findUnique({
 				where: { groupId_userId: { groupId: id, userId } }
 			})
 			if (existingMember) return
 
-			await tx.groupMember.create({ data: { groupId: id, userId } })
-			await this.chatsService.create(tx, userId, ChatId(id))
+			tx.groupMember.create({ data: { groupId: id, userId } })
+			this.chatsService.create(userId, ChatId(id))
 		})
 	}
 
@@ -304,7 +304,7 @@ export class GroupsService {
 			throw new BadRequestException('Some users are banned from this group')
 		}
 
-		await this.prisma.$transaction(async (tx) => {
+		this.prisma.$transaction(async (tx) => {
 			for (const userId of userIdBigInts) {
 				// Skip if already a member (idempotent)
 				const existing = await tx.groupMember.findUnique({
@@ -312,10 +312,10 @@ export class GroupsService {
 				})
 				if (existing) continue
 
-				await tx.groupMember.create({
+				tx.groupMember.create({
 					data: { groupId: id, userId }
 				})
-				await this.chatsService.create(tx, UserId(userId), ChatId(id))
+				this.chatsService.create(UserId(userId), ChatId(id))
 			}
 		})
 

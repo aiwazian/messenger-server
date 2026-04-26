@@ -19,8 +19,7 @@ export class ChatsService {
 
 	async getAll(userId: UserId): Promise<ChatResponseDto[]> {
 		const chats = await this.prisma.chat.findMany({
-			where: { userId },
-			orderBy: { createdAt: 'desc' }
+			where: { userId }
 		})
 
 		if (chats.length === 0) {
@@ -72,18 +71,29 @@ export class ChatsService {
 		return plainToInstance(ChatResponseDto, resChats.filter(chat => chat != null))
 	}
 
-	async create(tx: Prisma.TransactionClient, userId: UserId, chatId: ChatId): Promise<void> {
-		await tx.chat.upsert({
+	async create(userId: UserId, chatId: ChatId): Promise<void> {
+		await this.prisma.chat.upsert({
 			where: {
 				userId_chatId: { userId, chatId }
 			},
 			update: {},
 			create: {
-				userId,
-				chatId,
-				createdAt: Date.now()
+				userId: userId,
+				chatId: chatId
 			}
 		})
+		if (detectChatType(chatId) == ChatType.PRIVATE) {
+			await this.prisma.chat.upsert({
+				where: {
+					userId_chatId: { chatId, userId }
+				},
+				update: {},
+				create: {
+					userId: userId,
+					chatId: chatId
+				}
+			})
+		}
 	}
 
 	async getById(userId: UserId, chatId: ChatId): Promise<ChatResponseDto> {
@@ -329,7 +339,7 @@ export class ChatsService {
 			text: message.text ? this.encryption.decrypt(message.text, this.encryption.currentVersion) : null,
 			isRead: true,
 			systemEventType: message.systemEvent?.eventType,
-			attachments: message.attachments.map((f) => plainToInstance(MessageAttachmentDto, { ...f.file, type: f.type })),
+			attachments: message.attachments.map((f) => plainToInstance(MessageAttachmentDto, { ...f.file, type: f.type, fileId: f.fileId })),
 			senderId: detectChatType(ChatId(message.chatId)) === ChatType.CHANNEL ? message.chatId : message.senderId,
 			messageType: message.messageType
 		})

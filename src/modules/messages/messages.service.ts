@@ -20,6 +20,7 @@ import { SocketEvent } from '../../common/socket/socket-events'
 import { Prisma } from '../../../generated/prisma/client'
 import { detectChatType } from '../../common/utils/detect-chat-type.util'
 import { EncryptionService } from '../encryption/encryption.service'
+import { SendMessageUseCase } from './use-cases/send-message.use-case'
 
 @Injectable()
 export class MessagesService {
@@ -30,119 +31,21 @@ export class MessagesService {
 		private readonly pushService: PushService,
 		private readonly realtimeGateway: RealtimeGateway,
 		private readonly storageService: StorageService,
-		private readonly encryption: EncryptionService
+		private readonly encryption: EncryptionService,
+		private readonly sendMessageUseCase: SendMessageUseCase
 	) { }
 
-	async sendTextMessage(
-		senderId: UserId,
-		chatId: ChatId,
-		dto: TextMessageDto
-	): Promise<MessageResponseDto> {
-		return this.withChat<MessageResponseDto>(senderId, chatId, async (tx) => {
-			const { encrypted, version } = this.encryption.encrypt(dto.text)
-			const sequenceId = await tx.message.count({
-				where: {
-					OR: [
-						{ chatId: chatId, senderId: senderId },
-						{ chatId: senderId, senderId: chatId }
-					]
-				}
-			})
-			const chatType = detectChatType(chatId)
+	async sendTextMessage(senderId: UserId, chatId: ChatId, dto: TextMessageDto): Promise<MessageResponseDto> {
+		const sentMessage = await this.sendMessageUseCase.execute(senderId, chatId, dto)
 
-			const message = await tx.message.create({
-				data: {
-					sequenceId: sequenceId + 1,
-					chatId: chatId,
-					text: encrypted,
-					sendTime: Date.now(),
-					senderId: senderId,
-					messageType: MessageType.TEXT,
-					encryptionKeyVersion: version
-				}
-			})
+		this.notifyRecipients(senderId, chatId, sentMessage)
 
-			const messageInstance = plainToInstance(MessageResponseDto, {
-				...message,
-				text: dto.text,
-				isRead: true,
-				senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
-				messageType: MessageType.TEXT
-			})
-
-			await this.notifyRecipients(senderId, chatId, messageInstance)
-
-			return messageInstance
-		})
-	}
-
-	async sendMediaMessage(
-		senderId: UserId,
-		chatId: ChatId,
-		dto: MediaMessageDto
-	): Promise<MessageResponseDto[]> {
-		return this.withChat<MessageResponseDto[]>(senderId, chatId, async (tx) => {
-			const files = await tx.file.findMany({
-				where: { id: { in: dto.fileIds }, status: FileStatus.UPLOADED }
-			})
-
-			if (files.length !== dto.fileIds.length) {
-				throw new NotFoundException('Some files were not found or not uploaded completely')
-			}
-
-			const results: MessageResponseDto[] = []
-
-			const lastMessage = await tx.message.findFirst({
-				where: { chatId },
-				orderBy: { sequenceId: 'desc' },
-				select: { sequenceId: true }
-			})
-			let nextSequenceId = (lastMessage?.sequenceId ?? 0n) + 1n
-
-			for (const fileId of dto.fileIds) {
-				const message = await tx.message.create({
-					data: {
-						sequenceId: nextSequenceId++,
-						chatId: chatId,
-						text: results.length === 0 ? dto.text : null,
-						sendTime: Date.now(),
-						senderId: senderId,
-						messageType: MessageType.TEXT,
-						encryptionKeyVersion: this.encryption.currentVersion,
-						attachments: {
-							create: {
-								fileId: fileId,
-								type: AttachmentType.FILE
-							}
-						}
-					},
-					include: {
-						attachments: {
-							include: { file: true }
-						}
-					}
-				})
-
-				const messageInstance = plainToInstance(MessageResponseDto, {
-					...message,
-					chatId: chatId.toString(),
-					isRead: true,
-					attachments: message.attachments.map((a) => plainToInstance(MessageAttachmentDto, { ...a.file, fileId: a.fileId })),
-					messageType: message.messageType
-				})
-
-				await this.notifyRecipients(senderId, chatId, messageInstance)
-				results.push(messageInstance)
-			}
-
-			return results
-		})
+		return sentMessage
 	}
 
 	async initFileUpload(userId: UserId, chatId: ChatId, dto: FileInitDto) {
-		return this.withChat(userId, chatId, async () => {
-			return this.storageService.initUpload(dto.name, dto.size, dto.mimeType, FileType.CHAT_ATTACHMENT)
-		})
+		this.chatsService.create(userId, chatId)
+		return this.storageService.initUpload(dto.name, dto.size, dto.mimeType, FileType.CHAT_ATTACHMENT)
 	}
 
 	async confirmFileUpload(
@@ -150,58 +53,58 @@ export class MessagesService {
 		chatId: ChatId,
 		dto: FileConfirmDto
 	): Promise<MessageResponseDto> {
-		return this.withChat<MessageResponseDto>(userId, chatId, async (tx) => {
-			await this.storageService.confirmUpload(dto.fileId)
+		this.chatsService.create(userId, chatId)
 
-			const file = await tx.file.findUnique({ where: { id: dto.fileId } })
-			if (!file) throw new NotFoundException('File not found')
+		await this.storageService.confirmUpload(dto.fileId)
 
-			let attachmentType = dto.type || AttachmentType.FILE
+		const file = await this.prisma.file.findUnique({ where: { id: dto.fileId } })
+		if (!file) throw new NotFoundException('File not found')
 
-			if (attachmentType === AttachmentType.IMAGE && !file.mimeType.startsWith('image/')) {
-				attachmentType = AttachmentType.FILE
-			} else if (attachmentType === AttachmentType.VIDEO && !file.mimeType.startsWith('video/')) {
-				attachmentType = AttachmentType.FILE
+		let attachmentType = dto.type || AttachmentType.FILE
+
+		if (attachmentType === AttachmentType.IMAGE && !file.mimeType.startsWith('image/')) {
+			attachmentType = AttachmentType.FILE
+		} else if (attachmentType === AttachmentType.VIDEO && !file.mimeType.startsWith('video/')) {
+			attachmentType = AttachmentType.FILE
+		}
+
+		const sequenceId = await this.prisma.message.count({
+			where: {
+				OR: [
+					{ chatId: chatId, senderId: userId },
+					{ chatId: userId, senderId: chatId }
+				]
 			}
-
-			const sequenceId = await tx.message.count({
-				where: {
-					OR: [
-						{ chatId: chatId, senderId: userId },
-						{ chatId: userId, senderId: chatId }
-					]
-				}
-			})
-
-			const message = await tx.message.create({
-				data: {
-					sequenceId: sequenceId + 1,
-					chatId,
-					text: dto.text,
-					sendTime: Date.now(),
-					senderId: userId,
-					messageType: MessageType.TEXT,
-					encryptionKeyVersion: this.encryption.currentVersion,
-					attachments: {
-						create: {
-							fileId: dto.fileId,
-							type: attachmentType
-						}
-					}
-				},
-				include: { attachments: { include: { file: true } } }
-			})
-
-			const messageInstance = plainToInstance(MessageResponseDto, {
-				...message,
-				attachments: message.attachments.map((f) => plainToInstance(MessageAttachmentDto, { ...f.file, fileId: f.fileId, type: f.type })),
-				messageType: MessageType.TEXT
-			})
-
-			await this.notifyRecipients(userId, chatId, messageInstance)
-
-			return messageInstance
 		})
+
+		const message = await this.prisma.message.create({
+			data: {
+				sequenceId: sequenceId + 1,
+				chatId,
+				text: dto.text,
+				sendTime: Date.now(),
+				senderId: userId,
+				messageType: MessageType.TEXT,
+				encryptionKeyVersion: this.encryption.currentVersion,
+				attachments: {
+					create: {
+						fileId: dto.fileId,
+						type: attachmentType
+					}
+				}
+			},
+			include: { attachments: { include: { file: true } } }
+		})
+
+		const messageInstance = plainToInstance(MessageResponseDto, {
+			...message,
+			attachments: message.attachments.map((f) => plainToInstance(MessageAttachmentDto, { ...f.file, fileId: f.fileId, type: f.type })),
+			messageType: MessageType.TEXT
+		})
+
+		this.notifyRecipients(userId, chatId, messageInstance)
+
+		return messageInstance
 	}
 
 	async getFileDownloadUrl(
@@ -210,19 +113,19 @@ export class MessagesService {
 		messageId: number,
 		fileId: string
 	): Promise<FileDownloadDto> {
-		return this.withChat(userId, chatId, async () => {
-			const message = await this.prisma.message.findFirst({
-				where: { id: messageId, chatId },
-				include: { attachments: true }
-			})
+		this.chatsService.create(userId, chatId)
 
-			if (!message) throw new NotFoundException('Message not found')
-
-			const file = message.attachments.find((f) => f.fileId === fileId)
-			if (!file) throw new NotFoundException('File not found in this message')
-
-			return this.storageService.getDownloadUrl(fileId)
+		const message = await this.prisma.message.findFirst({
+			where: { id: messageId, chatId },
+			include: { attachments: true }
 		})
+
+		if (!message) throw new NotFoundException('Message not found')
+
+		const file = message.attachments.find((f) => f.fileId === fileId)
+		if (!file) throw new NotFoundException('File not found in this message')
+
+		return this.storageService.getDownloadUrl(fileId)
 	}
 
 	async getAll(
@@ -406,22 +309,6 @@ export class MessagesService {
 			this.realtimeGateway.sendToChat(chatId, SocketEvent.HISTORY_CLEAR, payload)
 			this.realtimeGateway.sendToUsersExceptChat(targets, chatId, SocketEvent.HISTORY_CLEAR, payload)
 		}
-	}
-
-	private async withChat<T>(
-		userId: UserId,
-		chatId: ChatId,
-		fn: (tx: Prisma.TransactionClient) => Promise<T>
-	): Promise<T> {
-		return await this.prisma.$transaction(async (tx) => {
-			await this.chatsService.create(tx, userId, chatId)
-
-			if (detectChatType(chatId) === ChatType.PRIVATE) {
-				await this.chatsService.create(tx, UserId(BigInt(chatId)), ChatId(userId))
-			}
-
-			return fn(tx)
-		})
 	}
 
 	private async notifyRecipients(
