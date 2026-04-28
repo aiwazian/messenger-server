@@ -108,19 +108,19 @@ export class ChannelsService {
 		}
 	}
 
-	async update(id: ChannelId, dto: UpdateChannelDto, userId: UserId): Promise<ChannelResponseDto> {
-		const channel = await this.prisma.channel.findUnique({ where: { id } })
-		if (!channel) throw new NotFoundException('Channel not found')
+	async update(id: ChannelId, dto: UpdateChannelDto): Promise<ChannelResponseDto> {
+		const exitingChannel = await this.prisma.channel.findUnique({ where: { id } })
+		if (!exitingChannel) throw new NotFoundException('Channel not found')
 
-		if (dto.username && dto.username !== channel.username) {
+		if (dto.username && dto.username !== exitingChannel.username) {
 			const isAvailable = await this.searchService.isUsernameAvailable(dto.username)
 			if (!isAvailable) throw new ConflictException('Username is already taken')
 		}
 
-		const channelType = dto.channelType ?? channel.channelType
-		const username = channelType === ChannelType.PRIVATE ? null : (dto.username ?? channel.username)
+		const channelType = dto.channelType ?? exitingChannel.channelType
+		const username = channelType === ChannelType.PRIVATE ? null : (dto.username ?? exitingChannel.username)
 
-		await this.prisma.channel.update({
+		const channel = await this.prisma.channel.update({
 			where: { id },
 			data: {
 				name: dto.name,
@@ -129,7 +129,7 @@ export class ChannelsService {
 				username
 			}
 		})
-		return this.getById(id, userId)
+		return plainToInstance(ChannelResponseDto, channel)
 	}
 
 	async join(channelId: ChannelId, userId: UserId): Promise<void> {

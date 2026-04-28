@@ -75,10 +75,9 @@ export class GroupsController {
 	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
 	update(
 		@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId,
-		@Body() dto: UpdateGroupDto,
-		@CurrentUserId() userId: UserId
+		@Body() dto: UpdateGroupDto
 	) {
-		return this.groupsService.update(id, dto, userId)
+		return this.groupsService.update(id, dto)
 	}
 
 	@HttpCode(204)

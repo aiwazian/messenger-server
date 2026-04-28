@@ -97,7 +97,7 @@ export class GroupsService {
 		})
 	}
 
-	async update(id: GroupId, dto: UpdateGroupDto, userId: UserId): Promise<GroupResponseDto> {
+	async update(id: GroupId, dto: UpdateGroupDto): Promise<GroupResponseDto> {
 		const existingGroup = await this.prisma.group.findUnique({ where: { id } })
 
 		if (dto.username && dto.username !== existingGroup?.username) {

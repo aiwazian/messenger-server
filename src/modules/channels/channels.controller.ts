@@ -26,7 +26,7 @@ import { ParseUserIdPipe } from '../../common/pipes/parse-user-id.pipe'
 @Controller('channels')
 @UseGuards(AuthGuard)
 export class ChannelsController {
-	constructor(private readonly channelsService: ChannelsService) {}
+	constructor(private readonly channelsService: ChannelsService) { }
 
 	@Post()
 	createChannel(@CurrentUserId() userId: UserId, @Body() dto: CreateChannelDto) {
@@ -57,10 +57,9 @@ export class ChannelsController {
 	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
 	updateChannel(
 		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
-		@Body() dto: UpdateChannelDto,
-		@CurrentUserId() userId: UserId
+		@Body() dto: UpdateChannelDto
 	) {
-		return this.channelsService.update(id, dto, userId)
+		return this.channelsService.update(id, dto)
 	}
 
 	@HttpCode(204)
