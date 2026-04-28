@@ -255,9 +255,11 @@ export class MessagesService {
 		const chatType = detectChatType(chatId)
 		const isDirect = chatType === ChatType.PRIVATE
 
-		const files = await this.prisma.file.findMany({ where: {} })
-		for (const file of files) {
-			await this.storageService.deleteFile(file.id)
+		const attachments = await this.prisma.messageAttachment.findMany({
+			where: { messageId: messageId }
+		})
+		for (const attachment of attachments) {
+			await this.storageService.deleteFile(attachment.fileId)
 		}
 		await this.prisma.message.delete({ where: { id: messageId } })
 
