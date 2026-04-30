@@ -7,7 +7,8 @@ import {
 	UseGuards,
 	ParseIntPipe,
 	Query,
-	Delete
+	Delete,
+	Headers
 } from '@nestjs/common'
 import { MessagesService } from './messages.service'
 import { TextMessageDto } from './dto/text-message.dto'
@@ -34,20 +35,11 @@ export class MessagesController {
 	sendMessage(
 		@Param('chatId', ParseChatIdPipe) chatId: ChatId,
 		@Body() dto: TextMessageDto,
-		@CurrentUserId() userId: UserId
+		@CurrentUserId() userId: UserId,
+		@Headers('x-socket-id') socketId: string
 	) {
-		return this.messagesService.sendTextMessage(userId, chatId, dto)
+		return this.messagesService.sendTextMessage(userId, chatId, dto, socketId)
 	}
-
-	// @Post('media')
-	// @UseGuards(CanSendMessageGuard)
-	// sendMediaMessage(
-	// 	@Param('chatId', ParseChatIdPipe) chatId: ChatId,
-	// 	@Body() dto: MediaMessageDto,
-	// 	@CurrentUserId() userId: UserId
-	// ) {
-	// 	return this.messagesService.sendMediaMessage(userId, chatId, dto)
-	// }
 
 	@Post('files/init')
 	@UseGuards(CanSendMessageGuard)
@@ -64,9 +56,10 @@ export class MessagesController {
 	confirmFileUpload(
 		@Param('chatId', ParseChatIdPipe) chatId: ChatId,
 		@Body() dto: FileConfirmDto,
-		@CurrentUserId() userId: UserId
+		@CurrentUserId() userId: UserId,
+		@Headers('x-socket-id') socketId: string
 	) {
-		return this.messagesService.confirmFileUpload(userId, chatId, dto)
+		return this.messagesService.confirmFileUpload(userId, chatId, dto, socketId)
 	}
 
 	@Get(':messageId/files/:fileId/download')

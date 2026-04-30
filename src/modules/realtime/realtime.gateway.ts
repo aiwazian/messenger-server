@@ -154,13 +154,21 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		}
 	}
 
-	sendToUser(userId: UserId, event: SocketEventType, message: any): void {
-		this.server.in(`user:${userId.toString()}`).emit(event, this.prepareData(message))
+	sendToUser(userId: UserId, event: SocketEventType, message: any, excludeId?: string): void {
+		if (excludeId) {
+			this.server.in(`user:${userId.toString()}`).except(excludeId).emit(event, this.prepareData(message))
+		} else {
+			this.server.in(`user:${userId.toString()}`).emit(event, this.prepareData(message))
+		}
 		this.logger.debug(`Sent message to user ${userId.toString()}:`)
 	}
 
-	sendToChat(chatId: ChatId, event: SocketEventType, message: any): void {
-		this.server.in(`chat:${chatId.toString()}`).emit(event, this.prepareData(message))
+	sendToChat(chatId: ChatId, event: SocketEventType, message: any, excludeId?: string): void {
+		if (excludeId) {
+			this.server.in(`chat:${chatId.toString()}`).except(excludeId).emit(event, this.prepareData(message))
+		} else {
+			this.server.in(`chat:${chatId.toString()}`).emit(event, this.prepareData(message))
+		}
 		this.logger.debug(`Sent message to user ${chatId.toString()}:`)
 	}
 
@@ -168,11 +176,16 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		userIds: UserId[],
 		chatId: ChatId,
 		event: SocketEventType,
-		message: any
+		message: any,
+		excludeSocketId?: string
 	): void {
 		const userRooms = userIds.map((id) => `user:${id.toString()}`)
 		const chatRoom = `chat:${chatId.toString()}`
-		this.server.to(userRooms).except(chatRoom).emit(event, this.prepareData(message))
+		if (excludeSocketId) {
+			this.server.to(userRooms).except([chatRoom, excludeSocketId]).emit(event, this.prepareData(message))
+		} else {
+			this.server.to(userRooms).except(chatRoom).emit(event, this.prepareData(message))
+		}
 	}
 
 	isUserOnline(userId: UserId): boolean {

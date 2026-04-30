@@ -35,10 +35,10 @@ export class MessagesService {
 		private readonly sendMessageUseCase: SendMessageUseCase
 	) { }
 
-	async sendTextMessage(senderId: UserId, chatId: ChatId, dto: TextMessageDto): Promise<MessageResponseDto> {
+	async sendTextMessage(senderId: UserId, chatId: ChatId, dto: TextMessageDto, excludeSocketId: string): Promise<MessageResponseDto> {
 		const sentMessage = await this.sendMessageUseCase.execute(senderId, chatId, dto)
 
-		this.notifyRecipients(senderId, chatId, sentMessage)
+		this.notifyRecipients(senderId, chatId, sentMessage, excludeSocketId)
 
 		return sentMessage
 	}
@@ -51,7 +51,8 @@ export class MessagesService {
 	async confirmFileUpload(
 		userId: UserId,
 		chatId: ChatId,
-		dto: FileConfirmDto
+		dto: FileConfirmDto,
+		excludeSocketId: string
 	): Promise<MessageResponseDto> {
 		this.chatsService.create(userId, chatId)
 
@@ -112,7 +113,7 @@ export class MessagesService {
 			messageType: MessageType.TEXT
 		})
 
-		this.notifyRecipients(userId, chatId, messageInstance)
+		this.notifyRecipients(userId, chatId, messageInstance, excludeSocketId)
 
 		return messageInstance
 	}
@@ -319,14 +320,15 @@ export class MessagesService {
 		} else {
 			const payload = { chatId: chatId.toString() }
 			this.realtimeGateway.sendToChat(chatId, SocketEvent.HISTORY_CLEAR, payload)
-			this.realtimeGateway.sendToUsersExceptChat(targets, chatId, SocketEvent.HISTORY_CLEAR, payload)
+			this.realtimeGateway.sendToUsersExceptChat(targets, chatId, SocketEvent.HISTORY_CLEAR, payload, undefined)
 		}
 	}
 
 	private async notifyRecipients(
 		senderUserId: UserId,
 		chatId: ChatId,
-		message: MessageResponseDto
+		message: MessageResponseDto,
+		excludeSocketId: string
 	): Promise<void> {
 		const chatType = detectChatType(chatId)
 		const recipients = await this.getRecipients(senderUserId, chatId, chatType)
@@ -344,13 +346,13 @@ export class MessagesService {
 		}
 
 		if (BigInt(chatId) === BigInt(senderUserId)) {
-			this.realtimeGateway.sendToUser(senderUserId, SocketEvent.MESSAGE_NEW, message)
+			this.realtimeGateway.sendToUser(senderUserId, SocketEvent.MESSAGE_NEW, message, excludeSocketId)
 		} else {
-			this.realtimeGateway.sendToChat(chatId, SocketEvent.MESSAGE_NEW, message)
+			this.realtimeGateway.sendToChat(chatId, SocketEvent.MESSAGE_NEW, message, excludeSocketId)
 		}
 
 		if (online.length > 0) {
-			this.realtimeGateway.sendToUsersExceptChat(online, chatId, SocketEvent.MESSAGE_NEW, message)
+			this.realtimeGateway.sendToUsersExceptChat(online, chatId, SocketEvent.MESSAGE_NEW, message, excludeSocketId)
 		}
 
 		if (offline.length > 0) {
