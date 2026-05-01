@@ -5,19 +5,38 @@ import { SearchQueryDto, SearchType } from './dto/search-query.dto'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { ChatId } from '../../common/types/chat-id.type'
 import { ChannelType, GroupType } from '../../../generated/prisma/enums'
+import { ContentModerationService } from '../security/content-moderation.service'
 
 @Injectable()
 export class SearchService {
-	constructor(private readonly prisma: PrismaService) { }
+	constructor(
+		private readonly prisma: PrismaService,
+		private readonly moderation: ContentModerationService
+	) { }
 
 	async isUsernameAvailable(username: string): Promise<boolean> {
-		const [userCount, groupCount, channelCount] = await Promise.all([
-			this.prisma.user.count({ where: { username } }),
-			this.prisma.group.count({ where: { username } }),
-			this.prisma.channel.count({ where: { username } })
-		])
+		const isAllowed = await this.moderation.isAllowed(username)
+		if (!isAllowed) return false
 
-		return userCount === 0 && groupCount === 0 && channelCount === 0
+		const userExists = await this.prisma.user.findFirst({
+			where: { username },
+			select: { id: true }
+		})
+		if (userExists) return false;
+
+		const groupExists = await this.prisma.group.findFirst({
+			where: { username },
+			select: { id: true }
+		})
+		if (groupExists) return false
+
+		const channelExists = await this.prisma.channel.findFirst({
+			where: { username },
+			select: { id: true }
+		})
+		if (channelExists) return false
+
+		return true
 	}
 
 	async search(dto: SearchQueryDto, userId: bigint): Promise<SearchResponseDto[]> {
@@ -35,13 +54,7 @@ export class SearchService {
 
 		const [users, channels, groups] = await Promise.all([
 			this.prisma.user.findMany({
-				where: {
-					OR: [
-						{ firstName: { contains: query } },
-						{ lastName: { contains: query } },
-						{ username: { contains: query } }
-					]
-				},
+				where: { username: { contains: query } },
 				take: limit,
 				skip: offset
 			}),
@@ -49,7 +62,7 @@ export class SearchService {
 				where: {
 					AND: [
 						{
-							OR: [{ name: { contains: query } }, { username: { contains: query } }]
+							OR: [{ username: { contains: query } }]
 						},
 						{
 							OR: [
@@ -72,10 +85,14 @@ export class SearchService {
 				where: {
 					AND: [
 						{
-							OR: [{ name: { contains: query } }, { username: { contains: query } }]
+							OR: [{ username: { contains: query } }]
 						},
 						{
-							OR: [{ groupType: GroupType.PUBLIC }, { ownerId: userId }, { members: { some: { userId } } }]
+							OR: [
+								{ groupType: GroupType.PUBLIC },
+								{ ownerId: userId },
+								{ members: { some: { userId } } }
+							]
 						},
 						{
 							NOT: {
@@ -109,7 +126,7 @@ export class SearchService {
 
 		const combined = [...userResults, ...channelResults, ...groupResults]
 
-		return plainToInstance(SearchResponseDto, combined.slice(0, limit))
+		return plainToInstance(SearchResponseDto, combined.slice(offset, offset + limit))
 	}
 
 	private async searchFiles(dto: SearchQueryDto, userId: bigint): Promise<SearchResponseDto[]> {
