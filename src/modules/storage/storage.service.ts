@@ -175,14 +175,23 @@ export class StorageService {
 	}
 
 	async initUserAvatarUpload(name: string, size: number, mimeType: string): Promise<InitUploadDto> {
+		if (!['image/png', 'image/jpeg', 'image/jpg'].includes(mimeType)) {
+			throw new Error('Invalid mime type')
+		}
 		return this.initUpload(name, size, mimeType, FileType.USER_AVATAR)
 	}
 
 	async initChannelAvatarUpload(name: string, size: number, mimeType: string): Promise<InitUploadDto> {
+		if (!['image/png', 'image/jpeg', 'image/jpg'].includes(mimeType)) {
+			throw new Error('Invalid mime type')
+		}
 		return this.initUpload(name, size, mimeType, FileType.CHANNEL_AVATAR)
 	}
 
 	async initGroupAvatarUpload(name: string, size: number, mimeType: string): Promise<InitUploadDto> {
+		if (!['image/png', 'image/jpeg', 'image/jpg'].includes(mimeType)) {
+			throw new Error('Invalid mime type')
+		}
 		return this.initUpload(name, size, mimeType, FileType.GROUP_AVATAR)
 	}
 }

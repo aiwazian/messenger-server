@@ -105,12 +105,18 @@ export class UsersService {
 	async getById(id: UserId, currentUserId?: UserId): Promise<UserResponseDto> {
 		const user = await this.prisma.user.findUnique({
 			where: { id: id },
-			include: { privacySettings: true }
+			include: {
+				privacySettings: true,
+				photos: {
+					orderBy: { sortOrder: 'asc' }
+				}
+			}
 		})
 
 		if (!user) throw new NotFoundException('User not found')
 
 		const response = plainToInstance(UserResponseDto, user)
+		response.avatars = user.photos.map(p => ({ fileId: p.fileId, sortOrder: p.sortOrder }))
 
 		if (currentUserId && currentUserId !== id) {
 			const privacy = user.privacySettings
@@ -167,6 +173,39 @@ export class UsersService {
 			}
 		})
 		return plainToInstance(PrivacySettingsDto, settings)
+	}
+
+	async confirmUploadAvatar(userId: UserId, fileId: string): Promise<void> {
+		const file = await this.prisma.file.findFirst({
+			where: { id: fileId }
+		})
+
+		if (file == null) {
+			throw new NotFoundException('File not found')
+		}
+
+		await this.storageService.confirmUpload(fileId)
+
+		await this.prisma.userPhoto.create({
+			data: {
+				userId: userId,
+				fileId: file.id,
+				isCurrent: true,
+				uploadedAt: Date.now()
+			}
+		})
+	}
+
+	async deleteAvatar(userId: UserId, fileId: string): Promise<void> {
+		const photo = await this.prisma.userPhoto.findFirst({
+			where: { userId, fileId }
+		})
+		if (!photo) throw new NotFoundException('Avatar not found')
+
+		await this.prisma.userPhoto.delete({
+			where: { fileId }
+		})
+		await this.storageService.deleteFile(fileId)
 	}
 
 	async isExists(id: UserId): Promise<boolean> {

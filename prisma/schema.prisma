@@ -85,6 +85,7 @@ model UserPhoto {
     fileId     String  @unique
     isCurrent  Boolean @default(false)
     uploadedAt BigInt
+    sortOrder  Int     @default(0)
 
     user User @relation(fields: [userId], references: [id], onDelete: Cascade)
     file File @relation(fields: [fileId], references: [id], onDelete: Cascade)

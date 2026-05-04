@@ -8,7 +8,8 @@ import {
 	Request,
 	HttpCode,
 	HttpStatus,
-	Delete
+	Delete,
+	Post
 } from '@nestjs/common'
 import { UsersService } from './users.service'
 import { UpdateUserDto } from './dto/update-user.dto'
@@ -24,11 +25,14 @@ import { UserExistsGuard } from '../../common/guards/user-exists.guard'
 import { PARAMS } from '../../common/constants/param.constants'
 import { PrivacyGuard } from '../../common/guards/privacy.guard'
 import { ParseUserIdPipe } from '../../common/pipes/parse-user-id.pipe'
+import { StorageService } from '../storage/storage.service'
+import { FileInitDto } from '../messages/dto/file-init.dto'
+import { InitUploadDto } from '../storage/dto/init-upload.dto'
 
 @Controller('users')
 @UseGuards(AuthGuard)
 export class UsersController {
-	constructor(private readonly usersService: UsersService) {}
+	constructor(private readonly usersService: UsersService, private readonly storage: StorageService) { }
 
 	@Delete('me')
 	@HttpCode(HttpStatus.NO_CONTENT)
@@ -63,6 +67,25 @@ export class UsersController {
 		@Body() dto: UpdatePrivacySettingsDto
 	): Promise<PrivacySettingsDto> {
 		return this.usersService.updatePrivacySettings(userId, dto)
+	}
+
+	@Post('me/avatar/init')
+	initFileUpload(@Body() dto: FileInitDto): Promise<InitUploadDto> {
+		return this.storage.initUserAvatarUpload(dto.name, dto.size, dto.mimeType)
+	}
+
+	@Post('me/avatar/confirm/:fileId')
+	confirmFileUpload(
+		@Param('fileId') fileId: string,
+		@CurrentUserId() userId: UserId
+	) {
+		return this.usersService.confirmUploadAvatar(userId, fileId)
+	}
+
+	@Delete('me/avatars/:fileId')
+	@HttpCode(HttpStatus.NO_CONTENT)
+	deleteAvatar(@CurrentUserId() userId: UserId, @Param('fileId') fileId: string): Promise<void> {
+		return this.usersService.deleteAvatar(userId, fileId)
 	}
 
 	@Get(`:${PARAMS.USER_ID}`)

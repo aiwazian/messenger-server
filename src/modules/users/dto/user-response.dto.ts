@@ -29,4 +29,7 @@ export class UserResponseDto {
 	@Expose()
 	@OmitNull()
 	lastSeen?: number
+
+	@Expose()
+	avatars: { fileId: string; sortOrder: number }[]
 }
