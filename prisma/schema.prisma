@@ -84,7 +84,6 @@ model UserPhoto {
     userId     BigInt
     fileId     String  @unique
     isCurrent  Boolean @default(false)
-    uploadedAt BigInt
     sortOrder  Int     @default(0)
 
     user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -237,7 +236,6 @@ model ChannelPhoto {
     channelId  BigInt
     fileId     String  @unique
     isCurrent  Boolean @default(false)
-    uploadedAt BigInt
 
     channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
     file    File    @relation(fields: [fileId], references: [id], onDelete: Cascade)
@@ -312,7 +310,6 @@ model GroupPhoto {
     groupId    BigInt
     fileId     String  @unique
     isCurrent  Boolean @default(false)
-    uploadedAt BigInt
 
     group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
     file  File  @relation(fields: [fileId], references: [id], onDelete: Cascade)

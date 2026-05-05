@@ -28,6 +28,7 @@ import { ParseUserIdPipe } from '../../common/pipes/parse-user-id.pipe'
 import { StorageService } from '../storage/storage.service'
 import { FileInitDto } from '../messages/dto/file-init.dto'
 import { InitUploadDto } from '../storage/dto/init-upload.dto'
+import { FileDownloadDto } from '../messages/dto/file-download.dto'
 
 @Controller('users')
 @UseGuards(AuthGuard)
@@ -86,6 +87,11 @@ export class UsersController {
 	@HttpCode(HttpStatus.NO_CONTENT)
 	deleteAvatar(@CurrentUserId() userId: UserId, @Param('fileId') fileId: string): Promise<void> {
 		return this.usersService.deleteAvatar(userId, fileId)
+	}
+
+	@Get('avatars/:fileId')
+	async getAvatarDownloadUrl(@Param('fileId') fileId: string): Promise<FileDownloadDto> {
+		return this.storage.getDownloadUrl(fileId)
 	}
 
 	@Get(`:${PARAMS.USER_ID}`)

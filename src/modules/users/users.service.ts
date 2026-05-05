@@ -2,7 +2,6 @@ import {
 	ConflictException,
 	Injectable,
 	NotFoundException,
-	UnauthorizedException,
 	ForbiddenException,
 	Inject,
 	forwardRef
@@ -108,7 +107,7 @@ export class UsersService {
 			include: {
 				privacySettings: true,
 				photos: {
-					orderBy: { sortOrder: 'asc' }
+					orderBy: [{ sortOrder: 'asc' }]
 				}
 			}
 		})
@@ -186,12 +185,18 @@ export class UsersService {
 
 		await this.storageService.confirmUpload(fileId)
 
+		const lastPhoto = await this.prisma.userPhoto.findFirst({
+			where: { userId },
+			orderBy: [{ sortOrder: 'desc' }, { id: 'desc' }]
+		})
+		const nextSortOrder = lastPhoto ? lastPhoto.sortOrder + 1 : 0
+
 		await this.prisma.userPhoto.create({
 			data: {
 				userId: userId,
 				fileId: file.id,
 				isCurrent: true,
-				uploadedAt: Date.now()
+				sortOrder: nextSortOrder
 			}
 		})
 	}
