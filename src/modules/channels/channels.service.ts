@@ -14,7 +14,6 @@ import { RealtimeGateway } from '../realtime/realtime.gateway'
 import { ChatResponseDto } from '../chats/dto/chat-response.dto'
 import { MessageResponseDto } from '../messages/dto/message-response.dto'
 import { SearchService } from '../search/search.service'
-import { InviteLinksService } from '../invites/invite-links.service'
 import { UserResponseDto } from '../users/dto/user-response.dto'
 import { ConfigService } from '@nestjs/config'
 import { IsBannedDto } from './dto/is-banned.dto'
@@ -36,76 +35,57 @@ export class ChannelsService {
 		private readonly chatsService: ChatsService,
 		private readonly realtimeGateway: RealtimeGateway,
 		private readonly searchService: SearchService,
-		private readonly inviteLinksService: InviteLinksService,
 		private readonly encryption: EncryptionService
 	) { }
 
 	async create(ownerId: UserId, dto: CreateChannelDto): Promise<ChannelResponseDto> {
-		if (dto.username && dto.channelType === ChannelType.PUBLIC) {
-			const isAvailable = await this.searchService.isUsernameAvailable(dto.username)
-			if (!isAvailable) throw new ConflictException('Username is already taken')
-		}
-
 		const channelId = generateChannelId()
 
-		try {
-			const channel = await this.prisma.$transaction(async (tx) => {
-				const channel = await tx.channel.create({
-					data: {
-						id: channelId,
-						name: dto.name,
-						bio: dto.bio,
-						ownerId,
-						channelType: dto.channelType,
-						username: dto.channelType === ChannelType.PUBLIC ? dto.username : null,
-						subscribers: {
-							create: {
-								userId: ownerId
-							}
-						}
+		const channel = await this.prisma.channel.create({
+			data: {
+				id: channelId,
+				name: dto.name,
+				bio: dto.bio,
+				ownerId: ownerId,
+				channelType: ChannelType.PRIVATE,
+				username: null,
+				subscribers: {
+					create: {
+						userId: ownerId
 					}
-				})
-
-				await this.chatsService.create(ownerId, ChatId(channel.id))
-
-				await tx.message.create({
-					data: {
-						chatId: channel.id,
-						text: null,
-						sendTime: Date.now(),
-						sequenceId: BigInt(Date.now()),
-						senderId: ownerId,
-						messageType: MessageType.SYSTEM,
-						encryptionKeyVersion: this.encryption.currentVersion,
-						systemEvent: {
-							create: {
-								eventType: SystemEventType.CHANNEL_CREATED
-							}
-						}
-					}
-				})
-
-				return channel
-			})
-
-			const chatPayload = plainToInstance(ChatResponseDto, {
-				id: channel.id.toString(),
-				name: channel.name,
-				isPinned: false,
-				lastMessage: null
-			})
-
-			this.realtimeGateway.sendToUser(ownerId, SocketEvent.CHAT_NEW, chatPayload)
-
-			return this.getById(ChannelId(channel.id), ownerId)
-		} catch (e) {
-			if (e instanceof Prisma.PrismaClientKnownRequestError) {
-				if (e.code === 'P2002') {
-					throw new ConflictException('Username already exists')
 				}
 			}
-			throw e
-		}
+		})
+
+		await this.chatsService.create(ownerId, ChatId(channel.id))
+
+		await this.prisma.message.create({
+			data: {
+				chatId: channel.id,
+				text: null,
+				sendTime: Date.now(),
+				sequenceId: BigInt(Date.now()),
+				senderId: ownerId,
+				messageType: MessageType.SYSTEM,
+				encryptionKeyVersion: this.encryption.currentVersion,
+				systemEvent: {
+					create: {
+						eventType: SystemEventType.CHANNEL_CREATED
+					}
+				}
+			}
+		})
+
+		const chatPayload = plainToInstance(ChatResponseDto, {
+			id: channel.id,
+			name: channel.name,
+			isPinned: false,
+			lastMessage: null
+		})
+
+		this.realtimeGateway.sendToUser(ownerId, SocketEvent.CHAT_NEW, chatPayload)
+
+		return this.getById(ChannelId(channel.id), ownerId)
 	}
 
 	async update(id: ChannelId, dto: UpdateChannelDto): Promise<ChannelResponseDto> {
@@ -145,26 +125,23 @@ export class ChannelsService {
 		})
 		if (isBanned) throw new BadRequestException('You are banned from this channel')
 
-		this.prisma.$transaction(async (tx) => {
-			const existingMember = await tx.channelSubscriber.findUnique({
-				where: { userId_channelId: { userId, channelId } }
-			})
-			if (existingMember) return
+		const existingMember = await this.prisma.channelSubscriber.findUnique({
+			where: { userId_channelId: { userId, channelId } }
+		})
+		if (existingMember) return 
 
-			tx.channelSubscriber.create({
-				data: { channelId, userId }
-			})
-
-			this.chatsService.create(userId, ChatId(channelId))
+		await this.prisma.channelSubscriber.create({
+			data: { channelId, userId }
 		})
 
+		this.chatsService.create(userId, ChatId(channelId))
 		const lastMessage = await this.prisma.message.findFirst({
 			where: { chatId: channelId },
 			orderBy: { sendTime: 'desc' }
 		})
 
 		const chatPayload = plainToInstance(ChatResponseDto, {
-			id: channel.id.toString(),
+			id: channel.id,
 			name: channel.name,
 			isPinned: false,
 			lastMessage: plainToInstance(MessageResponseDto, lastMessage)
@@ -249,20 +226,13 @@ export class ChannelsService {
 		if (!channel) throw new NotFoundException('Channel not found')
 
 		const isOwner = channel.ownerId == userId
-		const inviteLinkCode = await this.inviteLinksService.getLinkForChannel(channelId)
-
-		const inviteLink = inviteLinkCode
-			? `https://${this.config.get('SHORT_URL_DOMAIN')}/+${inviteLinkCode}`
-			: null
 
 		return plainToInstance(ChannelResponseDto, {
 			...channel,
-			id: channel.id.toString(),
 			isSubscribed: channel.subscribers.length > 0,
 			isOwner,
-			subscribers: channel._count.subscribers.toString(),
-			removedUser: channel._count.blockedUsers.toString(),
-			inviteLink: inviteLink
+			subscribers: channel._count.subscribers,
+			removedUser: channel._count.blockedUsers
 		})
 	}
 

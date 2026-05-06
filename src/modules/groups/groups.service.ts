@@ -34,54 +34,45 @@ export class GroupsService {
 	) { }
 
 	async create(ownerId: UserId, dto: CreateGroupDto): Promise<GroupResponseDto> {
-		if (dto.username) {
-			const isAvailable = await this.searchService.isUsernameAvailable(dto.username)
-			if (!isAvailable) throw new ConflictException('Username is already taken')
-		}
-
 		const groupId = generateGroupId()
 
-		const group = await this.prisma.$transaction(async (tx) => {
-			const group = await tx.group.create({
-				data: {
-					id: groupId,
-					name: dto.name,
-					username: dto.username,
-					ownerId,
-					bio: dto.bio,
-					groupType: dto.groupType || GroupType.PRIVATE,
-					members: {
-						create: {
-							userId: ownerId
-						}
+		const group = await this.prisma.group.create({
+			data: {
+				id: groupId,
+				name: dto.name,
+				bio: dto.bio,
+				ownerId: ownerId,
+				groupType: GroupType.PRIVATE,
+				username: null,
+				members: {
+					create: {
+						userId: ownerId
 					}
 				}
-			})
+			}
+		})
 
-			await this.chatsService.create(ownerId, ChatId(group.id))
+		await this.chatsService.create(ownerId, ChatId(group.id))
 
-			await tx.message.create({
-				data: {
-					chatId: group.id,
-					text: null,
-					sendTime: Date.now(),
-					sequenceId: BigInt(Date.now()),
-					senderId: ownerId,
-					messageType: MessageType.SYSTEM,
-					encryptionKeyVersion: this.encryption.currentVersion,
-					systemEvent: {
-						create: {
-							eventType: SystemEventType.GROUP_CREATED
-						}
+		await this.prisma.message.create({
+			data: {
+				chatId: group.id,
+				text: null,
+				sendTime: Date.now(),
+				sequenceId: BigInt(Date.now()),
+				senderId: ownerId,
+				messageType: MessageType.SYSTEM,
+				encryptionKeyVersion: this.encryption.currentVersion,
+				systemEvent: {
+					create: {
+						eventType: SystemEventType.GROUP_CREATED
 					}
 				}
-			})
-
-			return group
+			}
 		})
 
 		const chatPayload = plainToInstance(ChatResponseDto, {
-			id: group.id.toString(),
+			id: group.id,
 			name: group.name,
 			isPinned: false,
 			lastMessage: null
@@ -129,15 +120,13 @@ export class GroupsService {
 		})
 		if (isBanned) throw new BadRequestException('You are banned from this group')
 
-		this.prisma.$transaction(async (tx) => {
-			const existingMember = await tx.groupMember.findUnique({
-				where: { groupId_userId: { groupId: id, userId } }
-			})
-			if (existingMember) return
-
-			tx.groupMember.create({ data: { groupId: id, userId } })
-			this.chatsService.create(userId, ChatId(id))
+		const existingMember = await this.prisma.groupMember.findUnique({
+			where: { groupId_userId: { groupId: id, userId } }
 		})
+		if (existingMember) return
+
+		await this.prisma.groupMember.create({ data: { groupId: id, userId } })
+		this.chatsService.create(userId, ChatId(id))
 	}
 
 	async leave(id: GroupId, userId: UserId): Promise<void> {
@@ -195,17 +184,19 @@ export class GroupsService {
 		this.realtimeGateway.sendToUser(targetUserId, SocketEvent.CHAT_REMOVED, { chatId: id })
 	}
 
-	async getById(id: GroupId, userId?: UserId): Promise<GroupResponseDto> {
+	async getById(id: GroupId, userId: UserId): Promise<GroupResponseDto> {
 		const group = await this.prisma.group.findUnique({
 			where: { id },
 			include: {
 				_count: { select: { members: true } },
-				members: userId ? { where: { userId }, select: { userId: true } } : undefined
+				members: {
+					where: { userId: userId },
+					select: { userId: true }
+				}
 			}
 		})
 
 		if (!group) throw new NotFoundException('Group not found')
-
 
 		const isMember = userId ? group.members.length > 0 : false
 		const isOwner = userId ? group.ownerId === userId : false

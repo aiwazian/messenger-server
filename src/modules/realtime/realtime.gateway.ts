@@ -169,7 +169,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		} else {
 			this.server.in(`chat:${chatId.toString()}`).emit(event, this.prepareData(message))
 		}
-		this.logger.debug(`Sent message to user ${chatId.toString()}:`)
+		this.logger.debug(`Sent message to chat ${chatId.toString()}:`)
 	}
 
 	sendToUsersExceptChat(
