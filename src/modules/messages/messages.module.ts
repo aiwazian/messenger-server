@@ -16,4 +16,4 @@ import { PrismaService } from '../../providers/prisma/prisma.service'
 	providers: [MessagesService, EncryptionService, SendMessageUseCase, PrismaService],
 	exports: [MessagesService]
 })
-export class MessagesModule { }
+export class MessagesModule {}

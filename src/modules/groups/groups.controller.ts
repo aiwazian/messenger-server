@@ -4,6 +4,7 @@ import {
 	Delete,
 	Get,
 	HttpCode,
+	HttpStatus,
 	Param,
 	Patch,
 	Post,
@@ -24,11 +25,14 @@ import { GroupId } from '../../common/types/group-id.type'
 import { CanReadChatGuard } from '../../common/guards/can-read-chat.guard'
 import { GroupOwnerGuard } from '../../common/guards/group-owner.guard'
 import { ParseUserIdPipe } from '../../common/pipes/parse-user-id.pipe'
+import { ParseIntPipe } from '@nestjs/common'
+import { CreateInviteLinkDto } from '../../common/dtos/create-invite-link.dto'
+import { UpdateInviteLinkDto } from '../../common/dtos/update-invite-link.dto'
 
 @Controller('groups')
 @UseGuards(AuthGuard)
 export class GroupsController {
-	constructor(private readonly groupsService: GroupsService) { }
+	constructor(private readonly groupsService: GroupsService) {}
 
 	@Post()
 	createGroup(@CurrentUserId() userId: UserId, @Body() dto: CreateGroupDto) {
@@ -73,18 +77,15 @@ export class GroupsController {
 
 	@Patch(`:${PARAMS.GROUP_ID}`)
 	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
-	update(
-		@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId,
-		@Body() dto: UpdateGroupDto
-	) {
+	update(@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId, @Body() dto: UpdateGroupDto) {
 		return this.groupsService.update(id, dto)
 	}
 
 	@HttpCode(204)
 	@Delete(`:${PARAMS.GROUP_ID}`)
 	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
-	delete(@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId, @CurrentUserId() userId: UserId) {
-		return this.groupsService.delete(id, userId)
+	delete(@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId) {
+		return this.groupsService.delete(id)
 	}
 
 	@Post(`:${PARAMS.GROUP_ID}/join`)
@@ -137,5 +138,41 @@ export class GroupsController {
 		@Param('userId', ParseUserIdPipe) targetUserId: UserId
 	) {
 		return this.groupsService.unban(id, targetUserId)
+	}
+
+	@Get(`:${PARAMS.GROUP_ID}/invite-links`)
+	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
+	getInviteLinks(@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId) {
+		return this.groupsService.getGroupInviteLinks(id)
+	}
+
+	@Post(`:${PARAMS.GROUP_ID}/invite-links`)
+	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
+	createInviteLink(
+		@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId,
+		@CurrentUserId() userId: UserId,
+		@Body() dto: CreateInviteLinkDto
+	) {
+		return this.groupsService.createGroupInviteLink(id, userId, dto)
+	}
+
+	@Patch(`:${PARAMS.GROUP_ID}/invite-links/:linkId`)
+	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
+	updateInviteLink(
+		@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId,
+		@Param('linkId', ParseIntPipe) linkId: number,
+		@Body() dto: UpdateInviteLinkDto
+	) {
+		return this.groupsService.updateGroupInviteLink(id, linkId, dto)
+	}
+
+	@HttpCode(HttpStatus.NO_CONTENT)
+	@Delete(`:${PARAMS.GROUP_ID}/invite-links/:linkId`)
+	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
+	deleteInviteLink(
+		@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId,
+		@Param('linkId', ParseIntPipe) linkId: number
+	) {
+		return this.groupsService.deleteGroupInviteLink(id, linkId)
 	}
 }

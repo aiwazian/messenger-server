@@ -8,7 +8,7 @@ import { PrismaService } from '../../providers/prisma/prisma.service'
 
 @Injectable()
 export class CanSendMessageGuard implements CanActivate {
-	constructor(private readonly prisma: PrismaService) { }
+	constructor(private readonly prisma: PrismaService) {}
 
 	async canActivate(ctx: ExecutionContext): Promise<boolean> {
 		const request = ctx.switchToHttp().getRequest()

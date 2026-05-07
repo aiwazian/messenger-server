@@ -38,7 +38,12 @@ export class StorageService {
 		this.bucketName = config.get('S3_BUCKET_NAME')!
 	}
 
-	async initUpload(name: string, size: number, mimeType: string, fileType: FileType = FileType.CHAT_ATTACHMENT): Promise<InitUploadDto> {
+	async initUpload(
+		name: string,
+		size: number,
+		mimeType: string,
+		fileType: FileType = FileType.CHAT_ATTACHMENT
+	): Promise<InitUploadDto> {
 		const id = uuidv4()
 		const path = `${fileType}/${id}/${name}`
 
@@ -181,14 +186,22 @@ export class StorageService {
 		return this.initUpload(name, size, mimeType, FileType.USER_AVATAR)
 	}
 
-	async initChannelAvatarUpload(name: string, size: number, mimeType: string): Promise<InitUploadDto> {
+	async initChannelAvatarUpload(
+		name: string,
+		size: number,
+		mimeType: string
+	): Promise<InitUploadDto> {
 		if (!['image/png', 'image/jpeg', 'image/jpg'].includes(mimeType)) {
 			throw new Error('Invalid mime type')
 		}
 		return this.initUpload(name, size, mimeType, FileType.CHANNEL_AVATAR)
 	}
 
-	async initGroupAvatarUpload(name: string, size: number, mimeType: string): Promise<InitUploadDto> {
+	async initGroupAvatarUpload(
+		name: string,
+		size: number,
+		mimeType: string
+	): Promise<InitUploadDto> {
 		if (!['image/png', 'image/jpeg', 'image/jpg'].includes(mimeType)) {
 			throw new Error('Invalid mime type')
 		}

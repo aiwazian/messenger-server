@@ -4,7 +4,6 @@ import { PrismaClient } from '../../../generated/prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { EncryptionService } from '../../modules/encryption/encryption.service'
 
-
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit {
 	private SYSTEM_USER_ID = 0n

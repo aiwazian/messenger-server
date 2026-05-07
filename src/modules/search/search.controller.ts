@@ -15,6 +15,11 @@ export class SearchController {
 		return { available }
 	}
 
+	@Get('resolve/:username')
+	async resolveUsername(@Param('username') username: string, @CurrentUserId() userId: bigint) {
+		return this.searchService.resolveUsername(username, userId)
+	}
+
 	@Get()
 	search(@Query() query: SearchQueryDto, @CurrentUserId() userId: bigint) {
 		return this.searchService.search(query, userId)

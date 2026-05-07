@@ -33,7 +33,10 @@ import { FileDownloadDto } from '../messages/dto/file-download.dto'
 @Controller('users')
 @UseGuards(AuthGuard)
 export class UsersController {
-	constructor(private readonly usersService: UsersService, private readonly storage: StorageService) { }
+	constructor(
+		private readonly usersService: UsersService,
+		private readonly storage: StorageService
+	) {}
 
 	@Delete('me')
 	@HttpCode(HttpStatus.NO_CONTENT)
@@ -76,10 +79,7 @@ export class UsersController {
 	}
 
 	@Post('me/avatar/confirm/:fileId')
-	confirmFileUpload(
-		@Param('fileId') fileId: string,
-		@CurrentUserId() userId: UserId
-	) {
+	confirmFileUpload(@Param('fileId') fileId: string, @CurrentUserId() userId: UserId) {
 		return this.usersService.confirmUploadAvatar(userId, fileId)
 	}
 

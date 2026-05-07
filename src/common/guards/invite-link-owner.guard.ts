@@ -6,45 +6,44 @@ import {
 	NotFoundException
 } from '@nestjs/common'
 import { PrismaService } from '../../providers/prisma/prisma.service'
-import { ChatType } from '../enums/chat-type.enum'
-import { detectChatType } from '../utils/detect-chat-type.util'
-import { ChatId } from '../types/chat-id.type'
+import { UserId } from '../types/user-id.type'
 
 @Injectable()
 export class InviteLinkOwnerGuard implements CanActivate {
-	constructor(private readonly prisma: PrismaService) { }
+	constructor(private readonly prisma: PrismaService) {}
 
-	async canActivate(context: ExecutionContext) {
+	async canActivate(context: ExecutionContext): Promise<boolean> {
 		const request = context.switchToHttp().getRequest()
-		const user = request.user
-		const inviteLinkId = request.params.inviteLinkId
+		const userId: UserId = request.user.id
+		const inviteLinkId = parseInt(request.params['inviteLinkId'])
 
-		const link = await this.prisma.inviteLink.findUnique({
-			where: { id: inviteLinkId }
-		})
-
-		if (!link) {
+		if (isNaN(inviteLinkId)) {
 			throw new NotFoundException('Invite link not found')
 		}
 
-		const chatType = detectChatType(ChatId(link.chatId))
+		let creatorId: bigint | undefined
 
-		if (chatType === ChatType.CHANNEL) {
-			const channel = await this.prisma.channel.findUnique({
-				where: { id: link.chatId }
-			})
-			if (channel?.ownerId !== user.id) {
-				throw new ForbiddenException('You are not the owner of this channel')
-			}
-		} else if (chatType === ChatType.GROUP) {
-			const group = await this.prisma.group.findUnique({
-				where: { id: link.chatId }
-			})
-			if (group?.ownerId !== user.id) {
-				throw new ForbiddenException('You are not the owner of this group')
-			}
+		const channelLink = await this.prisma.channelInviteLink.findUnique({
+			where: { id: inviteLinkId }
+		})
+
+		if (channelLink) {
+			creatorId = channelLink.creatorId
 		} else {
-			throw new ForbiddenException('Invite links are not supported for direct chats')
+			const groupLink = await this.prisma.groupInviteLink.findUnique({
+				where: { id: inviteLinkId }
+			})
+			if (groupLink) {
+				creatorId = groupLink.creatorId
+			}
+		}
+
+		if (!creatorId) {
+			throw new NotFoundException('Invite link not found')
+		}
+
+		if (creatorId !== userId) {
+			throw new ForbiddenException('You are not allowed to modify this invite link')
 		}
 
 		return true

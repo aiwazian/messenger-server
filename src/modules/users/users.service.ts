@@ -28,7 +28,7 @@ export class UsersService {
 		@Inject(forwardRef(() => StorageService))
 		private readonly storageService: StorageService,
 		private readonly sessionsService: SessionsService
-	) { }
+	) {}
 
 	async deleteMe(userId: UserId, session: any): Promise<void> {
 		const currentTime = BigInt(Date.now())
@@ -115,7 +115,7 @@ export class UsersService {
 		if (!user) throw new NotFoundException('User not found')
 
 		const response = plainToInstance(UserResponseDto, user)
-		response.avatars = user.photos.map(p => ({ fileId: p.fileId, sortOrder: p.sortOrder }))
+		response.avatars = user.photos.map((p) => ({ fileId: p.fileId, sortOrder: p.sortOrder }))
 
 		if (currentUserId && currentUserId !== id) {
 			const privacy = user.privacySettings

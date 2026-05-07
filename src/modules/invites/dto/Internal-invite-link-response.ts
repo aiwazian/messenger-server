@@ -1,5 +1,5 @@
-import { Exclude, Expose } from "class-transformer";
-import { OmitNull } from "../../../common/decorators/omit-null.decorator";
+import { Exclude, Expose } from 'class-transformer'
+import { OmitNull } from '../../../common/decorators/omit-null.decorator'
 
 @Exclude()
 export class InternalInviteLinkResponse {

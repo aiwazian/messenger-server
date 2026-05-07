@@ -26,6 +26,10 @@ import { ChatId } from '../../common/types/chat-id.type'
 import { Prisma } from '../../../generated/prisma/client'
 import { SocketEvent } from '../../common/socket/socket-events'
 import { EncryptionService } from '../encryption/encryption.service'
+import { randomBytes } from 'crypto'
+import { CreateInviteLinkDto } from '../../common/dtos/create-invite-link.dto'
+import { UpdateInviteLinkDto } from '../../common/dtos/update-invite-link.dto'
+import { InviteLinkResponseDto } from '../invites/dto/invite-link-response.dto'
 
 @Injectable()
 export class ChannelsService {
@@ -36,7 +40,7 @@ export class ChannelsService {
 		private readonly realtimeGateway: RealtimeGateway,
 		private readonly searchService: SearchService,
 		private readonly encryption: EncryptionService
-	) { }
+	) {}
 
 	async create(ownerId: UserId, dto: CreateChannelDto): Promise<ChannelResponseDto> {
 		const channelId = generateChannelId()
@@ -98,7 +102,8 @@ export class ChannelsService {
 		}
 
 		const channelType = dto.channelType ?? exitingChannel.channelType
-		const username = channelType === ChannelType.PRIVATE ? null : (dto.username ?? exitingChannel.username)
+		const username =
+			channelType === ChannelType.PRIVATE ? null : (dto.username ?? exitingChannel.username)
 
 		const channel = await this.prisma.channel.update({
 			where: { id },
@@ -128,13 +133,13 @@ export class ChannelsService {
 		const existingMember = await this.prisma.channelSubscriber.findUnique({
 			where: { userId_channelId: { userId, channelId } }
 		})
-		if (existingMember) return 
+		if (existingMember) return
 
 		await this.prisma.channelSubscriber.create({
 			data: { channelId, userId }
 		})
 
-		this.chatsService.create(userId, ChatId(channelId))
+		await this.chatsService.create(userId, ChatId(channelId))
 		const lastMessage = await this.prisma.message.findFirst({
 			where: { chatId: channelId },
 			orderBy: { sendTime: 'desc' }
@@ -154,12 +159,13 @@ export class ChannelsService {
 		const channel = await this.prisma.channel.findUnique({ where: { id: channelId } })
 		if (!channel) throw new NotFoundException('Channel not found')
 
-		if (channel.ownerId === userId) throw new BadRequestException('Owner cannot unsubscribe. Delete it instead.')
+		if (channel.ownerId === userId)
+			throw new BadRequestException('Owner cannot unsubscribe. Delete it instead.')
 
 		await this.prisma.$transaction(async (tx) => {
 			await tx.channelSubscriber
 				.delete({ where: { userId_channelId: { userId, channelId } } })
-				.catch(() => { })
+				.catch(() => {})
 
 			await tx.chat.deleteMany({
 				where: { userId, chatId: channelId }
@@ -190,7 +196,7 @@ export class ChannelsService {
 		await this.prisma.$transaction(async (tx) => {
 			await tx.channelSubscriber
 				.delete({ where: { userId_channelId: { userId: targetUserId, channelId: id } } })
-				.catch(() => { })
+				.catch(() => {})
 
 			await tx.chat.deleteMany({
 				where: { userId: targetUserId, chatId: id }
@@ -246,12 +252,12 @@ export class ChannelsService {
 			channelId,
 			user: search
 				? {
-					OR: [
-						{ firstName: { contains: search } },
-						{ lastName: { contains: search } },
-						{ username: { contains: search } }
-					]
-				}
+						OR: [
+							{ firstName: { contains: search } },
+							{ lastName: { contains: search } },
+							{ username: { contains: search } }
+						]
+					}
 				: undefined
 		}
 
@@ -269,11 +275,7 @@ export class ChannelsService {
 		)
 	}
 
-	async delete(id: ChannelId, userId: UserId): Promise<void> {
-		const channel = await this.prisma.channel.findUnique({ where: { id } })
-		if (!channel) throw new NotFoundException('Channel not found')
-		if (channel.ownerId !== userId) throw new ForbiddenException('Only owner can delete channel')
-
+	async delete(id: ChannelId): Promise<void> {
 		await this.prisma.channel.delete({ where: { id } })
 	}
 
@@ -297,12 +299,12 @@ export class ChannelsService {
 			channelId,
 			user: search
 				? {
-					OR: [
-						{ firstName: { contains: search } },
-						{ lastName: { contains: search } },
-						{ username: { contains: search } }
-					]
-				}
+						OR: [
+							{ firstName: { contains: search } },
+							{ lastName: { contains: search } },
+							{ username: { contains: search } }
+						]
+					}
 				: undefined
 		}
 
@@ -323,11 +325,11 @@ export class ChannelsService {
 	async unban(id: ChannelId, ownerId: UserId, targetUserId: UserId): Promise<void> {
 		if (targetUserId === ownerId) throw new BadRequestException('Cannot unban yourself')
 
-		const deleted = await this.prisma.channelBlackList.deleteMany({
-			where: { channelId: id, userId: targetUserId }
+		const deleted = await this.prisma.channelBlackList.delete({
+			where: { userId_channelId: { userId: targetUserId, channelId: id } }
 		})
 
-		if (deleted.count === 0) {
+		if (deleted != null) {
 			throw new NotFoundException('User is not banned from this channel')
 		}
 	}
@@ -337,5 +339,72 @@ export class ChannelsService {
 			where: { channelId, userId }
 		})
 		return plainToInstance(IsBannedDto, { isBanned: bannedUser != null })
+	}
+
+	async getChannelInviteLinks(channelId: ChannelId) {
+		const links = await this.prisma.channelInviteLink.findMany({
+			where: { channelId }
+		})
+
+		const domain = this.config.get('SHORT_URL_DOMAIN')
+
+		return links.map((link) => ({
+			...link,
+			chatId: channelId,
+			link: `https://${domain}/+${link.code}`,
+			expiresAt: link.expiresAt ? link.expiresAt.toString() : null
+		}))
+	}
+
+	async createChannelInviteLink(
+		channelId: ChannelId,
+		creatorId: UserId,
+		dto: CreateInviteLinkDto
+	): Promise<InviteLinkResponseDto> {
+		const code = randomBytes(16).toString('hex')
+		const inviteLink = await this.prisma.channelInviteLink.create({
+			data: {
+				code,
+				channelId,
+				creatorId,
+				maxUses: dto.maxUses,
+				expiresAt: dto.expiresAt ? BigInt(dto.expiresAt) : null
+			}
+		})
+		const domain = this.config.get('SHORT_URL_DOMAIN')
+		return plainToInstance(InviteLinkResponseDto, {
+			...inviteLink,
+			chatId: channelId,
+			link: `https://${domain}/+${inviteLink.code}`
+		})
+	}
+
+	async updateChannelInviteLink(channelId: ChannelId, linkId: number, dto: UpdateInviteLinkDto) {
+		const existing = await this.prisma.channelInviteLink.findUnique({ where: { id: linkId } })
+		if (!existing || existing.channelId !== channelId) {
+			throw new NotFoundException('Invite link not found')
+		}
+
+		return this.prisma.channelInviteLink.update({
+			where: { id: linkId },
+			data: {
+				maxUses: dto.maxUses !== undefined ? dto.maxUses : existing.maxUses,
+				expiresAt:
+					dto.expiresAt !== undefined
+						? dto.expiresAt
+							? BigInt(dto.expiresAt)
+							: null
+						: existing.expiresAt
+			}
+		})
+	}
+
+	async deleteChannelInviteLink(channelId: ChannelId, linkId: number): Promise<void> {
+		const existing = await this.prisma.channelInviteLink.findUnique({ where: { id: linkId } })
+		if (!existing || existing.channelId !== channelId) {
+			throw new NotFoundException('Invite link not found')
+		}
+
+		await this.prisma.channelInviteLink.delete({ where: { id: linkId } })
 	}
 }

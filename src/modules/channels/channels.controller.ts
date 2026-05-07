@@ -4,6 +4,7 @@ import {
 	Delete,
 	Get,
 	HttpCode,
+	HttpStatus,
 	Param,
 	Patch,
 	Post,
@@ -22,11 +23,14 @@ import { ParseChannelIdPipe } from '../../common/pipes/parse-channel-id.pipe'
 import { ChannelId } from '../../common/types/channel-id.type'
 import { ChannelOwnerGuard } from '../../common/guards/channel-owner.guard'
 import { ParseUserIdPipe } from '../../common/pipes/parse-user-id.pipe'
+import { ParseIntPipe } from '@nestjs/common'
+import { CreateInviteLinkDto } from '../../common/dtos/create-invite-link.dto'
+import { UpdateInviteLinkDto } from '../../common/dtos/update-invite-link.dto'
 
 @Controller('channels')
 @UseGuards(AuthGuard)
 export class ChannelsController {
-	constructor(private readonly channelsService: ChannelsService) { }
+	constructor(private readonly channelsService: ChannelsService) {}
 
 	@Post()
 	createChannel(@CurrentUserId() userId: UserId, @Body() dto: CreateChannelDto) {
@@ -65,11 +69,8 @@ export class ChannelsController {
 	@HttpCode(204)
 	@Delete(`:${PARAMS.CHANNEL_ID}`)
 	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
-	delete(
-		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
-		@CurrentUserId() userId: UserId
-	) {
-		return this.channelsService.delete(id, userId)
+	delete(@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId) {
+		return this.channelsService.delete(id)
 	}
 
 	@Post(`:${PARAMS.CHANNEL_ID}/join`)
@@ -138,5 +139,41 @@ export class ChannelsController {
 		@CurrentUserId() userId: UserId
 	) {
 		return this.channelsService.isBanned(id, userId)
+	}
+
+	@Get(`:${PARAMS.CHANNEL_ID}/invite-links`)
+	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	getInviteLinks(@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId) {
+		return this.channelsService.getChannelInviteLinks(id)
+	}
+
+	@Post(`:${PARAMS.CHANNEL_ID}/invite-links`)
+	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	createInviteLink(
+		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
+		@CurrentUserId() userId: UserId,
+		@Body() dto: CreateInviteLinkDto
+	) {
+		return this.channelsService.createChannelInviteLink(id, userId, dto)
+	}
+
+	@Patch(`:${PARAMS.CHANNEL_ID}/invite-links/:linkId`)
+	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	updateInviteLink(
+		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
+		@Param('linkId', ParseIntPipe) linkId: number,
+		@Body() dto: UpdateInviteLinkDto
+	) {
+		return this.channelsService.updateChannelInviteLink(id, linkId, dto)
+	}
+
+	@HttpCode(HttpStatus.NO_CONTENT)
+	@Delete(`:${PARAMS.CHANNEL_ID}/invite-links/:linkId`)
+	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	deleteInviteLink(
+		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
+		@Param('linkId', ParseIntPipe) linkId: number
+	) {
+		return this.channelsService.deleteChannelInviteLink(id, linkId)
 	}
 }

@@ -80,11 +80,11 @@ model User {
 }
 
 model UserPhoto {
-    id         Int     @id @default(autoincrement())
-    userId     BigInt
-    fileId     String  @unique
-    isCurrent  Boolean @default(false)
-    sortOrder  Int     @default(0)
+    id        Int     @id @default(autoincrement())
+    userId    BigInt
+    fileId    String  @unique
+    isCurrent Boolean @default(false)
+    sortOrder Int     @default(0)
 
     user User @relation(fields: [userId], references: [id], onDelete: Cascade)
     file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
@@ -113,12 +113,13 @@ model Chat {
     userId BigInt
     chatId BigInt
 
+    chat_uniq_id String @unique
+
     isPinned   Boolean @default(false)
     isArchived Boolean @default(false)
 
     user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    @@unique([userId, chatId])
     @@index([userId])
     @@index([chatId])
 }
@@ -229,13 +230,14 @@ model Channel {
     subscribers  ChannelSubscriber[]
     blockedUsers ChannelBlackList[]
     permissions  ChannelMemberPermission[]
+    inviteLinks  ChannelInviteLink[]
 }
 
 model ChannelPhoto {
-    id         Int     @id @default(autoincrement())
-    channelId  BigInt
-    fileId     String  @unique
-    isCurrent  Boolean @default(false)
+    id        Int     @id @default(autoincrement())
+    channelId BigInt
+    fileId    String  @unique
+    isCurrent Boolean @default(false)
 
     channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
     file    File    @relation(fields: [fileId], references: [id], onDelete: Cascade)
@@ -303,13 +305,14 @@ model Group {
     members     GroupMember[]
     blocked     GroupBlackList[]
     permissions GroupMemberPermission[]
+    inviteLinks GroupInviteLink[]
 }
 
 model GroupPhoto {
-    id         Int     @id @default(autoincrement())
-    groupId    BigInt
-    fileId     String  @unique
-    isCurrent  Boolean @default(false)
+    id        Int     @id @default(autoincrement())
+    groupId   BigInt
+    fileId    String  @unique
+    isCurrent Boolean @default(false)
 
     group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
     file  File  @relation(fields: [fileId], references: [id], onDelete: Cascade)
@@ -364,16 +367,32 @@ model GroupMemberPermission {
     @@index([groupId])
 }
 
-model InviteLink {
+model GroupInviteLink {
     id        Int     @id @default(autoincrement())
     code      String  @unique
-    chatId    BigInt
+    groupId   BigInt
     creatorId BigInt
     maxUses   Int?
     uses      Int     @default(0)
     expiresAt BigInt?
 
-    @@index([chatId])
+    group     Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+    @@index([groupId])
+}
+
+model ChannelInviteLink {
+    id        Int     @id @default(autoincrement())
+    code      String  @unique
+    channelId BigInt
+    creatorId BigInt
+    maxUses   Int?
+    uses      Int     @default(0)
+    expiresAt BigInt?
+
+    channel   Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+    @@index([channelId])
 }
 
 model PrivacySettings {

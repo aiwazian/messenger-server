@@ -31,7 +31,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		private readonly sessionsService: SessionsService,
 		private readonly prisma: PrismaService,
 		private readonly chatsService: ChatsService
-	) { }
+	) {}
 
 	afterInit(server: Server) {
 		server.use(async (socket, next) => {
@@ -156,7 +156,10 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
 	sendToUser(userId: UserId, event: SocketEventType, message: any, excludeId?: string): void {
 		if (excludeId) {
-			this.server.in(`user:${userId.toString()}`).except(excludeId).emit(event, this.prepareData(message))
+			this.server
+				.in(`user:${userId.toString()}`)
+				.except(excludeId)
+				.emit(event, this.prepareData(message))
 		} else {
 			this.server.in(`user:${userId.toString()}`).emit(event, this.prepareData(message))
 		}
@@ -165,7 +168,10 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
 	sendToChat(chatId: ChatId, event: SocketEventType, message: any, excludeId?: string): void {
 		if (excludeId) {
-			this.server.in(`chat:${chatId.toString()}`).except(excludeId).emit(event, this.prepareData(message))
+			this.server
+				.in(`chat:${chatId.toString()}`)
+				.except(excludeId)
+				.emit(event, this.prepareData(message))
 		} else {
 			this.server.in(`chat:${chatId.toString()}`).emit(event, this.prepareData(message))
 		}
@@ -182,7 +188,10 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		const userRooms = userIds.map((id) => `user:${id.toString()}`)
 		const chatRoom = `chat:${chatId.toString()}`
 		if (excludeSocketId) {
-			this.server.to(userRooms).except([chatRoom, excludeSocketId]).emit(event, this.prepareData(message))
+			this.server
+				.to(userRooms)
+				.except([chatRoom, excludeSocketId])
+				.emit(event, this.prepareData(message))
 		} else {
 			this.server.to(userRooms).except(chatRoom).emit(event, this.prepareData(message))
 		}
@@ -206,10 +215,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 			if (obj instanceof Date) return obj.getTime()
 
 			return Object.fromEntries(
-				Object.entries(obj).map(([key, value]) => [
-					key,
-					this.serializeBigInt(value)
-				])
+				Object.entries(obj).map(([key, value]) => [key, this.serializeBigInt(value)])
 			)
 		}
 		return obj

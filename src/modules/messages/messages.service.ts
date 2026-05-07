@@ -1,6 +1,5 @@
 import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common'
 import { TextMessageDto } from './dto/text-message.dto'
-import { MediaMessageDto } from './dto/media-message.dto'
 import { plainToInstance } from 'class-transformer'
 import { ChatsService } from '../chats/chats.service'
 import { MessageAttachmentDto, MessageResponseDto } from './dto/message-response.dto'
@@ -14,7 +13,7 @@ import { FileDownloadDto } from './dto/file-download.dto'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
-import { AttachmentType, FileStatus, MessageType, SystemEventType } from '../../../generated/prisma/enums'
+import { AttachmentType, MessageType, SystemEventType } from '../../../generated/prisma/enums'
 import { ChatType } from '../../common/enums/chat-type.enum'
 import { SocketEvent } from '../../common/socket/socket-events'
 import { Prisma } from '../../../generated/prisma/client'
@@ -33,9 +32,14 @@ export class MessagesService {
 		private readonly storageService: StorageService,
 		private readonly encryption: EncryptionService,
 		private readonly sendMessageUseCase: SendMessageUseCase
-	) { }
+	) {}
 
-	async sendTextMessage(senderId: UserId, chatId: ChatId, dto: TextMessageDto, excludeSocketId: string): Promise<MessageResponseDto> {
+	async sendTextMessage(
+		senderId: UserId,
+		chatId: ChatId,
+		dto: TextMessageDto,
+		excludeSocketId: string
+	): Promise<MessageResponseDto> {
 		const sentMessage = await this.sendMessageUseCase.execute(senderId, chatId, dto)
 
 		this.notifyRecipients(senderId, chatId, sentMessage, excludeSocketId)
@@ -44,8 +48,13 @@ export class MessagesService {
 	}
 
 	async initFileUpload(userId: UserId, chatId: ChatId, dto: FileInitDto) {
-		this.chatsService.create(userId, chatId)
-		return this.storageService.initUpload(dto.name, dto.size, dto.mimeType, FileType.CHAT_ATTACHMENT)
+		await this.chatsService.create(userId, chatId)
+		return this.storageService.initUpload(
+			dto.name,
+			dto.size,
+			dto.mimeType,
+			FileType.CHAT_ATTACHMENT
+		)
 	}
 
 	async confirmFileUpload(
@@ -54,7 +63,7 @@ export class MessagesService {
 		dto: FileConfirmDto,
 		excludeSocketId: string
 	): Promise<MessageResponseDto> {
-		this.chatsService.create(userId, chatId)
+		await this.chatsService.create(userId, chatId)
 
 		const attachmentsToCreate = []
 
@@ -109,7 +118,9 @@ export class MessagesService {
 
 		const messageInstance = plainToInstance(MessageResponseDto, {
 			...message,
-			attachments: message.attachments.map((f) => plainToInstance(MessageAttachmentDto, { ...f.file, fileId: f.fileId, type: f.type })),
+			attachments: message.attachments.map((f) =>
+				plainToInstance(MessageAttachmentDto, { ...f.file, fileId: f.fileId, type: f.type })
+			),
 			messageType: MessageType.TEXT
 		})
 
@@ -124,7 +135,7 @@ export class MessagesService {
 		messageId: number,
 		fileId: string
 	): Promise<FileDownloadDto> {
-		this.chatsService.create(userId, chatId)
+		await this.chatsService.create(userId, chatId)
 
 		const message = await this.prisma.message.findFirst({
 			where: { id: messageId, chatId },
@@ -180,10 +191,14 @@ export class MessagesService {
 			const isRead = true // TODO
 			return plainToInstance(MessageResponseDto, {
 				...message,
-				text: message.text ? this.encryption.decrypt(message.text, this.encryption.currentVersion) : null,
+				text: message.text
+					? this.encryption.decrypt(message.text, this.encryption.currentVersion)
+					: null,
 				isRead: isRead,
 				systemEventType: message.systemEvent?.eventType,
-				attachments: message.attachments.map((f) => plainToInstance(MessageAttachmentDto, { ...f.file, fileId: f.fileId, type: f.type })),
+				attachments: message.attachments.map((f) =>
+					plainToInstance(MessageAttachmentDto, { ...f.file, fileId: f.fileId, type: f.type })
+				),
 				senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
 				messageType: message.messageType
 			})
@@ -242,17 +257,7 @@ export class MessagesService {
 		}
 	}
 
-	async deleteMessage(
-		userId: UserId,
-		chatId: ChatId,
-		messageId: number
-	): Promise<void> {
-		const message = await this.prisma.message.findFirst({
-			where: { id: messageId, chatId: chatId }
-		})
-
-		if (!message) throw new NotFoundException('Message not found')
-
+	async deleteMessage(userId: UserId, chatId: ChatId, messageId: number): Promise<void> {
 		const chatType = detectChatType(chatId)
 		const isDirect = chatType === ChatType.PRIVATE
 
@@ -267,7 +272,7 @@ export class MessagesService {
 		const recipients = await this.getRecipients(userId, chatId, detectChatType(chatId))
 
 		const senderPayload = { chatId: chatId.toString(), messageId }
-		this.realtimeGateway.sendToUser(userId, SocketEvent.MESSAGE_DELETE, senderPayload)
+		this.realtimeGateway.sendToUser(UserId(chatId), SocketEvent.MESSAGE_DELETE, senderPayload)
 
 		if (!isDirect) {
 			const recipientPayload = { chatId: userId.toString(), messageId }
@@ -289,7 +294,17 @@ export class MessagesService {
 				]
 			}
 		} else {
-			messageWhere = { chatId: chatId, systemEvent: { NOT: { OR: [{ eventType: SystemEventType.CHANNEL_CREATED }, { eventType: SystemEventType.GROUP_CREATED }] } } }
+			messageWhere = {
+				chatId: chatId,
+				systemEvent: {
+					NOT: {
+						OR: [
+							{ eventType: SystemEventType.CHANNEL_CREATED },
+							{ eventType: SystemEventType.GROUP_CREATED }
+						]
+					}
+				}
+			}
 		}
 
 		const messages = await this.prisma.message.findMany({
@@ -320,7 +335,13 @@ export class MessagesService {
 		} else {
 			const payload = { chatId: chatId.toString() }
 			this.realtimeGateway.sendToChat(chatId, SocketEvent.HISTORY_CLEAR, payload)
-			this.realtimeGateway.sendToUsersExceptChat(targets, chatId, SocketEvent.HISTORY_CLEAR, payload, undefined)
+			this.realtimeGateway.sendToUsersExceptChat(
+				targets,
+				chatId,
+				SocketEvent.HISTORY_CLEAR,
+				payload,
+				undefined
+			)
 		}
 	}
 
@@ -346,13 +367,24 @@ export class MessagesService {
 		}
 
 		if (BigInt(chatId) === BigInt(senderUserId)) {
-			this.realtimeGateway.sendToUser(senderUserId, SocketEvent.MESSAGE_NEW, message, excludeSocketId)
+			this.realtimeGateway.sendToUser(
+				senderUserId,
+				SocketEvent.MESSAGE_NEW,
+				message,
+				excludeSocketId
+			)
 		} else {
 			this.realtimeGateway.sendToChat(chatId, SocketEvent.MESSAGE_NEW, message, excludeSocketId)
 		}
 
 		if (online.length > 0) {
-			this.realtimeGateway.sendToUsersExceptChat(online, chatId, SocketEvent.MESSAGE_NEW, message, excludeSocketId)
+			this.realtimeGateway.sendToUsersExceptChat(
+				online,
+				chatId,
+				SocketEvent.MESSAGE_NEW,
+				message,
+				excludeSocketId
+			)
 		}
 
 		if (offline.length > 0) {

@@ -5,4 +5,4 @@ import { EncryptionService } from './encryption.service'
 	providers: [EncryptionService],
 	exports: [EncryptionService]
 })
-export class EncryptionModule { }
+export class EncryptionModule {}

@@ -14,7 +14,7 @@ export class ChatsService {
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly encryption: EncryptionService
-	) { }
+	) {}
 
 	async getAll(userId: UserId): Promise<ChatResponseDto[]> {
 		const chats = await this.prisma.chat.findMany({
@@ -25,58 +25,65 @@ export class ChatsService {
 			return []
 		}
 
-		const resChats = await Promise.all(chats.map(async chat => {
-			switch (detectChatType(ChatId(chat.chatId))) {
-				case ChatType.PRIVATE: {
-					const user = await this.prisma.user.findUnique({ where: { id: chat.chatId } })
-					if (user != null) {
-						const lastMessage = await this.getLastMessage(userId, ChatId(chat.chatId))
-						return plainToInstance(ChatResponseDto, {
-							id: chat.chatId,
-							name: user.firstName,
-							isPinned: chat.isPinned,
-							lastMessage: lastMessage
-						})
+		const resChats = await Promise.all(
+			chats.map(async (chat) => {
+				switch (detectChatType(ChatId(chat.chatId))) {
+					case ChatType.PRIVATE: {
+						const user = await this.prisma.user.findUnique({ where: { id: chat.chatId } })
+						if (user != null) {
+							const lastMessage = await this.getLastMessage(userId, ChatId(chat.chatId))
+							return plainToInstance(ChatResponseDto, {
+								id: chat.chatId,
+								name: user.firstName,
+								isPinned: chat.isPinned,
+								lastMessage: lastMessage
+							})
+						}
 					}
-				}
-				case ChatType.CHANNEL: {
-					const channel = await this.prisma.channel.findUnique({ where: { id: chat.chatId } })
-					if (channel != null) {
-						const lastMessage = await this.getLastMessage(userId, ChatId(chat.chatId))
-						return plainToInstance(ChatResponseDto, {
-							id: chat.chatId,
-							name: channel.name,
-							isPinned: chat.isPinned,
-							lastMessage: lastMessage
-						})
+					case ChatType.CHANNEL: {
+						const channel = await this.prisma.channel.findUnique({ where: { id: chat.chatId } })
+						if (channel != null) {
+							const lastMessage = await this.getLastMessage(userId, ChatId(chat.chatId))
+							return plainToInstance(ChatResponseDto, {
+								id: chat.chatId,
+								name: channel.name,
+								isPinned: chat.isPinned,
+								lastMessage: lastMessage
+							})
+						}
 					}
-				}
-				case ChatType.GROUP: {
-					const group = await this.prisma.group.findUnique({ where: { id: chat.chatId } })
-					if (group != null) {
-						const lastMessage = await this.getLastMessage(userId, ChatId(chat.chatId))
-						return plainToInstance(ChatResponseDto, {
-							id: chat.chatId,
-							name: group.name,
-							isPinned: chat.isPinned,
-							lastMessage: lastMessage
-						})
+					case ChatType.GROUP: {
+						const group = await this.prisma.group.findUnique({ where: { id: chat.chatId } })
+						if (group != null) {
+							const lastMessage = await this.getLastMessage(userId, ChatId(chat.chatId))
+							return plainToInstance(ChatResponseDto, {
+								id: chat.chatId,
+								name: group.name,
+								isPinned: chat.isPinned,
+								lastMessage: lastMessage
+							})
+						}
 					}
+					default:
+						return null
 				}
-				default: return null
-			}
-		}))
+			})
+		)
 
-		return plainToInstance(ChatResponseDto, resChats.filter(chat => chat != null))
+		return plainToInstance(
+			ChatResponseDto,
+			resChats.filter((chat) => chat != null)
+		)
 	}
 
 	async create(userId: UserId, chatId: ChatId): Promise<void> {
 		await this.prisma.chat.upsert({
 			where: {
-				userId_chatId: { userId, chatId }
+				chat_uniq_id: `${userId}${chatId}`
 			},
 			update: {},
 			create: {
+				chat_uniq_id: `${userId}${chatId}`,
 				userId: userId,
 				chatId: chatId
 			}
@@ -84,10 +91,11 @@ export class ChatsService {
 		if (detectChatType(chatId) == ChatType.PRIVATE) {
 			await this.prisma.chat.upsert({
 				where: {
-					userId_chatId: { chatId, userId }
+					chat_uniq_id: `${chatId}${userId}`
 				},
 				update: {},
 				create: {
+					chat_uniq_id: `${chatId}${userId}`,
 					userId: chatId,
 					chatId: userId
 				}
@@ -97,7 +105,9 @@ export class ChatsService {
 
 	async getById(userId: UserId, chatId: ChatId): Promise<ChatResponseDto> {
 		const chat = await this.prisma.chat.findUnique({
-			where: { userId_chatId: { userId, chatId } }
+			where: {
+				chat_uniq_id: `${userId}${chatId}`
+			}
 		})
 
 		if (!chat) {
@@ -303,7 +313,7 @@ export class ChatsService {
 
 	async exists(userId: UserId, chatId: ChatId): Promise<boolean> {
 		const chat = await this.prisma.chat.findUnique({
-			where: { userId_chatId: { userId, chatId } }
+			where: { chat_uniq_id: userId + '' + chatId }
 		})
 		return !!chat
 	}
@@ -335,11 +345,18 @@ export class ChatsService {
 
 		return plainToInstance(MessageResponseDto, {
 			...message,
-			text: message.text ? this.encryption.decrypt(message.text, this.encryption.currentVersion) : null,
+			text: message.text
+				? this.encryption.decrypt(message.text, this.encryption.currentVersion)
+				: null,
 			isRead: true,
 			systemEventType: message.systemEvent?.eventType,
-			attachments: message.attachments.map((f) => plainToInstance(MessageAttachmentDto, { ...f.file, type: f.type, fileId: f.fileId })),
-			senderId: detectChatType(ChatId(message.chatId)) === ChatType.CHANNEL ? message.chatId : message.senderId,
+			attachments: message.attachments.map((f) =>
+				plainToInstance(MessageAttachmentDto, { ...f.file, type: f.type, fileId: f.fileId })
+			),
+			senderId:
+				detectChatType(ChatId(message.chatId)) === ChatType.CHANNEL
+					? message.chatId
+					: message.senderId,
 			messageType: message.messageType
 		})
 	}

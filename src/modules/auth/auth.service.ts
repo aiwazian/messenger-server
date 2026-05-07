@@ -47,13 +47,15 @@ export class AuthService {
 
 		const tokens = this.jwtAuth.generateTokenPair(userId)
 
-		const session = await this.sessionService.create(plainToInstance(CreateSessionDto, {
-			userId: userId,
-			token: tokens.accessToken,
-			deviceModel: dto.deviceModel,
-			osVersion: dto.osVersion,
-			osName: dto.osName
-		}))
+		const session = await this.sessionService.create(
+			plainToInstance(CreateSessionDto, {
+				userId: userId,
+				token: tokens.accessToken,
+				deviceModel: dto.deviceModel,
+				osVersion: dto.osVersion,
+				osName: dto.osName
+			})
+		)
 
 		return plainToInstance(AuthResponseDto, {
 			token: tokens.accessToken,
@@ -62,14 +64,15 @@ export class AuthService {
 		})
 	}
 
-	async signup(dto: SignupDto): Promise<void> {
+	async signup(dto: SignupDto): Promise<AuthResponseDto> {
 		const userId = generateUserId()
 		const passwordHash = await hashPassword(dto.password)
 
 		try {
-			await this.prisma.user.create({
+			const user = await this.prisma.user.create({
 				data: {
 					id: userId,
+					firstName: dto.firstName,
 					login: dto.login,
 					password: passwordHash,
 					privacySettings: {
@@ -82,6 +85,24 @@ export class AuthService {
 						}
 					}
 				}
+			})
+
+			const tokens = this.jwtAuth.generateTokenPair(UserId(user.id))
+
+			const session = await this.sessionService.create(
+				plainToInstance(CreateSessionDto, {
+					userId: user.id,
+					token: tokens.accessToken,
+					deviceModel: dto.deviceModel,
+					osVersion: dto.osVersion,
+					osName: dto.osName
+				})
+			)
+
+			return plainToInstance(AuthResponseDto, {
+				token: tokens.accessToken,
+				userId: userId,
+				createdAt: session.createdAt
 			})
 		} catch (error) {
 			if (error instanceof Prisma.PrismaClientKnownRequestError) {

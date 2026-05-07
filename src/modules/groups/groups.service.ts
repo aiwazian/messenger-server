@@ -15,23 +15,34 @@ import { RealtimeGateway } from '../realtime/realtime.gateway'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
 import { generateGroupId } from '../../common/utils/id-generator.util'
-import { GroupType, MessageType, PrivacyRule, SystemEventType } from '../../../generated/prisma/enums'
+import {
+	GroupType,
+	MessageType,
+	PrivacyRule,
+	SystemEventType
+} from '../../../generated/prisma/enums'
 import { GroupId } from '../../common/types/group-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
 import { Prisma } from '../../../generated/prisma/client'
 import { SocketEvent } from '../../common/socket/socket-events'
 import { ChatResponseDto } from '../chats/dto/chat-response.dto'
 import { EncryptionService } from '../encryption/encryption.service'
+import { AddMembersDto } from './dto/add-members.dto'
+import { randomBytes } from 'crypto'
+import { CreateInviteLinkDto } from '../../common/dtos/create-invite-link.dto'
+import { UpdateInviteLinkDto } from '../../common/dtos/update-invite-link.dto'
+import { ConfigService } from '@nestjs/config'
 
 @Injectable()
 export class GroupsService {
 	constructor(
+		private readonly config: ConfigService,
 		private readonly prisma: PrismaService,
 		private readonly chatsService: ChatsService,
 		private readonly searchService: SearchService,
 		private readonly realtimeGateway: RealtimeGateway,
 		private readonly encryption: EncryptionService
-	) { }
+	) {}
 
 	async create(ownerId: UserId, dto: CreateGroupDto): Promise<GroupResponseDto> {
 		const groupId = generateGroupId()
@@ -126,7 +137,7 @@ export class GroupsService {
 		if (existingMember) return
 
 		await this.prisma.groupMember.create({ data: { groupId: id, userId } })
-		this.chatsService.create(userId, ChatId(id))
+		await this.chatsService.create(userId, ChatId(id))
 	}
 
 	async leave(id: GroupId, userId: UserId): Promise<void> {
@@ -137,7 +148,7 @@ export class GroupsService {
 		await this.prisma.$transaction(async (tx) => {
 			await tx.groupMember
 				.delete({ where: { groupId_userId: { groupId: id, userId } } })
-				.catch(() => { })
+				.catch(() => {})
 
 			await tx.chat.deleteMany({
 				where: { userId, chatId: id }
@@ -168,7 +179,7 @@ export class GroupsService {
 		await this.prisma.$transaction(async (tx) => {
 			await tx.groupMember
 				.delete({ where: { groupId_userId: { groupId: id, userId: targetUserId } } })
-				.catch(() => { })
+				.catch(() => {})
 
 			await tx.chat.deleteMany({
 				where: { userId: targetUserId, chatId: id }
@@ -219,12 +230,12 @@ export class GroupsService {
 			groupId: id,
 			user: search
 				? {
-					OR: [
-						{ firstName: { contains: search } },
-						{ lastName: { contains: search } },
-						{ username: { contains: search } }
-					]
-				}
+						OR: [
+							{ firstName: { contains: search } },
+							{ lastName: { contains: search } },
+							{ username: { contains: search } }
+						]
+					}
 				: undefined
 		}
 
@@ -281,7 +292,7 @@ export class GroupsService {
 		return plainToInstance(UserResponseDto, filtered)
 	}
 
-	async addMembers(id: GroupId, dto: { userIds: string[] }, ownerId: UserId): Promise<void> {
+	async addMembers(id: GroupId, dto: AddMembersDto, ownerId: UserId): Promise<void> {
 		const userIdBigInts = dto.userIds.map((uid) => BigInt(uid))
 
 		// Check if users are banned
@@ -295,26 +306,22 @@ export class GroupsService {
 			throw new BadRequestException('Some users are banned from this group')
 		}
 
-		this.prisma.$transaction(async (tx) => {
-			for (const userId of userIdBigInts) {
-				// Skip if already a member (idempotent)
-				const existing = await tx.groupMember.findUnique({
-					where: { groupId_userId: { groupId: id, userId } }
-				})
-				if (existing) continue
+		for (const userId of userIdBigInts) {
+			const existing = await this.prisma.groupMember.findUnique({
+				where: { groupId_userId: { groupId: id, userId } }
+			})
+			if (existing) continue
 
-				tx.groupMember.create({
-					data: { groupId: id, userId }
-				})
-				this.chatsService.create(UserId(userId), ChatId(id))
-			}
-		})
+			await this.prisma.groupMember.create({
+				data: { groupId: id, userId }
+			})
+			await this.chatsService.create(UserId(userId), ChatId(id))
+		}
 
-		// Notify group members about new members
 		this.realtimeGateway.sendToUser(ownerId, SocketEvent.CHAT_UPDATED, { chatId: id })
 	}
 
-	async delete(id: GroupId, userId: UserId): Promise<void> {
+	async delete(id: GroupId): Promise<void> {
 		await this.prisma.group.delete({ where: { id } })
 	}
 
@@ -338,12 +345,12 @@ export class GroupsService {
 			groupId: id,
 			user: search
 				? {
-					OR: [
-						{ firstName: { contains: search } },
-						{ lastName: { contains: search } },
-						{ username: { contains: search } }
-					]
-				}
+						OR: [
+							{ firstName: { contains: search } },
+							{ lastName: { contains: search } },
+							{ username: { contains: search } }
+						]
+					}
 				: undefined
 		}
 
@@ -366,6 +373,63 @@ export class GroupsService {
 			.delete({
 				where: { userId_groupId: { userId: targetUserId, groupId: id } }
 			})
-			.catch(() => { })
+			.catch(() => {})
+	}
+
+	async getGroupInviteLinks(groupId: GroupId) {
+		const links = await this.prisma.groupInviteLink.findMany({
+			where: { groupId }
+		})
+
+		const domain = this.config.get('SHORT_URL_DOMAIN')
+
+		return links.map((link) => ({
+			...link,
+			chatId: groupId,
+			link: `https://${domain}/+${link.code}`,
+			expiresAt: link.expiresAt ? link.expiresAt.toString() : null
+		}))
+	}
+
+	async createGroupInviteLink(groupId: GroupId, creatorId: UserId, dto: CreateInviteLinkDto) {
+		const code = randomBytes(16).toString('hex')
+		return this.prisma.groupInviteLink.create({
+			data: {
+				code,
+				groupId,
+				creatorId,
+				maxUses: dto.maxUses,
+				expiresAt: dto.expiresAt ? BigInt(dto.expiresAt) : null
+			}
+		})
+	}
+
+	async updateGroupInviteLink(groupId: GroupId, linkId: number, dto: UpdateInviteLinkDto) {
+		const existing = await this.prisma.groupInviteLink.findUnique({ where: { id: linkId } })
+		if (!existing || existing.groupId !== groupId) {
+			throw new NotFoundException('Invite link not found')
+		}
+
+		return this.prisma.groupInviteLink.update({
+			where: { id: linkId },
+			data: {
+				maxUses: dto.maxUses !== undefined ? dto.maxUses : existing.maxUses,
+				expiresAt:
+					dto.expiresAt !== undefined
+						? dto.expiresAt
+							? BigInt(dto.expiresAt)
+							: null
+						: existing.expiresAt
+			}
+		})
+	}
+
+	async deleteGroupInviteLink(groupId: GroupId, linkId: number): Promise<void> {
+		const existing = await this.prisma.groupInviteLink.findUnique({ where: { id: linkId } })
+		if (!existing || existing.groupId !== groupId) {
+			throw new NotFoundException('Invite link not found')
+		}
+
+		await this.prisma.groupInviteLink.delete({ where: { id: linkId } })
 	}
 }

@@ -1,4 +1,4 @@
-import { Exclude, Expose, Transform } from 'class-transformer'
+import { Exclude, Expose } from 'class-transformer'
 import { OmitNull } from '../../../common/decorators/omit-null.decorator'
 
 @Exclude()
@@ -24,5 +24,6 @@ export class InviteLinkResponseDto {
 	maxUses?: number
 
 	@Expose()
-	uses: number
+	@OmitNull()
+	uses?: number
 }

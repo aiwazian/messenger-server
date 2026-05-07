@@ -36,14 +36,14 @@ export class ContentModerationService {
                         - STRICT RULE: If the message contains ANY mention, slang, or terminology related to the PROHIBITED CATEGORIES (even as a single word without context), set "is_allowed" to false.
                         - Treat words like "sex", "porn", "drugs" as immediate violations regardless of intent.
                         - If the content is safe, set "is_allowed" to true.
-                        - If the content violates policies, set "is_allowed" to false and provide a brief "reason" in English.`,
+                        - If the content violates policies, set "is_allowed" to false and provide a brief "reason" in English.`
 					},
 					{
 						role: 'user',
-						content: text,
-					},
+						content: text
+					}
 				],
-				response_format: { type: 'json_object' },
+				response_format: { type: 'json_object' }
 			})
 
 			const content = response.choices[0].message.content

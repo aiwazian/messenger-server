@@ -8,7 +8,7 @@ const TAG_LENGTH = 16
 
 @Injectable()
 export class EncryptionService {
-	constructor(private readonly config: ConfigService) { }
+	constructor(private readonly config: ConfigService) {}
 
 	private getKey(version: number): Buffer {
 		const hex = this.config.get<string>(`ENCRYPTION_KEY_V${version}`)
@@ -26,19 +26,16 @@ export class EncryptionService {
 
 		const iv = crypto.randomBytes(IV_LENGTH)
 		const cipher = crypto.createCipheriv(ALGORITHM, key, iv, {
-			authTagLength: TAG_LENGTH,
+			authTagLength: TAG_LENGTH
 		})
 
-		const encrypted = Buffer.concat([
-			cipher.update(plaintext, 'utf8'),
-			cipher.final(),
-		])
+		const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()])
 		const authTag = cipher.getAuthTag()
 
 		const result = [
 			iv.toString('base64'),
 			authTag.toString('base64'),
-			encrypted.toString('base64'),
+			encrypted.toString('base64')
 		].join(':')
 
 		return { encrypted: result, version }
@@ -53,7 +50,7 @@ export class EncryptionService {
 		const data = Buffer.from(dataB64, 'base64')
 
 		const decipher = crypto.createDecipheriv(ALGORITHM, key, iv, {
-			authTagLength: TAG_LENGTH,
+			authTagLength: TAG_LENGTH
 		})
 		decipher.setAuthTag(authTag)
 

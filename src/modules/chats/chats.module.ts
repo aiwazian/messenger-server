@@ -12,4 +12,4 @@ import { EncryptionService } from '../encryption/encryption.service'
 	providers: [ChatsService, EncryptionService],
 	exports: [ChatsService]
 })
-export class ChatsModule { }
+export class ChatsModule {}

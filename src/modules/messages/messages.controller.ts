@@ -28,7 +28,7 @@ import { CanClearHistoryGuard } from '../../common/guards/can-clear-history.guar
 @Controller('chats/:chatId/messages')
 @UseGuards(AuthGuard)
 export class MessagesController {
-	constructor(private readonly messagesService: MessagesService) { }
+	constructor(private readonly messagesService: MessagesService) {}
 
 	@Post()
 	@UseGuards(CanSendMessageGuard)
@@ -113,8 +113,8 @@ export class MessagesController {
 	}
 
 	@Post('voice')
-	sendVoiceMessage() { }
+	sendVoiceMessage() {}
 
 	@Post('reaction')
-	sendReaction() { }
+	sendReaction() {}
 }

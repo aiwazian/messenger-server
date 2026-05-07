@@ -17,22 +17,22 @@ export class SendMessageUseCase {
 		private readonly prisma: PrismaService,
 		private readonly encryption: EncryptionService,
 		private readonly chatsService: ChatsService
-	) { }
+	) {}
 
 	async execute(
 		senderId: UserId,
 		chatId: ChatId,
 		dto: TextMessageDto
 	): Promise<MessageResponseDto> {
-		this.chatsService.create(senderId, chatId)
+		await this.chatsService.create(senderId, chatId)
 		const { encrypted, version } = this.encryption.encrypt(dto.text)
 		const sequenceId = await this.prisma.message.count({
 			where: {
 				OR: [
 					{ chatId: chatId, senderId: senderId },
-					{ chatId: senderId, senderId: chatId },
-				],
-			},
+					{ chatId: senderId, senderId: chatId }
+				]
+			}
 		})
 
 		const chatType = detectChatType(chatId)
@@ -45,8 +45,8 @@ export class SendMessageUseCase {
 				sendTime: Date.now(),
 				senderId: senderId,
 				messageType: MessageType.TEXT,
-				encryptionKeyVersion: version,
-			},
+				encryptionKeyVersion: version
+			}
 		})
 
 		const messageInstance = plainToInstance(MessageResponseDto, {
@@ -54,7 +54,7 @@ export class SendMessageUseCase {
 			text: dto.text,
 			isRead: true,
 			senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
-			messageType: MessageType.TEXT,
+			messageType: MessageType.TEXT
 		})
 
 		return messageInstance

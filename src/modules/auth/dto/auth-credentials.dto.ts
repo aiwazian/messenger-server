@@ -6,7 +6,7 @@ export class AuthCredentialsDto {
 	@Trim()
 	@IsNotEmpty()
 	@MinLength(5)
-	@MaxLength(32)
+	@MaxLength(64)
 	@Matches(/^\S+$/, {
 		message: 'login must not contain spaces'
 	})
@@ -16,7 +16,7 @@ export class AuthCredentialsDto {
 	@Trim()
 	@IsNotEmpty()
 	@MinLength(5)
-	@MaxLength(32)
+	@MaxLength(64)
 	@Matches(/^\S+$/, {
 		message: 'password must not contain spaces'
 	})

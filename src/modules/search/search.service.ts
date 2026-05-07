@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, NotFoundException } from '@nestjs/common'
 import { SearchResponseDto, SearchResultType } from './dto/search-response.dto'
 import { plainToInstance } from 'class-transformer'
 import { SearchQueryDto, SearchType } from './dto/search-query.dto'
@@ -12,17 +12,17 @@ export class SearchService {
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly moderation: ContentModerationService
-	) { }
+	) {}
 
 	async isUsernameAvailable(username: string): Promise<boolean> {
-		const isAllowed = await this.moderation.isAllowed(username)
-		if (!isAllowed) return false
+		//const isAllowed = await this.moderation.isAllowed(username)
+		//if (!isAllowed) return false
 
 		const userExists = await this.prisma.user.findFirst({
 			where: { username },
 			select: { id: true }
 		})
-		if (userExists) return false;
+		if (userExists) return false
 
 		const groupExists = await this.prisma.group.findFirst({
 			where: { username },
@@ -37,6 +37,51 @@ export class SearchService {
 		if (channelExists) return false
 
 		return true
+	}
+
+	async resolveUsername(
+		username: string,
+		userId: bigint
+	): Promise<{ chatId: bigint; isBanned: boolean } | null> {
+		const userExists = await this.prisma.user.findFirst({
+			where: { username },
+			select: { id: true }
+		})
+		if (userExists) return { chatId: userExists.id, isBanned: false }
+
+		const groupExists = await this.prisma.group.findFirst({
+			where: { username },
+			select: {
+				id: true,
+				blocked: {
+					where: { userId }
+				}
+			}
+		})
+		if (groupExists) {
+			return {
+				chatId: groupExists.id,
+				isBanned: groupExists.blocked.length > 0
+			}
+		}
+
+		const channelExists = await this.prisma.channel.findFirst({
+			where: { username },
+			select: {
+				id: true,
+				blockedUsers: {
+					where: { userId }
+				}
+			}
+		})
+		if (channelExists) {
+			return {
+				chatId: channelExists.id,
+				isBanned: channelExists.blockedUsers.length > 0
+			}
+		}
+
+		throw new NotFoundException('Chat not found')
 	}
 
 	async search(dto: SearchQueryDto, userId: bigint): Promise<SearchResponseDto[]> {

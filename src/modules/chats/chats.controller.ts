@@ -24,7 +24,7 @@ export class ChatsController {
 	constructor(
 		private readonly chatsService: ChatsService,
 		private readonly inviteLinksService: InviteLinksService
-	) { }
+	) {}
 
 	@Get()
 	getAll(@CurrentUserId() userId: UserId) {

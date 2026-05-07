@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common'
 import { ChannelsService } from './channels.service'
 import { ChannelsController } from './channels.controller'
-import { ChannelInviteLinksController } from './channel-invite-links.controller'
 import { SessionsModule } from '../sessions/sessions.module'
 import { SearchModule } from '../search/search.module'
 import { ChatsModule } from '../chats/chats.module'
@@ -12,7 +11,7 @@ import { InviteLinksService } from '../invites/invite-links.service'
 
 @Module({
 	imports: [JwtAuthModule, SessionsModule, SearchModule, ChatsModule, PrismaModule],
-	controllers: [ChannelsController, ChannelInviteLinksController],
+	controllers: [ChannelsController],
 	providers: [ChannelsService, EncryptionService, InviteLinksService]
 })
-export class ChannelsModule { }
+export class ChannelsModule {}
