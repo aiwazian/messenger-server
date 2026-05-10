@@ -32,7 +32,7 @@ export class MessagesService {
 		private readonly storageService: StorageService,
 		private readonly encryption: EncryptionService,
 		private readonly sendMessageUseCase: SendMessageUseCase
-	) { }
+	) {}
 
 	async sendTextMessage(
 		senderId: UserId,
@@ -317,11 +317,17 @@ export class MessagesService {
 		}
 	}
 
-	async clearHistory(userId: UserId, chatId: ChatId): Promise<void> {
+	async clearHistory(
+		userId: UserId,
+		chatId: ChatId,
+		clearForRecipient: boolean = false
+	): Promise<void> {
 		const chatType = detectChatType(chatId)
 
+		const isPrivateChat = chatType === ChatType.PRIVATE
+
 		let messageWhere: Prisma.MessageWhereInput
-		if (chatType === ChatType.PRIVATE) {
+		if (isPrivateChat) {
 			messageWhere = {
 				OR: [
 					{ senderId: userId, chatId: chatId },
@@ -333,33 +339,60 @@ export class MessagesService {
 				chatId: chatId,
 				OR: [
 					{ systemEvent: null },
-					{ systemEvent: { eventType: { notIn: [SystemEventType.CHANNEL_CREATED, SystemEventType.GROUP_CREATED] } } }
+					{
+						systemEvent: {
+							eventType: { notIn: [SystemEventType.CHANNEL_CREATED, SystemEventType.GROUP_CREATED] }
+						}
+					}
 				]
 			}
 		}
 
-		const messages = await this.prisma.message.findMany({
-			where: messageWhere,
-			select: { attachments: { select: { fileId: true } } }
-		})
+		if (isPrivateChat && !clearForRecipient) {
+			const messagesToHide = await this.prisma.message.findMany({
+				where: {
+					...messageWhere,
+					deletedFor: {
+						none: { userId }
+					}
+				},
+				select: { id: true }
+			})
 
-		for (const message of messages) {
-			for (const file of message.attachments) {
-				await this.storageService.deleteFile(file.fileId)
+			if (messagesToHide.length > 0) {
+				const now = Date.now()
+				await this.prisma.deletedMessage.createMany({
+					data: messagesToHide.map((m) => ({
+						messageId: m.id,
+						userId: userId,
+						deletedAt: now
+					}))
+				})
 			}
-		}
+		} else {
+			const messages = await this.prisma.message.findMany({
+				where: messageWhere,
+				select: { attachments: { select: { fileId: true } } }
+			})
 
-		await this.prisma.message.deleteMany({ where: messageWhere })
+			for (const message of messages) {
+				for (const file of message.attachments) {
+					await this.storageService.deleteFile(file.fileId)
+				}
+			}
+
+			await this.prisma.message.deleteMany({ where: messageWhere })
+		}
 
 		const recipients = await this.getRecipients(userId, chatId, chatType)
 		const targets = Array.from(new Set([...recipients, userId]))
 
-		if (chatType === ChatType.PRIVATE) {
+		if (isPrivateChat) {
 			const otherUserId = recipients[0]
 			const payloadForMe = { chatId: chatId.toString() }
 			this.realtimeGateway.sendToUser(userId, SocketEvent.HISTORY_CLEAR, payloadForMe)
 
-			if (otherUserId) {
+			if (otherUserId && clearForRecipient) {
 				const payloadForOther = { chatId: userId.toString() }
 				this.realtimeGateway.sendToUser(otherUserId, SocketEvent.HISTORY_CLEAR, payloadForOther)
 			}
@@ -375,18 +408,20 @@ export class MessagesService {
 			)
 		}
 
-		await this.prisma.message.create({
-			data: {
-				sequenceId: 0,
-				chatId: chatId,
-				senderId: userId,
-				text: null,
-				sendTime: Date.now(),
-				messageType: MessageType.SYSTEM,
-				systemEvent: { create: { eventType: SystemEventType.HISTORY_CLEARED } },
-				encryptionKeyVersion: this.encryption.currentVersion
-			}
-		})
+		if (!isPrivateChat || clearForRecipient) {
+			await this.prisma.message.create({
+				data: {
+					sequenceId: 0,
+					chatId: chatId,
+					senderId: userId,
+					text: null,
+					sendTime: Date.now(),
+					messageType: MessageType.SYSTEM,
+					systemEvent: { create: { eventType: SystemEventType.HISTORY_CLEARED } },
+					encryptionKeyVersion: this.encryption.currentVersion
+				}
+			})
+		}
 	}
 
 	private async notifyRecipients(

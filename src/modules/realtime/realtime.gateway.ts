@@ -31,7 +31,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		private readonly sessionsService: SessionsService,
 		private readonly prisma: PrismaService,
 		private readonly chatsService: ChatsService
-	) { }
+	) {}
 
 	afterInit(server: Server) {
 		server.use(async (socket, next) => {

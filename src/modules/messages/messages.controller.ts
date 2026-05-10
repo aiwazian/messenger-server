@@ -13,6 +13,7 @@ import {
 import { MessagesService } from './messages.service'
 import { TextMessageDto } from './dto/text-message.dto'
 import { DeleteMessageDto } from './dto/delete-message.dto'
+import { ClearHistoryDto } from './dto/clear-history.dto'
 import { FileInitDto } from './dto/file-init.dto'
 import { FileConfirmDto } from './dto/file-confirm.dto'
 import { AuthGuard } from '../../common/guards/auth.guard'
@@ -109,8 +110,12 @@ export class MessagesController {
 
 	@Delete()
 	@UseGuards(CanClearHistoryGuard)
-	clearHistory(@Param('chatId', ParseChatIdPipe) chatId: ChatId, @CurrentUserId() userId: UserId) {
-		return this.messagesService.clearHistory(userId, chatId)
+	clearHistory(
+		@Param('chatId', ParseChatIdPipe) chatId: ChatId,
+		@CurrentUserId() userId: UserId,
+		@Body() dto: ClearHistoryDto
+	) {
+		return this.messagesService.clearHistory(userId, chatId, dto.clearForRecipient)
 	}
 
 	@Post('voice')

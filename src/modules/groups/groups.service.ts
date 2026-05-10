@@ -43,7 +43,7 @@ export class GroupsService {
 		private readonly searchService: SearchService,
 		private readonly realtimeGateway: RealtimeGateway,
 		private readonly encryption: EncryptionService
-	) { }
+	) {}
 
 	async create(ownerId: UserId, dto: CreateGroupDto): Promise<GroupResponseDto> {
 		const groupId = generateGroupId()
@@ -149,7 +149,7 @@ export class GroupsService {
 		await this.prisma.$transaction(async (tx) => {
 			await tx.groupMember
 				.delete({ where: { groupId_userId: { groupId: id, userId } } })
-				.catch(() => { })
+				.catch(() => {})
 
 			await tx.chat.deleteMany({
 				where: { userId, chatId: id }
@@ -180,7 +180,7 @@ export class GroupsService {
 		await this.prisma.$transaction(async (tx) => {
 			await tx.groupMember
 				.delete({ where: { groupId_userId: { groupId: id, userId: targetUserId } } })
-				.catch(() => { })
+				.catch(() => {})
 
 			await tx.chat.deleteMany({
 				where: { userId: targetUserId, chatId: id }
@@ -231,12 +231,12 @@ export class GroupsService {
 			groupId: id,
 			user: search
 				? {
-					OR: [
-						{ firstName: { contains: search } },
-						{ lastName: { contains: search } },
-						{ username: { contains: search } }
-					]
-				}
+						OR: [
+							{ firstName: { contains: search } },
+							{ lastName: { contains: search } },
+							{ username: { contains: search } }
+						]
+					}
 				: undefined
 		}
 
@@ -346,12 +346,12 @@ export class GroupsService {
 			groupId: id,
 			user: search
 				? {
-					OR: [
-						{ firstName: { contains: search } },
-						{ lastName: { contains: search } },
-						{ username: { contains: search } }
-					]
-				}
+						OR: [
+							{ firstName: { contains: search } },
+							{ lastName: { contains: search } },
+							{ username: { contains: search } }
+						]
+					}
 				: undefined
 		}
 
@@ -374,7 +374,7 @@ export class GroupsService {
 			.delete({
 				where: { userId_groupId: { userId: targetUserId, groupId: id } }
 			})
-			.catch(() => { })
+			.catch(() => {})
 	}
 
 	async getGroupInviteLinks(groupId: GroupId): Promise<InviteLinkResponseDto[]> {
@@ -385,7 +385,11 @@ export class GroupsService {
 		return plainToInstance(InviteLinkResponseDto, links)
 	}
 
-	async createGroupInviteLink(groupId: GroupId, creatorId: UserId, dto: CreateInviteLinkDto): Promise<InviteLinkResponseDto> {
+	async createGroupInviteLink(
+		groupId: GroupId,
+		creatorId: UserId,
+		dto: CreateInviteLinkDto
+	): Promise<InviteLinkResponseDto> {
 		const code = randomBytes(16).toString('hex')
 		const link = await this.prisma.groupInviteLink.create({
 			data: {
@@ -400,7 +404,11 @@ export class GroupsService {
 		return plainToInstance(InviteLinkResponseDto, link)
 	}
 
-	async updateGroupInviteLink(groupId: GroupId, linkId: number, dto: UpdateInviteLinkDto): Promise<InviteLinkResponseDto> {
+	async updateGroupInviteLink(
+		groupId: GroupId,
+		linkId: number,
+		dto: UpdateInviteLinkDto
+	): Promise<InviteLinkResponseDto> {
 		const existing = await this.prisma.groupInviteLink.findUnique({ where: { id: linkId } })
 		if (!existing || existing.groupId !== groupId) {
 			throw new NotFoundException('Invite link not found')

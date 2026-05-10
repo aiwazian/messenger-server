@@ -14,7 +14,7 @@ export class ChatsService {
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly encryption: EncryptionService
-	) { }
+	) {}
 
 	async getAll(userId: UserId): Promise<ChatResponseDto[]> {
 		const chats = await this.prisma.chat.findMany({
