@@ -6,7 +6,9 @@ import {
 	Delete,
 	HttpCode,
 	HttpStatus,
-	ParseIntPipe
+	ParseIntPipe,
+	Post,
+	Body
 } from '@nestjs/common'
 import { ChatsService } from './chats.service'
 import { InviteLinksService } from '../invites/invite-links.service'
@@ -15,7 +17,6 @@ import { UserId } from '../../common/types/user-id.type'
 import { CurrentUserId } from '../../common/decorators/user-id.decorator'
 import { CanReadChatGuard } from '../../common/guards/can-read-chat.guard'
 import { ChatId } from '../../common/types/chat-id.type'
-import { ParseBigIntPipe } from '../../common/pipes/parse-bigint.pipe'
 import { InviteLinkOwnerGuard } from '../../common/guards/invite-link-owner.guard'
 
 @Controller('chats')
@@ -24,7 +25,7 @@ export class ChatsController {
 	constructor(
 		private readonly chatsService: ChatsService,
 		private readonly inviteLinksService: InviteLinksService
-	) {}
+	) { }
 
 	@Get()
 	getAll(@CurrentUserId() userId: UserId) {
@@ -59,5 +60,19 @@ export class ChatsController {
 	@HttpCode(HttpStatus.NO_CONTENT)
 	deleteInviteLink(@Param('inviteLinkId', ParseIntPipe) inviteLinkId: number) {
 		return this.inviteLinksService.delete(inviteLinkId)
+	}
+
+	@Post('pin')
+	@HttpCode(HttpStatus.NO_CONTENT)
+	pinChats(@CurrentUserId() userId: UserId, @Body() body: { chatIds: string[] }) {
+		const chatIds = body.chatIds.map(id => ChatId(id))
+		return this.chatsService.pinChats(userId, chatIds)
+	}
+
+	@Post('unpin')
+	@HttpCode(HttpStatus.NO_CONTENT)
+	unpinChats(@CurrentUserId() userId: UserId, @Body() body: { chatIds: string[] }) {
+		const chatIds = body.chatIds.map(id => ChatId(id))
+		return this.chatsService.unpinChats(userId, chatIds)
 	}
 }

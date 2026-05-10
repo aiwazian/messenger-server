@@ -32,7 +32,7 @@ export class MessagesService {
 		private readonly storageService: StorageService,
 		private readonly encryption: EncryptionService,
 		private readonly sendMessageUseCase: SendMessageUseCase
-	) {}
+	) { }
 
 	async sendTextMessage(
 		senderId: UserId,
@@ -343,13 +343,26 @@ export class MessagesService {
 				undefined
 			)
 		}
+
+		await this.prisma.message.create({
+			data: {
+				sequenceId: 0,
+				chatId: chatId,
+				senderId: userId,
+				text: null,
+				sendTime: Date.now(),
+				messageType: MessageType.SYSTEM,
+				systemEvent: { create: { eventType: SystemEventType.HISTORY_CLEARED } },
+				encryptionKeyVersion: this.encryption.currentVersion
+			}
+		})
 	}
 
 	private async notifyRecipients(
 		senderUserId: UserId,
 		chatId: ChatId,
 		message: MessageResponseDto,
-		excludeSocketId: string
+		excludeSocketId?: string
 	): Promise<void> {
 		const chatType = detectChatType(chatId)
 		const recipients = await this.getRecipients(senderUserId, chatId, chatType)

@@ -14,7 +14,7 @@ export class ChatsService {
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly encryption: EncryptionService
-	) {}
+	) { }
 
 	async getAll(userId: UserId): Promise<ChatResponseDto[]> {
 		const chats = await this.prisma.chat.findMany({
@@ -316,6 +316,26 @@ export class ChatsService {
 			where: { chat_uniq_id: userId + '' + chatId }
 		})
 		return !!chat
+	}
+
+	async pinChats(userId: UserId, chatIds: ChatId[]): Promise<void> {
+		await this.prisma.chat.updateMany({
+			where: {
+				userId,
+				chatId: { in: chatIds }
+			},
+			data: { isPinned: true }
+		})
+	}
+
+	async unpinChats(userId: UserId, chatIds: ChatId[]): Promise<void> {
+		await this.prisma.chat.updateMany({
+			where: {
+				userId,
+				chatId: { in: chatIds }
+			},
+			data: { isPinned: false }
+		})
 	}
 
 	private async getLastMessage(userId: UserId, chatId: ChatId): Promise<MessageResponseDto | null> {
