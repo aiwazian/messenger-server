@@ -13,9 +13,6 @@ export class InviteLinkResponseDto {
 	code: string
 
 	@Expose()
-	link: string
-
-	@Expose()
 	@OmitNull()
 	expiresAt?: string
 

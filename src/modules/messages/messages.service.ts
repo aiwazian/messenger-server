@@ -156,8 +156,6 @@ export class MessagesService {
 		limit: number = 50,
 		offset: number = 0
 	): Promise<MessageResponseDto[]> {
-		await this.chatsService.canReadChat(userId, chatId)
-
 		const chatType = detectChatType(chatId)
 
 		let messageWhere: Prisma.MessageWhereInput
@@ -167,11 +165,21 @@ export class MessagesService {
 				OR: [
 					{ senderId: userId, chatId: chatId },
 					{ senderId: chatId, chatId: userId }
-				]
+				],
+				deletedFor: {
+					none: {
+						userId: userId
+					}
+				}
 			}
 		} else {
 			messageWhere = {
-				chatId: chatId
+				chatId: chatId,
+				deletedFor: {
+					none: {
+						userId: userId
+					}
+				}
 			}
 		}
 
@@ -231,8 +239,6 @@ export class MessagesService {
 	}
 
 	async markAllRead(userId: UserId, chatId: ChatId): Promise<void> {
-		await this.chatsService.canReadChat(userId, chatId)
-
 		const unread = await this.prisma.message.findMany({
 			where: {
 				chatId,
@@ -257,24 +263,53 @@ export class MessagesService {
 		}
 	}
 
-	async deleteMessage(userId: UserId, chatId: ChatId, messageId: number): Promise<void> {
+	async deleteMessage(
+		userId: UserId,
+		chatId: ChatId,
+		messageId: number,
+		deleteForRecipient: boolean = false
+	): Promise<void> {
 		const chatType = detectChatType(chatId)
-		const isDirect = chatType === ChatType.PRIVATE
+		const isPrivateChat = chatType === ChatType.PRIVATE
 
-		const attachments = await this.prisma.messageAttachment.findMany({
-			where: { messageId: messageId }
-		})
-		for (const attachment of attachments) {
-			await this.storageService.deleteFile(attachment.fileId)
+		if (isPrivateChat && !deleteForRecipient) {
+			const existingDelete = await this.prisma.deletedMessage.findFirst({
+				where: { messageId, userId: chatId }
+			})
+
+			if (existingDelete) {
+				const attachments = await this.prisma.messageAttachment.findMany({
+					where: { messageId: messageId }
+				})
+				for (const attachment of attachments) {
+					await this.storageService.deleteFile(attachment.fileId)
+				}
+				await this.prisma.message.delete({ where: { id: messageId } })
+			} else {
+				await this.prisma.deletedMessage.create({
+					data: {
+						messageId,
+						userId,
+						deletedAt: Date.now()
+					}
+				})
+			}
+		} else {
+			const attachments = await this.prisma.messageAttachment.findMany({
+				where: { messageId: messageId }
+			})
+			for (const attachment of attachments) {
+				await this.storageService.deleteFile(attachment.fileId)
+			}
+			await this.prisma.message.delete({ where: { id: messageId } })
 		}
-		await this.prisma.message.delete({ where: { id: messageId } })
 
-		const recipients = await this.getRecipients(userId, chatId, detectChatType(chatId))
+		const recipients = await this.getRecipients(userId, chatId, chatType)
 
 		const senderPayload = { chatId: chatId.toString(), messageId }
 		this.realtimeGateway.sendToUser(UserId(chatId), SocketEvent.MESSAGE_DELETE, senderPayload)
 
-		if (!isDirect) {
+		if (!isPrivateChat) {
 			const recipientPayload = { chatId: userId.toString(), messageId }
 			for (const recipientId of recipients) {
 				this.realtimeGateway.sendToUser(recipientId, SocketEvent.MESSAGE_DELETE, recipientPayload)
@@ -296,20 +331,16 @@ export class MessagesService {
 		} else {
 			messageWhere = {
 				chatId: chatId,
-				systemEvent: {
-					NOT: {
-						OR: [
-							{ eventType: SystemEventType.CHANNEL_CREATED },
-							{ eventType: SystemEventType.GROUP_CREATED }
-						]
-					}
-				}
+				OR: [
+					{ systemEvent: null },
+					{ systemEvent: { eventType: { notIn: [SystemEventType.CHANNEL_CREATED, SystemEventType.GROUP_CREATED] } } }
+				]
 			}
 		}
 
 		const messages = await this.prisma.message.findMany({
 			where: messageWhere,
-			include: { attachments: true }
+			select: { attachments: { select: { fileId: true } } }
 		})
 
 		for (const message of messages) {

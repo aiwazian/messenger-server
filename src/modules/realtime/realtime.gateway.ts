@@ -31,7 +31,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		private readonly sessionsService: SessionsService,
 		private readonly prisma: PrismaService,
 		private readonly chatsService: ChatsService
-	) {}
+	) { }
 
 	afterInit(server: Server) {
 		server.use(async (socket, next) => {
@@ -94,8 +94,6 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 			const raw = payload?.chatId ?? payload
 			const chatId = ChatId(raw)
 			const userId = client.data.userId as UserId
-
-			await this.chatsService.canReadChat(userId, chatId)
 
 			const prev = client.data.activeChatId as ChatId | undefined
 			if (prev && prev !== chatId) {

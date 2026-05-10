@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common'
 import { MessagesService } from './messages.service'
 import { TextMessageDto } from './dto/text-message.dto'
-import { MediaMessageDto } from './dto/media-message.dto'
+import { DeleteMessageDto } from './dto/delete-message.dto'
 import { FileInitDto } from './dto/file-init.dto'
 import { FileConfirmDto } from './dto/file-confirm.dto'
 import { AuthGuard } from '../../common/guards/auth.guard'
@@ -101,9 +101,10 @@ export class MessagesController {
 	deleteMessage(
 		@Param('chatId', ParseChatIdPipe) chatId: ChatId,
 		@Param('messageId', ParseIntPipe) messageId: number,
-		@CurrentUserId() userId: UserId
+		@CurrentUserId() userId: UserId,
+		@Body() dto: DeleteMessageDto
 	) {
-		return this.messagesService.deleteMessage(userId, chatId, messageId)
+		return this.messagesService.deleteMessage(userId, chatId, messageId, dto.deleteForRecipient)
 	}
 
 	@Delete()

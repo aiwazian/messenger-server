@@ -25,7 +25,7 @@ export class ChatsController {
 	constructor(
 		private readonly chatsService: ChatsService,
 		private readonly inviteLinksService: InviteLinksService
-	) { }
+	) {}
 
 	@Get()
 	getAll(@CurrentUserId() userId: UserId) {
@@ -65,14 +65,14 @@ export class ChatsController {
 	@Post('pin')
 	@HttpCode(HttpStatus.NO_CONTENT)
 	pinChats(@CurrentUserId() userId: UserId, @Body() body: { chatIds: string[] }) {
-		const chatIds = body.chatIds.map(id => ChatId(id))
+		const chatIds = body.chatIds.map((id) => ChatId(id))
 		return this.chatsService.pinChats(userId, chatIds)
 	}
 
 	@Post('unpin')
 	@HttpCode(HttpStatus.NO_CONTENT)
 	unpinChats(@CurrentUserId() userId: UserId, @Body() body: { chatIds: string[] }) {
-		const chatIds = body.chatIds.map(id => ChatId(id))
+		const chatIds = body.chatIds.map((id) => ChatId(id))
 		return this.chatsService.unpinChats(userId, chatIds)
 	}
 }

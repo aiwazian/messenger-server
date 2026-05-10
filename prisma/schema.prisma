@@ -153,6 +153,7 @@ model Message {
     readReceipts MessageRead[]
     attachments  MessageAttachment[]
     systemEvent  SystemMessageEvent?
+    deletedFor   DeletedMessage[]
 
     @@index([chatId, sendTime])
     @@index([senderId])
@@ -182,6 +183,19 @@ model MessageRead {
 
     @@unique([messageId, userId])
     @@index([userId, readAt])
+}
+
+model DeletedMessage {
+    id        Int    @id @default(autoincrement())
+    messageId BigInt
+    userId    BigInt
+    deletedAt BigInt
+
+    message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+    @@unique([messageId, userId])
+    @@index([userId])
+    @@index([messageId])
 }
 
 model File {

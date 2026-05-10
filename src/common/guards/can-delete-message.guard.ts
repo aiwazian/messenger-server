@@ -14,7 +14,7 @@ import { ChatId } from '../types/chat-id.type'
 
 @Injectable()
 export class CanDeleteMessageGuard implements CanActivate {
-	constructor(private readonly prisma: PrismaService) {}
+	constructor(private readonly prisma: PrismaService) { }
 
 	async canActivate(context: ExecutionContext): Promise<boolean> {
 		const request = context.switchToHttp().getRequest()
@@ -33,7 +33,6 @@ export class CanDeleteMessageGuard implements CanActivate {
 			throw new NotFoundException('Message not found')
 		}
 
-		// 1. User is sender
 		if (message.senderId === userId) {
 			return true
 		}
@@ -41,8 +40,7 @@ export class CanDeleteMessageGuard implements CanActivate {
 		const chatType = detectChatType(ChatId(message.chatId))
 
 		if (chatType === ChatType.PRIVATE) {
-			// In direct chat, either user can delete their own messages
-			throw new ForbiddenException('You cannot delete this message')
+			return true
 		}
 
 		if (chatType === ChatType.GROUP) {

@@ -32,6 +32,7 @@ import { randomBytes } from 'crypto'
 import { CreateInviteLinkDto } from '../../common/dtos/create-invite-link.dto'
 import { UpdateInviteLinkDto } from '../../common/dtos/update-invite-link.dto'
 import { ConfigService } from '@nestjs/config'
+import { InviteLinkResponseDto } from '../invites/dto/invite-link-response.dto'
 
 @Injectable()
 export class GroupsService {
@@ -42,7 +43,7 @@ export class GroupsService {
 		private readonly searchService: SearchService,
 		private readonly realtimeGateway: RealtimeGateway,
 		private readonly encryption: EncryptionService
-	) {}
+	) { }
 
 	async create(ownerId: UserId, dto: CreateGroupDto): Promise<GroupResponseDto> {
 		const groupId = generateGroupId()
@@ -148,7 +149,7 @@ export class GroupsService {
 		await this.prisma.$transaction(async (tx) => {
 			await tx.groupMember
 				.delete({ where: { groupId_userId: { groupId: id, userId } } })
-				.catch(() => {})
+				.catch(() => { })
 
 			await tx.chat.deleteMany({
 				where: { userId, chatId: id }
@@ -179,7 +180,7 @@ export class GroupsService {
 		await this.prisma.$transaction(async (tx) => {
 			await tx.groupMember
 				.delete({ where: { groupId_userId: { groupId: id, userId: targetUserId } } })
-				.catch(() => {})
+				.catch(() => { })
 
 			await tx.chat.deleteMany({
 				where: { userId: targetUserId, chatId: id }
@@ -230,12 +231,12 @@ export class GroupsService {
 			groupId: id,
 			user: search
 				? {
-						OR: [
-							{ firstName: { contains: search } },
-							{ lastName: { contains: search } },
-							{ username: { contains: search } }
-						]
-					}
+					OR: [
+						{ firstName: { contains: search } },
+						{ lastName: { contains: search } },
+						{ username: { contains: search } }
+					]
+				}
 				: undefined
 		}
 
@@ -345,12 +346,12 @@ export class GroupsService {
 			groupId: id,
 			user: search
 				? {
-						OR: [
-							{ firstName: { contains: search } },
-							{ lastName: { contains: search } },
-							{ username: { contains: search } }
-						]
-					}
+					OR: [
+						{ firstName: { contains: search } },
+						{ lastName: { contains: search } },
+						{ username: { contains: search } }
+					]
+				}
 				: undefined
 		}
 
@@ -373,44 +374,39 @@ export class GroupsService {
 			.delete({
 				where: { userId_groupId: { userId: targetUserId, groupId: id } }
 			})
-			.catch(() => {})
+			.catch(() => { })
 	}
 
-	async getGroupInviteLinks(groupId: GroupId) {
+	async getGroupInviteLinks(groupId: GroupId): Promise<InviteLinkResponseDto[]> {
 		const links = await this.prisma.groupInviteLink.findMany({
 			where: { groupId }
 		})
 
-		const domain = this.config.get('SHORT_URL_DOMAIN')
-
-		return links.map((link) => ({
-			...link,
-			chatId: groupId,
-			link: `https://${domain}/+${link.code}`,
-			expiresAt: link.expiresAt ? link.expiresAt.toString() : null
-		}))
+		return plainToInstance(InviteLinkResponseDto, links)
 	}
 
-	async createGroupInviteLink(groupId: GroupId, creatorId: UserId, dto: CreateInviteLinkDto) {
+	async createGroupInviteLink(groupId: GroupId, creatorId: UserId, dto: CreateInviteLinkDto): Promise<InviteLinkResponseDto> {
 		const code = randomBytes(16).toString('hex')
-		return this.prisma.groupInviteLink.create({
+		const link = await this.prisma.groupInviteLink.create({
 			data: {
 				code,
 				groupId,
 				creatorId,
 				maxUses: dto.maxUses,
-				expiresAt: dto.expiresAt ? BigInt(dto.expiresAt) : null
+				expiresAt: dto.expiresAt
 			}
 		})
+
+		return plainToInstance(InviteLinkResponseDto, link)
 	}
 
-	async updateGroupInviteLink(groupId: GroupId, linkId: number, dto: UpdateInviteLinkDto) {
+	async updateGroupInviteLink(groupId: GroupId, linkId: number, dto: UpdateInviteLinkDto): Promise<InviteLinkResponseDto> {
 		const existing = await this.prisma.groupInviteLink.findUnique({ where: { id: linkId } })
 		if (!existing || existing.groupId !== groupId) {
 			throw new NotFoundException('Invite link not found')
 		}
 
-		return this.prisma.groupInviteLink.update({
+		const inviteLink = await this.prisma.groupInviteLink.update({
 			where: { id: linkId },
 			data: {
 				maxUses: dto.maxUses !== undefined ? dto.maxUses : existing.maxUses,
@@ -421,6 +417,10 @@ export class GroupsService {
 							: null
 						: existing.expiresAt
 			}
+		})
+		return plainToInstance(InviteLinkResponseDto, {
+			...inviteLink,
+			chatId: groupId
 		})
 	}
 
