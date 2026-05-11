@@ -18,14 +18,17 @@ import { CurrentUserId } from '../../common/decorators/user-id.decorator'
 import { CanReadChatGuard } from '../../common/guards/can-read-chat.guard'
 import { ChatId } from '../../common/types/chat-id.type'
 import { InviteLinkOwnerGuard } from '../../common/guards/invite-link-owner.guard'
+import { DeleteChatDto } from './dto/delete-chat.dto'
+import { DeleteChatUseCase } from './use-cases/delete-chat.use-case'
 
 @Controller('chats')
 @UseGuards(AuthGuard)
 export class ChatsController {
 	constructor(
 		private readonly chatsService: ChatsService,
-		private readonly inviteLinksService: InviteLinksService
-	) {}
+		private readonly inviteLinksService: InviteLinksService,
+		private readonly deleteChatUseCase: DeleteChatUseCase
+	) { }
 
 	@Get()
 	getAll(@CurrentUserId() userId: UserId) {
@@ -41,8 +44,12 @@ export class ChatsController {
 	@Delete(':chatId')
 	@UseGuards(CanReadChatGuard)
 	@HttpCode(HttpStatus.NO_CONTENT)
-	deleteChat(@CurrentUserId() userId: UserId, @Param('chatId') chatId: string) {
-		return this.chatsService.deleteChat(userId, ChatId(chatId))
+	deleteChat(
+		@CurrentUserId() userId: UserId,
+		@Param('chatId') chatId: string,
+		@Body() dto: DeleteChatDto
+	) {
+		return this.deleteChatUseCase.execute(userId, ChatId(chatId), dto.deleteForRecipient)
 	}
 
 	@Get('invite-links/:code/info')

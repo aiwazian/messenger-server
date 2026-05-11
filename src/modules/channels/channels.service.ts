@@ -2,11 +2,9 @@ import { plainToInstance } from 'class-transformer'
 import {
 	BadRequestException,
 	ConflictException,
-	ForbiddenException,
 	Injectable,
 	NotFoundException
 } from '@nestjs/common'
-import { CreateChannelDto } from './dto/create-channel.dto'
 import { ChannelResponseDto } from './dto/channel.dto'
 import { UpdateChannelDto } from './dto/update-channel.dto'
 import { ChatsService } from '../chats/chats.service'
@@ -15,17 +13,14 @@ import { ChatResponseDto } from '../chats/dto/chat-response.dto'
 import { MessageResponseDto } from '../messages/dto/message-response.dto'
 import { SearchService } from '../search/search.service'
 import { UserResponseDto } from '../users/dto/user-response.dto'
-import { ConfigService } from '@nestjs/config'
 import { IsBannedDto } from './dto/is-banned.dto'
 import { PrismaService } from '../../providers/prisma/prisma.service'
-import { ChannelType, MessageType, SystemEventType } from '../../../generated/prisma/enums'
+import { ChannelType } from '../../../generated/prisma/enums'
 import { UserId } from '../../common/types/user-id.type'
-import { generateChannelId } from '../../common/utils/id-generator.util'
 import { ChannelId } from '../../common/types/channel-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
 import { Prisma } from '../../../generated/prisma/client'
 import { SocketEvent } from '../../common/socket/socket-events'
-import { EncryptionService } from '../encryption/encryption.service'
 import { randomBytes } from 'crypto'
 import { CreateInviteLinkDto } from '../../common/dtos/create-invite-link.dto'
 import { UpdateInviteLinkDto } from '../../common/dtos/update-invite-link.dto'
@@ -34,63 +29,11 @@ import { InviteLinkResponseDto } from '../invites/dto/invite-link-response.dto'
 @Injectable()
 export class ChannelsService {
 	constructor(
-		private readonly config: ConfigService,
 		private readonly prisma: PrismaService,
 		private readonly chatsService: ChatsService,
 		private readonly realtimeGateway: RealtimeGateway,
 		private readonly searchService: SearchService,
-		private readonly encryption: EncryptionService
-	) {}
-
-	async create(ownerId: UserId, dto: CreateChannelDto): Promise<ChannelResponseDto> {
-		const channelId = generateChannelId()
-
-		const channel = await this.prisma.channel.create({
-			data: {
-				id: channelId,
-				name: dto.name,
-				bio: dto.bio,
-				ownerId: ownerId,
-				channelType: ChannelType.PRIVATE,
-				username: null,
-				subscribers: {
-					create: {
-						userId: ownerId
-					}
-				}
-			}
-		})
-
-		await this.chatsService.create(ownerId, ChatId(channel.id))
-
-		await this.prisma.message.create({
-			data: {
-				chatId: channel.id,
-				text: null,
-				sendTime: Date.now(),
-				sequenceId: BigInt(Date.now()),
-				senderId: ownerId,
-				messageType: MessageType.SYSTEM,
-				encryptionKeyVersion: this.encryption.currentVersion,
-				systemEvent: {
-					create: {
-						eventType: SystemEventType.CHANNEL_CREATED
-					}
-				}
-			}
-		})
-
-		const chatPayload = plainToInstance(ChatResponseDto, {
-			id: channel.id,
-			name: channel.name,
-			isPinned: false,
-			lastMessage: null
-		})
-
-		this.realtimeGateway.sendToUser(ownerId, SocketEvent.CHAT_NEW, chatPayload)
-
-		return this.getById(ChannelId(channel.id), ownerId)
-	}
+	) { }
 
 	async update(id: ChannelId, dto: UpdateChannelDto): Promise<ChannelResponseDto> {
 		const exitingChannel = await this.prisma.channel.findUnique({ where: { id } })
@@ -165,7 +108,7 @@ export class ChannelsService {
 		await this.prisma.$transaction(async (tx) => {
 			await tx.channelSubscriber
 				.delete({ where: { userId_channelId: { userId, channelId } } })
-				.catch(() => {})
+				.catch(() => { })
 
 			await tx.chat.deleteMany({
 				where: { userId, chatId: channelId }
@@ -196,7 +139,7 @@ export class ChannelsService {
 		await this.prisma.$transaction(async (tx) => {
 			await tx.channelSubscriber
 				.delete({ where: { userId_channelId: { userId: targetUserId, channelId: id } } })
-				.catch(() => {})
+				.catch(() => { })
 
 			await tx.chat.deleteMany({
 				where: { userId: targetUserId, chatId: id }
@@ -252,12 +195,12 @@ export class ChannelsService {
 			channelId,
 			user: search
 				? {
-						OR: [
-							{ firstName: { contains: search } },
-							{ lastName: { contains: search } },
-							{ username: { contains: search } }
-						]
-					}
+					OR: [
+						{ firstName: { contains: search } },
+						{ lastName: { contains: search } },
+						{ username: { contains: search } }
+					]
+				}
 				: undefined
 		}
 
@@ -299,12 +242,12 @@ export class ChannelsService {
 			channelId,
 			user: search
 				? {
-						OR: [
-							{ firstName: { contains: search } },
-							{ lastName: { contains: search } },
-							{ username: { contains: search } }
-						]
-					}
+					OR: [
+						{ firstName: { contains: search } },
+						{ lastName: { contains: search } },
+						{ username: { contains: search } }
+					]
+				}
 				: undefined
 		}
 

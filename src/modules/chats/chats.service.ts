@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
+import {
+	ForbiddenException,
+	Injectable,
+	NotFoundException,
+} from '@nestjs/common'
 import { ChatResponseDto } from './dto/chat-response.dto'
 import { plainToInstance } from 'class-transformer'
 import { MessageAttachmentDto, MessageResponseDto } from '../messages/dto/message-response.dto'
@@ -14,7 +18,7 @@ export class ChatsService {
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly encryption: EncryptionService
-	) {}
+	) { }
 
 	async getAll(userId: UserId): Promise<ChatResponseDto[]> {
 		const chats = await this.prisma.chat.findMany({
@@ -145,24 +149,6 @@ export class ChatsService {
 			name: title,
 			isPinned: chat.isPinned,
 			lastMessage
-		})
-	}
-
-	async deleteChat(userId: UserId, chatId: ChatId): Promise<void> {
-		await this.prisma.$transaction(async (tx) => {
-			await tx.chat.deleteMany({
-				where: { userId, chatId }
-			})
-
-			const membersCount = await tx.chat.count({
-				where: { chatId }
-			})
-
-			if (membersCount === 0) {
-				await tx.message.deleteMany({
-					where: { chatId }
-				})
-			}
 		})
 	}
 

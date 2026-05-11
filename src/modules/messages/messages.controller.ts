@@ -25,11 +25,15 @@ import { UserId } from '../../common/types/user-id.type'
 import { CanReadChatGuard } from '../../common/guards/can-read-chat.guard'
 import { CanDeleteMessageGuard } from '../../common/guards/can-delete-message.guard'
 import { CanClearHistoryGuard } from '../../common/guards/can-clear-history.guard'
+import { SendMessageUseCase } from './use-cases/send-message.use-case'
 
 @Controller('chats/:chatId/messages')
 @UseGuards(AuthGuard)
 export class MessagesController {
-	constructor(private readonly messagesService: MessagesService) {}
+	constructor(
+		private readonly messagesService: MessagesService,
+		private readonly sendMessageUseCase: SendMessageUseCase
+	) { }
 
 	@Post()
 	@UseGuards(CanSendMessageGuard)
@@ -39,7 +43,7 @@ export class MessagesController {
 		@CurrentUserId() userId: UserId,
 		@Headers('x-socket-id') socketId: string
 	) {
-		return this.messagesService.sendTextMessage(userId, chatId, dto, socketId)
+		return this.sendMessageUseCase.execute(userId, chatId, dto, socketId)
 	}
 
 	@Post('files/init')
@@ -119,8 +123,8 @@ export class MessagesController {
 	}
 
 	@Post('voice')
-	sendVoiceMessage() {}
+	sendVoiceMessage() { }
 
 	@Post('reaction')
-	sendReaction() {}
+	sendReaction() { }
 }

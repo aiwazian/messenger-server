@@ -1,5 +1,4 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
-import { randomBytes } from 'crypto'
 import { ConfigService } from '@nestjs/config'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
@@ -9,7 +8,6 @@ import { detectChatType } from '../../common/utils/detect-chat-type.util'
 import { InviteLinkResponseDto } from './dto/invite-link-response.dto'
 import { plainToInstance } from 'class-transformer'
 import { InternalInviteLinkResponse } from './dto/Internal-invite-link-response'
-import { CreateInviteLinkDto } from '../chats/dto/create-invite-link.dto'
 import { ChatsService } from '../chats/chats.service'
 import { ChannelInviteLink, GroupInviteLink } from '../../../generated/prisma/client'
 
@@ -19,7 +17,7 @@ export class InviteLinksService {
 		private readonly config: ConfigService,
 		private readonly prisma: PrismaService,
 		private readonly chatsService: ChatsService
-	) {}
+	) { }
 
 	async getInfo(userId: UserId, code: string): Promise<InternalInviteLinkResponse> {
 		let link: ChannelInviteLink | GroupInviteLink | null =

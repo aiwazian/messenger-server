@@ -19,7 +19,6 @@ import { SocketEvent } from '../../common/socket/socket-events'
 import { Prisma } from '../../../generated/prisma/client'
 import { detectChatType } from '../../common/utils/detect-chat-type.util'
 import { EncryptionService } from '../encryption/encryption.service'
-import { SendMessageUseCase } from './use-cases/send-message.use-case'
 
 @Injectable()
 export class MessagesService {
@@ -30,22 +29,8 @@ export class MessagesService {
 		private readonly pushService: PushService,
 		private readonly realtimeGateway: RealtimeGateway,
 		private readonly storageService: StorageService,
-		private readonly encryption: EncryptionService,
-		private readonly sendMessageUseCase: SendMessageUseCase
-	) {}
-
-	async sendTextMessage(
-		senderId: UserId,
-		chatId: ChatId,
-		dto: TextMessageDto,
-		excludeSocketId: string
-	): Promise<MessageResponseDto> {
-		const sentMessage = await this.sendMessageUseCase.execute(senderId, chatId, dto)
-
-		this.notifyRecipients(senderId, chatId, sentMessage, excludeSocketId)
-
-		return sentMessage
-	}
+		private readonly encryption: EncryptionService
+	) { }
 
 	async initFileUpload(userId: UserId, chatId: ChatId, dto: FileInitDto) {
 		await this.chatsService.create(userId, chatId)
@@ -424,7 +409,7 @@ export class MessagesService {
 		}
 	}
 
-	private async notifyRecipients(
+	async notifyRecipients(
 		senderUserId: UserId,
 		chatId: ChatId,
 		message: MessageResponseDto,

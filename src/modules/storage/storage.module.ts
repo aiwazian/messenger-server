@@ -1,11 +1,11 @@
-import { Module } from '@nestjs/common'
+import { forwardRef, Module } from '@nestjs/common'
 import { StorageService } from './storage.service'
 import { SessionsModule } from '../sessions/sessions.module'
 import { JwtAuthModule } from '../security/jwt.module'
 
 @Module({
-	imports: [SessionsModule, JwtAuthModule],
+	imports: [forwardRef(() => SessionsModule), JwtAuthModule],
 	providers: [StorageService],
 	exports: [StorageService]
 })
-export class StorageModule {}
+export class StorageModule { }

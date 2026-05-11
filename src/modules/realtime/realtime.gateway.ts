@@ -1,4 +1,4 @@
-import { Logger, Inject, forwardRef, UnauthorizedException } from '@nestjs/common'
+import { Logger, Inject, forwardRef } from '@nestjs/common'
 import {
 	WebSocketGateway,
 	OnGatewayConnection,
@@ -12,7 +12,6 @@ import {
 import { Server, Socket } from 'socket.io'
 import { SessionsService } from '../sessions/sessions.service'
 import { instanceToPlain } from 'class-transformer'
-import { ChatsService } from '../chats/chats.service'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { SocketEvent, SocketEventType } from '../../common/socket/socket-events'
 import { UserId } from '../../common/types/user-id.type'
@@ -29,9 +28,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 	constructor(
 		@Inject(forwardRef(() => SessionsService))
 		private readonly sessionsService: SessionsService,
-		private readonly prisma: PrismaService,
-		private readonly chatsService: ChatsService
-	) {}
+		private readonly prisma: PrismaService
+	) { }
 
 	afterInit(server: Server) {
 		server.use(async (socket, next) => {

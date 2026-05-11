@@ -10,19 +10,22 @@ import { MessageType } from '../../../../generated/prisma/enums'
 import { detectChatType } from '../../../common/utils/detect-chat-type.util'
 import { ChatType } from '../../../common/enums/chat-type.enum'
 import { ChatsService } from '../../chats/chats.service'
+import { MessagesService } from '../messages.service'
 
 @Injectable()
 export class SendMessageUseCase {
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly encryption: EncryptionService,
-		private readonly chatsService: ChatsService
-	) {}
+		private readonly chatsService: ChatsService,
+		private readonly messageService: MessagesService
+	) { }
 
 	async execute(
 		senderId: UserId,
 		chatId: ChatId,
-		dto: TextMessageDto
+		dto: TextMessageDto,
+		excludeSocketId: string
 	): Promise<MessageResponseDto> {
 		await this.chatsService.create(senderId, chatId)
 		const { encrypted, version } = this.encryption.encrypt(dto.text)
@@ -56,6 +59,8 @@ export class SendMessageUseCase {
 			senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
 			messageType: MessageType.TEXT
 		})
+
+		this.messageService.notifyRecipients(senderId, chatId, messageInstance, excludeSocketId)
 
 		return messageInstance
 	}

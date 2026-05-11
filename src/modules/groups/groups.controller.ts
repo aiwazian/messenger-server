@@ -28,15 +28,18 @@ import { ParseUserIdPipe } from '../../common/pipes/parse-user-id.pipe'
 import { ParseIntPipe } from '@nestjs/common'
 import { CreateInviteLinkDto } from '../../common/dtos/create-invite-link.dto'
 import { UpdateInviteLinkDto } from '../../common/dtos/update-invite-link.dto'
+import { CreateGroupUseCase } from './use-cases/create-group.use-case'
 
 @Controller('groups')
 @UseGuards(AuthGuard)
 export class GroupsController {
-	constructor(private readonly groupsService: GroupsService) {}
+	constructor(private readonly groupsService: GroupsService,
+		private readonly createGroupUseCase: CreateGroupUseCase
+	) { }
 
 	@Post()
 	createGroup(@CurrentUserId() userId: UserId, @Body() dto: CreateGroupDto) {
-		return this.groupsService.create(userId, dto)
+		return this.createGroupUseCase.execute(userId, dto)
 	}
 
 	@Get(`:${PARAMS.GROUP_ID}`)

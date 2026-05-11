@@ -7,10 +7,11 @@ import { ChatsModule } from '../chats/chats.module'
 import { JwtAuthModule } from '../security/jwt.module'
 import { EncryptionService } from '../encryption/encryption.service'
 import { InviteLinksService } from '../invites/invite-links.service'
+import { CreateGroupUseCase } from './use-cases/create-group.use-case'
 
 @Module({
 	imports: [JwtAuthModule, SessionsModule, SearchModule, ChatsModule],
 	controllers: [GroupsController],
-	providers: [GroupsService, EncryptionService, InviteLinksService]
+	providers: [GroupsService, EncryptionService, InviteLinksService, CreateGroupUseCase]
 })
-export class GroupsModule {}
+export class GroupsModule { }

@@ -5,7 +5,6 @@ import {
 	Injectable,
 	NotFoundException
 } from '@nestjs/common'
-import { CreateGroupDto } from './dto/create-group.dto'
 import { GroupResponseDto } from './dto/group-response.dto'
 import { UpdateGroupDto } from './dto/update-group.dto'
 import { ChatsService } from '../chats/chats.service'
@@ -14,91 +13,25 @@ import { UserResponseDto } from '../users/dto/user-response.dto'
 import { RealtimeGateway } from '../realtime/realtime.gateway'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
-import { generateGroupId } from '../../common/utils/id-generator.util'
-import {
-	GroupType,
-	MessageType,
-	PrivacyRule,
-	SystemEventType
-} from '../../../generated/prisma/enums'
+import { GroupType, PrivacyRule, } from '../../../generated/prisma/enums'
 import { GroupId } from '../../common/types/group-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
 import { Prisma } from '../../../generated/prisma/client'
 import { SocketEvent } from '../../common/socket/socket-events'
-import { ChatResponseDto } from '../chats/dto/chat-response.dto'
-import { EncryptionService } from '../encryption/encryption.service'
 import { AddMembersDto } from './dto/add-members.dto'
 import { randomBytes } from 'crypto'
 import { CreateInviteLinkDto } from '../../common/dtos/create-invite-link.dto'
 import { UpdateInviteLinkDto } from '../../common/dtos/update-invite-link.dto'
-import { ConfigService } from '@nestjs/config'
 import { InviteLinkResponseDto } from '../invites/dto/invite-link-response.dto'
 
 @Injectable()
 export class GroupsService {
 	constructor(
-		private readonly config: ConfigService,
 		private readonly prisma: PrismaService,
 		private readonly chatsService: ChatsService,
 		private readonly searchService: SearchService,
 		private readonly realtimeGateway: RealtimeGateway,
-		private readonly encryption: EncryptionService
-	) {}
-
-	async create(ownerId: UserId, dto: CreateGroupDto): Promise<GroupResponseDto> {
-		const groupId = generateGroupId()
-
-		const group = await this.prisma.group.create({
-			data: {
-				id: groupId,
-				name: dto.name,
-				bio: dto.bio,
-				ownerId: ownerId,
-				groupType: GroupType.PRIVATE,
-				username: null,
-				members: {
-					create: {
-						userId: ownerId
-					}
-				}
-			}
-		})
-
-		await this.chatsService.create(ownerId, ChatId(group.id))
-
-		await this.prisma.message.create({
-			data: {
-				chatId: group.id,
-				text: null,
-				sendTime: Date.now(),
-				sequenceId: BigInt(Date.now()),
-				senderId: ownerId,
-				messageType: MessageType.SYSTEM,
-				encryptionKeyVersion: this.encryption.currentVersion,
-				systemEvent: {
-					create: {
-						eventType: SystemEventType.GROUP_CREATED
-					}
-				}
-			}
-		})
-
-		const chatPayload = plainToInstance(ChatResponseDto, {
-			id: group.id,
-			name: group.name,
-			isPinned: false,
-			lastMessage: null
-		})
-
-		this.realtimeGateway.sendToUser(ownerId, SocketEvent.CHAT_NEW, chatPayload)
-
-		return plainToInstance(GroupResponseDto, {
-			...group,
-			isMember: true,
-			isOwner: true,
-			membersCount: 1
-		})
-	}
+	) { }
 
 	async update(id: GroupId, dto: UpdateGroupDto): Promise<GroupResponseDto> {
 		const existingGroup = await this.prisma.group.findUnique({ where: { id } })
@@ -149,7 +82,7 @@ export class GroupsService {
 		await this.prisma.$transaction(async (tx) => {
 			await tx.groupMember
 				.delete({ where: { groupId_userId: { groupId: id, userId } } })
-				.catch(() => {})
+				.catch(() => { })
 
 			await tx.chat.deleteMany({
 				where: { userId, chatId: id }
@@ -180,7 +113,7 @@ export class GroupsService {
 		await this.prisma.$transaction(async (tx) => {
 			await tx.groupMember
 				.delete({ where: { groupId_userId: { groupId: id, userId: targetUserId } } })
-				.catch(() => {})
+				.catch(() => { })
 
 			await tx.chat.deleteMany({
 				where: { userId: targetUserId, chatId: id }
@@ -231,12 +164,12 @@ export class GroupsService {
 			groupId: id,
 			user: search
 				? {
-						OR: [
-							{ firstName: { contains: search } },
-							{ lastName: { contains: search } },
-							{ username: { contains: search } }
-						]
-					}
+					OR: [
+						{ firstName: { contains: search } },
+						{ lastName: { contains: search } },
+						{ username: { contains: search } }
+					]
+				}
 				: undefined
 		}
 
@@ -346,12 +279,12 @@ export class GroupsService {
 			groupId: id,
 			user: search
 				? {
-						OR: [
-							{ firstName: { contains: search } },
-							{ lastName: { contains: search } },
-							{ username: { contains: search } }
-						]
-					}
+					OR: [
+						{ firstName: { contains: search } },
+						{ lastName: { contains: search } },
+						{ username: { contains: search } }
+					]
+				}
 				: undefined
 		}
 
@@ -359,7 +292,7 @@ export class GroupsService {
 			where,
 			skip,
 			take,
-			include: { user: true },
+			select: { user: true },
 			orderBy: { user: { firstName: 'asc' } }
 		})
 
@@ -374,7 +307,7 @@ export class GroupsService {
 			.delete({
 				where: { userId_groupId: { userId: targetUserId, groupId: id } }
 			})
-			.catch(() => {})
+			.catch(() => { })
 	}
 
 	async getGroupInviteLinks(groupId: GroupId): Promise<InviteLinkResponseDto[]> {

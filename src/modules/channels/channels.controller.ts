@@ -26,15 +26,19 @@ import { ParseUserIdPipe } from '../../common/pipes/parse-user-id.pipe'
 import { ParseIntPipe } from '@nestjs/common'
 import { CreateInviteLinkDto } from '../../common/dtos/create-invite-link.dto'
 import { UpdateInviteLinkDto } from '../../common/dtos/update-invite-link.dto'
+import { CreateChannelUseCase } from './use-cases/create-channel.use-case'
 
 @Controller('channels')
 @UseGuards(AuthGuard)
 export class ChannelsController {
-	constructor(private readonly channelsService: ChannelsService) {}
+	constructor(
+		private readonly channelsService: ChannelsService,
+		private readonly createChannelUseCase: CreateChannelUseCase
+	) { }
 
 	@Post()
 	createChannel(@CurrentUserId() userId: UserId, @Body() dto: CreateChannelDto) {
-		return this.channelsService.create(userId, dto)
+		return this.createChannelUseCase.execute(userId, dto)
 	}
 
 	@Get(`:${PARAMS.CHANNEL_ID}`)

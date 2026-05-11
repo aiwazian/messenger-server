@@ -8,10 +8,11 @@ import { JwtAuthModule } from '../security/jwt.module'
 import { PrismaModule } from '../../providers/prisma/prisma.module'
 import { EncryptionService } from '../encryption/encryption.service'
 import { InviteLinksService } from '../invites/invite-links.service'
+import { CreateChannelUseCase } from './use-cases/create-channel.use-case'
 
 @Module({
 	imports: [JwtAuthModule, SessionsModule, SearchModule, ChatsModule, PrismaModule],
 	controllers: [ChannelsController],
-	providers: [ChannelsService, EncryptionService, InviteLinksService]
+	providers: [ChannelsService, EncryptionService, InviteLinksService, CreateChannelUseCase]
 })
-export class ChannelsModule {}
+export class ChannelsModule { }
