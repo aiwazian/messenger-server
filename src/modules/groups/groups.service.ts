@@ -3,12 +3,15 @@ import {
 	BadRequestException,
 	ConflictException,
 	Injectable,
-	NotFoundException
+	NotFoundException,
+	Inject,
+	forwardRef
 } from '@nestjs/common'
 import { GroupResponseDto } from './dto/group-response.dto'
 import { UpdateGroupDto } from './dto/update-group.dto'
 import { ChatsService } from '../chats/chats.service'
 import { SearchService } from '../search/search.service'
+import { StorageService } from '../storage/storage.service'
 import { UserResponseDto } from '../users/dto/user-response.dto'
 import { RealtimeGateway } from '../realtime/realtime.gateway'
 import { PrismaService } from '../../providers/prisma/prisma.service'
@@ -31,6 +34,7 @@ export class GroupsService {
 		private readonly chatsService: ChatsService,
 		private readonly searchService: SearchService,
 		private readonly realtimeGateway: RealtimeGateway,
+		private readonly storageService: StorageService
 	) { }
 
 	async update(id: GroupId, dto: UpdateGroupDto): Promise<GroupResponseDto> {
@@ -137,7 +141,8 @@ export class GroupsService {
 				members: {
 					where: { userId: userId },
 					select: { userId: true }
-				}
+				},
+				photos: true
 			}
 		})
 
@@ -146,12 +151,14 @@ export class GroupsService {
 		const isMember = userId ? group.members.length > 0 : false
 		const isOwner = userId ? group.ownerId === userId : false
 
-		return plainToInstance(GroupResponseDto, {
+		const response = plainToInstance(GroupResponseDto, {
 			...group,
 			membersCount: group._count.members,
 			isMember,
 			isOwner
 		})
+		response.avatars = group.photos.map((p) => ({ fileId: p.fileId }))
+		return response
 	}
 
 	async getMembers(
@@ -372,5 +379,37 @@ export class GroupsService {
 		}
 
 		await this.prisma.groupInviteLink.delete({ where: { id: linkId } })
+	}
+
+	async confirmUploadAvatar(groupId: GroupId, fileId: string): Promise<void> {
+		const file = await this.prisma.file.findFirst({
+			where: { id: fileId }
+		})
+
+		if (file == null) {
+			throw new NotFoundException('File not found')
+		}
+
+		await this.storageService.confirmUpload(fileId)
+
+		await this.prisma.groupPhoto.create({
+			data: {
+				groupId: groupId,
+				fileId: file.id,
+				isCurrent: true
+			}
+		})
+	}
+
+	async deleteAvatar(groupId: GroupId, fileId: string): Promise<void> {
+		const photo = await this.prisma.groupPhoto.findFirst({
+			where: { groupId, fileId }
+		})
+		if (!photo) throw new NotFoundException('Avatar not found')
+
+		await this.prisma.groupPhoto.delete({
+			where: { fileId }
+		})
+		await this.storageService.deleteFile(fileId)
 	}
 }

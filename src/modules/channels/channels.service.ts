@@ -3,7 +3,9 @@ import {
 	BadRequestException,
 	ConflictException,
 	Injectable,
-	NotFoundException
+	NotFoundException,
+	Inject,
+	forwardRef
 } from '@nestjs/common'
 import { ChannelResponseDto } from './dto/channel.dto'
 import { UpdateChannelDto } from './dto/update-channel.dto'
@@ -12,6 +14,7 @@ import { RealtimeGateway } from '../realtime/realtime.gateway'
 import { ChatResponseDto } from '../chats/dto/chat-response.dto'
 import { MessageResponseDto } from '../messages/dto/message-response.dto'
 import { SearchService } from '../search/search.service'
+import { StorageService } from '../storage/storage.service'
 import { UserResponseDto } from '../users/dto/user-response.dto'
 import { IsBannedDto } from './dto/is-banned.dto'
 import { PrismaService } from '../../providers/prisma/prisma.service'
@@ -33,6 +36,7 @@ export class ChannelsService {
 		private readonly chatsService: ChatsService,
 		private readonly realtimeGateway: RealtimeGateway,
 		private readonly searchService: SearchService,
+		private readonly storageService: StorageService
 	) { }
 
 	async update(id: ChannelId, dto: UpdateChannelDto): Promise<ChannelResponseDto> {
@@ -168,7 +172,8 @@ export class ChannelsService {
 				subscribers: {
 					where: { userId },
 					select: { userId: true }
-				}
+				},
+				photos: true
 			}
 		})
 
@@ -176,13 +181,15 @@ export class ChannelsService {
 
 		const isOwner = channel.ownerId == userId
 
-		return plainToInstance(ChannelResponseDto, {
+		const response = plainToInstance(ChannelResponseDto, {
 			...channel,
 			isSubscribed: channel.subscribers.length > 0,
 			isOwner,
 			subscribers: channel._count.subscribers,
 			removedUser: channel._count.blockedUsers
 		})
+		response.avatars = channel.photos.map((p) => ({ fileId: p.fileId }))
+		return response
 	}
 
 	async getSubscribers(
@@ -348,5 +355,37 @@ export class ChannelsService {
 		}
 
 		await this.prisma.channelInviteLink.delete({ where: { id: linkId } })
+	}
+
+	async confirmUploadAvatar(channelId: ChannelId, fileId: string): Promise<void> {
+		const file = await this.prisma.file.findFirst({
+			where: { id: fileId }
+		})
+
+		if (file == null) {
+			throw new NotFoundException('File not found')
+		}
+
+		await this.storageService.confirmUpload(fileId)
+
+		await this.prisma.channelPhoto.create({
+			data: {
+				channelId: channelId,
+				fileId: file.id,
+				isCurrent: true
+			}
+		})
+	}
+
+	async deleteAvatar(channelId: ChannelId, fileId: string): Promise<void> {
+		const photo = await this.prisma.channelPhoto.findFirst({
+			where: { channelId, fileId }
+		})
+		if (!photo) throw new NotFoundException('Avatar not found')
+
+		await this.prisma.channelPhoto.delete({
+			where: { fileId }
+		})
+		await this.storageService.deleteFile(fileId)
 	}
 }

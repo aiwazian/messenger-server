@@ -8,10 +8,11 @@ import { JwtAuthModule } from '../security/jwt.module'
 import { EncryptionService } from '../encryption/encryption.service'
 import { InviteLinksService } from '../invites/invite-links.service'
 import { CreateGroupUseCase } from './use-cases/create-group.use-case'
+import { StorageService } from '../storage/storage.service'
 
 @Module({
 	imports: [JwtAuthModule, SessionsModule, SearchModule, ChatsModule],
 	controllers: [GroupsController],
-	providers: [GroupsService, EncryptionService, InviteLinksService, CreateGroupUseCase]
+	providers: [GroupsService, EncryptionService, InviteLinksService, CreateGroupUseCase, StorageService]
 })
 export class GroupsModule { }

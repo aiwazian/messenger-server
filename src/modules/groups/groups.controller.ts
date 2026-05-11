@@ -29,12 +29,17 @@ import { ParseIntPipe } from '@nestjs/common'
 import { CreateInviteLinkDto } from '../../common/dtos/create-invite-link.dto'
 import { UpdateInviteLinkDto } from '../../common/dtos/update-invite-link.dto'
 import { CreateGroupUseCase } from './use-cases/create-group.use-case'
+import { FileInitDto } from '../messages/dto/file-init.dto'
+import { StorageService } from '../storage/storage.service'
+import { FileDownloadDto } from '../messages/dto/file-download.dto'
 
 @Controller('groups')
 @UseGuards(AuthGuard)
 export class GroupsController {
-	constructor(private readonly groupsService: GroupsService,
-		private readonly createGroupUseCase: CreateGroupUseCase
+	constructor(
+		private readonly groupsService: GroupsService,
+		private readonly createGroupUseCase: CreateGroupUseCase,
+		private readonly storageService: StorageService
 	) { }
 
 	@Post()
@@ -177,5 +182,35 @@ export class GroupsController {
 		@Param('linkId', ParseIntPipe) linkId: number
 	) {
 		return this.groupsService.deleteGroupInviteLink(id, linkId)
+	}
+
+	@Post(`:${PARAMS.GROUP_ID}/avatar/init`)
+	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
+	initFileUpload(@Body() dto: FileInitDto) {
+		return this.storageService.initGroupAvatarUpload(dto.name, dto.size, dto.mimeType)
+	}
+
+	@Post(`:${PARAMS.GROUP_ID}/avatar/confirm/:fileId`)
+	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
+	confirmFileUpload(
+		@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId,
+		@Param('fileId') fileId: string
+	) {
+		return this.groupsService.confirmUploadAvatar(id, fileId)
+	}
+
+	@Delete(`:${PARAMS.GROUP_ID}/avatars/:fileId`)
+	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
+	@HttpCode(HttpStatus.NO_CONTENT)
+	deleteAvatar(
+		@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId,
+		@Param('fileId') fileId: string
+	) {
+		return this.groupsService.deleteAvatar(id, fileId)
+	}
+
+	@Get('avatars/:fileId')
+	async getAvatarDownloadUrl(@Param('fileId') fileId: string): Promise<FileDownloadDto> {
+		return this.storageService.getDownloadUrl(fileId)
 	}
 }

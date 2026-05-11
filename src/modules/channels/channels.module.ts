@@ -9,10 +9,11 @@ import { PrismaModule } from '../../providers/prisma/prisma.module'
 import { EncryptionService } from '../encryption/encryption.service'
 import { InviteLinksService } from '../invites/invite-links.service'
 import { CreateChannelUseCase } from './use-cases/create-channel.use-case'
+import { StorageService } from '../storage/storage.service'
 
 @Module({
 	imports: [JwtAuthModule, SessionsModule, SearchModule, ChatsModule, PrismaModule],
 	controllers: [ChannelsController],
-	providers: [ChannelsService, EncryptionService, InviteLinksService, CreateChannelUseCase]
+	providers: [ChannelsService, EncryptionService, InviteLinksService, CreateChannelUseCase, StorageService]
 })
 export class ChannelsModule { }

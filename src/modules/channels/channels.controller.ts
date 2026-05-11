@@ -27,13 +27,17 @@ import { ParseIntPipe } from '@nestjs/common'
 import { CreateInviteLinkDto } from '../../common/dtos/create-invite-link.dto'
 import { UpdateInviteLinkDto } from '../../common/dtos/update-invite-link.dto'
 import { CreateChannelUseCase } from './use-cases/create-channel.use-case'
+import { FileInitDto } from '../messages/dto/file-init.dto'
+import { StorageService } from '../storage/storage.service'
+import { FileDownloadDto } from '../messages/dto/file-download.dto'
 
 @Controller('channels')
 @UseGuards(AuthGuard)
 export class ChannelsController {
 	constructor(
 		private readonly channelsService: ChannelsService,
-		private readonly createChannelUseCase: CreateChannelUseCase
+		private readonly createChannelUseCase: CreateChannelUseCase,
+		private readonly storageService: StorageService
 	) { }
 
 	@Post()
@@ -179,5 +183,35 @@ export class ChannelsController {
 		@Param('linkId', ParseIntPipe) linkId: number
 	) {
 		return this.channelsService.deleteChannelInviteLink(id, linkId)
+	}
+
+	@Post(`:${PARAMS.CHANNEL_ID}/avatar/init`)
+	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	initFileUpload(@Body() dto: FileInitDto) {
+		return this.storageService.initChannelAvatarUpload(dto.name, dto.size, dto.mimeType)
+	}
+
+	@Post(`:${PARAMS.CHANNEL_ID}/avatar/confirm/:fileId`)
+	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	confirmFileUpload(
+		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
+		@Param('fileId') fileId: string
+	) {
+		return this.channelsService.confirmUploadAvatar(id, fileId)
+	}
+
+	@Delete(`:${PARAMS.CHANNEL_ID}/avatars/:fileId`)
+	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	@HttpCode(HttpStatus.NO_CONTENT)
+	deleteAvatar(
+		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
+		@Param('fileId') fileId: string
+	) {
+		return this.channelsService.deleteAvatar(id, fileId)
+	}
+
+	@Get('avatars/:fileId')
+	async getAvatarDownloadUrl(@Param('fileId') fileId: string): Promise<FileDownloadDto> {
+		return this.storageService.getDownloadUrl(fileId)
 	}
 }

@@ -38,4 +38,8 @@ export class ChannelResponseDto {
 
 	@Expose()
 	isOwner?: boolean
+
+	@Expose()
+	@OmitNull()
+	avatars?: { fileId: string }[]
 }

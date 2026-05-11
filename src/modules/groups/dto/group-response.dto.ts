@@ -35,4 +35,8 @@ export class GroupResponseDto {
 
 	@Expose()
 	isOwner?: boolean
+
+	@Expose()
+	@OmitNull()
+	avatars?: { fileId: string }[]
 }
