@@ -6,7 +6,7 @@ import { ChatsService } from '../../modules/chats/chats.service'
 
 @Injectable()
 export class CanReadChatGuard implements CanActivate {
-	constructor(private readonly chatsService: ChatsService) {}
+	constructor(private readonly chatsService: ChatsService) { }
 
 	async canActivate(ctx: ExecutionContext): Promise<boolean> {
 		const request = ctx.switchToHttp().getRequest()
@@ -15,13 +15,6 @@ export class CanReadChatGuard implements CanActivate {
 		const chatId = (request.params[PARAMS.CHAT_ID] ||
 			request.params[PARAMS.GROUP_ID] ||
 			request.params[PARAMS.CHANNEL_ID]) as ChatId | undefined
-		const messageId = request.params[PARAMS.MESSAGE_ID]
-			? Number(request.params[PARAMS.MESSAGE_ID])
-			: undefined
-
-		if (messageId !== undefined) {
-			return this.chatsService.canReadMessage(userId, messageId, chatId)
-		}
 
 		if (chatId !== undefined) {
 			return this.chatsService.canReadChat(userId, chatId)

@@ -12,6 +12,7 @@ import { ChatId } from '../../common/types/chat-id.type'
 import { ChatType } from '../../common/enums/chat-type.enum'
 import { detectChatType } from '../../common/utils/detect-chat-type.util'
 import { EncryptionService } from '../encryption/encryption.service'
+import { ChannelType, GroupType } from '../../../generated/prisma/enums'
 
 @Injectable()
 export class ChatsService {
@@ -156,14 +157,6 @@ export class ChatsService {
 		const chatType = detectChatType(chatId)
 
 		if (chatType === ChatType.PRIVATE) {
-			const chat = await this.prisma.chat.findFirst({
-				where: { userId, chatId }
-			})
-
-			if (!chat) {
-				throw new ForbiddenException('User is not a chat participant')
-			}
-
 			return true
 		}
 
@@ -177,7 +170,7 @@ export class ChatsService {
 				throw new NotFoundException('Group not found')
 			}
 
-			if (group.groupType === 'PUBLIC') {
+			if (group.groupType === GroupType.PUBLIC) {
 				return true
 			}
 
@@ -202,7 +195,7 @@ export class ChatsService {
 				throw new NotFoundException('Channel not found')
 			}
 
-			if (channel.channelType === 'PUBLIC') {
+			if (channel.channelType === ChannelType.PUBLIC) {
 				return true
 			}
 
@@ -274,27 +267,6 @@ export class ChatsService {
 		}
 
 		throw new ForbiddenException('Unsupported chat type')
-	}
-
-	async canReadMessage(userId: UserId, messageId: number, chatId?: ChatId): Promise<boolean> {
-		if (!chatId) {
-			throw new ForbiddenException('chatId is required')
-		}
-
-		const message = await this.prisma.message.findUnique({
-			where: { id: messageId }
-		})
-
-		if (!message) {
-			throw new NotFoundException('Message not found')
-		}
-
-		if (message.senderId !== userId && message.chatId !== chatId) {
-			throw new ForbiddenException('Message does not belong to the specified chat')
-		}
-
-		await this.canReadChat(userId, chatId)
-		return true
 	}
 
 	async exists(userId: UserId, chatId: ChatId): Promise<boolean> {
