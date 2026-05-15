@@ -77,6 +77,8 @@ model User {
 
     privacySettings          PrivacySettings?
     scheduledAccountDeletion ScheduledAccountDeletion?
+
+    messageReactions MessageReaction[]
 }
 
 model UserPhoto {
@@ -120,6 +122,9 @@ model Chat {
 
     user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+    wallpaperId String?
+    wallpaper   File?   @relation("ChatWallpaper", fields: [wallpaperId], references: [id], onDelete: SetNull)
+
     @@index([userId])
     @@index([chatId])
 }
@@ -150,10 +155,19 @@ model Message {
     senderId BigInt
     sender   User   @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
-    readReceipts MessageRead[]
-    attachments  MessageAttachment[]
-    systemEvent  SystemMessageEvent?
-    deletedFor   DeletedMessage[]
+    replyToId BigInt?
+    replyTo   Message?  @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+    replies   Message[] @relation("MessageReplies")
+
+    forwardedFromMessageId BigInt?
+    forwardedFromMessage   Message?  @relation("MessageForwards", fields: [forwardedFromMessageId], references: [id], onDelete: Cascade)
+    forwards               Message[] @relation("MessageForwards")
+
+    readReceipts     MessageRead[]
+    attachments      MessageAttachment[]
+    systemEvent      SystemMessageEvent?
+    deletedFor       DeletedMessage[]
+    messageReactions MessageReaction[]
 
     @@index([chatId, sendTime])
     @@index([senderId])
@@ -185,6 +199,21 @@ model MessageRead {
     @@index([userId, readAt])
 }
 
+model MessageReaction {
+    id        Int    @id @default(autoincrement())
+    messageId BigInt
+    userId    BigInt
+    emoji     String
+    reactedAt BigInt
+
+    message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+    user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@unique([messageId, userId, emoji])
+    @@index([messageId])
+    @@index([userId])
+}
+
 model DeletedMessage {
     id        Int    @id @default(autoincrement())
     messageId BigInt
@@ -206,12 +235,12 @@ model File {
     path      String
     status    FileStatus @default(PENDING)
     createdAt BigInt
-    updatedAt BigInt
 
-    attachments   MessageAttachment[]
-    userPhotos    UserPhoto[]
-    channelPhotos ChannelPhoto[]
-    groupPhotos   GroupPhoto[]
+    attachments    MessageAttachment[]
+    userPhotos     UserPhoto[]
+    channelPhotos  ChannelPhoto[]
+    groupPhotos    GroupPhoto[]
+    chatWallpapers Chat[]              @relation("ChatWallpaper")
 
     @@index([status])
 }
@@ -390,7 +419,7 @@ model GroupInviteLink {
     uses      Int     @default(0)
     expiresAt BigInt?
 
-    group     Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+    group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
     @@index([groupId])
 }
@@ -404,7 +433,7 @@ model ChannelInviteLink {
     uses      Int     @default(0)
     expiresAt BigInt?
 
-    channel   Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+    channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
     @@index([channelId])
 }
@@ -436,11 +465,10 @@ model ScheduledAccountDeletion {
 }
 
 model FileCleanupTask {
-    id        Int     @id @default(autoincrement())
+    id        Int    @id @default(autoincrement())
     fileId    String
     filePath  String
-    attempts  Int     @default(0)
-    lastError String?
+    attempts  Int    @default(0)
     createdAt BigInt
     nextRetry BigInt
 

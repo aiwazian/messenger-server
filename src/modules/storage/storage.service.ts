@@ -92,35 +92,17 @@ export class StorageService {
 		const file = await this.prisma.file.findUnique({ where: { id: fileId } })
 		if (!file) return
 
-		const path = file.path
+		await this.prisma.fileCleanupTask.create({
+			data: {
+				fileId,
+				filePath: file.path,
+				createdAt: Date.now(),
+				nextRetry: Date.now() + 1000 * 60 * 60, // 1 hour
+				attempts: 1
+			}
+		})
+
 		await this.prisma.file.delete({ where: { id: fileId } })
-
-		// Asynchronously schedule deletion from S3
-		this.scheduleS3Deletion(fileId, path)
-	}
-
-	async scheduleS3Deletion(fileId: string, filePath: string) {
-		// Try immediately
-		try {
-			await this.s3Client.send(
-				new DeleteObjectCommand({
-					Bucket: this.bucketName,
-					Key: filePath
-				})
-			)
-		} catch (e) {
-			console.error(`Failed to delete file ${filePath} from S3, scheduling retry`, e)
-			await this.prisma.fileCleanupTask.create({
-				data: {
-					fileId,
-					filePath,
-					createdAt: Date.now(),
-					nextRetry: Date.now() + 1000 * 60 * 60, // 1 hour
-					attempts: 1,
-					lastError: (e as Error).message
-				}
-			})
-		}
 	}
 
 	@Cron(CronExpression.EVERY_HOUR)
@@ -148,7 +130,6 @@ export class StorageService {
 					where: { id: task.id },
 					data: {
 						attempts: task.attempts + 1,
-						lastError: (e as Error).message,
 						nextRetry: now + 1000 * 60 * 60 // 1 hour
 					}
 				})
@@ -174,7 +155,7 @@ export class StorageService {
 		return plainToInstance(FileDownloadDto, {
 			downloadUrl,
 			name: file.name,
-			size: file.size.toString(),
+			size: file.size,
 			mimeType: file.mimeType
 		})
 	}

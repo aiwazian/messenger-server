@@ -3,9 +3,6 @@ import { ConfigService } from '@nestjs/config'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
-import { ChatType } from '../../common/enums/chat-type.enum'
-import { detectChatType } from '../../common/utils/detect-chat-type.util'
-import { InviteLinkResponseDto } from './dto/invite-link-response.dto'
 import { plainToInstance } from 'class-transformer'
 import { InternalInviteLinkResponse } from './dto/Internal-invite-link-response'
 import { ChatsService } from '../chats/chats.service'
@@ -202,36 +199,6 @@ export class InviteLinksService {
 		}
 
 		return link
-	}
-
-	async getByChatId(chatId: ChatId): Promise<InviteLinkResponseDto[]> {
-		const chatType = detectChatType(chatId)
-		let links: (ChannelInviteLink | GroupInviteLink)[] = []
-
-		if (chatType === ChatType.CHANNEL) {
-			links = await this.prisma.channelInviteLink.findMany({ where: { channelId: chatId } })
-		} else if (chatType === ChatType.GROUP) {
-			links = await this.prisma.groupInviteLink.findMany({ where: { groupId: chatId } })
-		}
-
-		const domain = this.config.get('SHORT_URL_DOMAIN')
-
-		const mappedLinks = links.map((link) => ({
-			...link,
-			chatId: chatId,
-			link: `https://${domain}/+${link.code}`
-		}))
-
-		return plainToInstance(InviteLinkResponseDto, mappedLinks)
-	}
-
-	async getLinkForChannel(channelId: bigint): Promise<string | null> {
-		const link = await this.prisma.channelInviteLink.findFirst({
-			where: { channelId: channelId },
-			orderBy: { id: 'asc' },
-			take: 1
-		})
-		return link ? link.code : null
 	}
 
 	async delete(id: number) {
