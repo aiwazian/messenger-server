@@ -55,8 +55,7 @@ export class StorageService {
 				mimeType,
 				path,
 				status: FileStatus.PENDING,
-				createdAt: Date.now(),
-				updatedAt: Date.now()
+				createdAt: Date.now()
 			}
 		})
 
@@ -80,8 +79,7 @@ export class StorageService {
 		const file = await this.prisma.file.update({
 			where: { id: fileId },
 			data: {
-				status: FileStatus.UPLOADED,
-				updatedAt: Date.now()
+				status: FileStatus.UPLOADED
 			}
 		})
 
@@ -108,11 +106,14 @@ export class StorageService {
 	@Cron(CronExpression.EVERY_HOUR)
 	async processFileCleanupTasks() {
 		const now = Date.now()
+		const oneDayAgo = now - 24 * 60 * 60 * 1000
+
+		// 1. Process cleanup tasks
 		const tasks = await this.prisma.fileCleanupTask.findMany({
 			where: {
 				nextRetry: { lte: now }
 			},
-			take: 50 // process in batches
+			take: 50
 		})
 
 		for (const task of tasks) {
@@ -133,6 +134,29 @@ export class StorageService {
 						nextRetry: now + 1000 * 60 * 60 // 1 hour
 					}
 				})
+			}
+		}
+
+		// 2. Cleanup expired PENDING files
+		const expiredPendingFiles = await this.prisma.file.findMany({
+			where: {
+				status: FileStatus.PENDING,
+				createdAt: { lte: oneDayAgo }
+			},
+			take: 50
+		})
+
+		for (const file of expiredPendingFiles) {
+			try {
+				await this.s3Client.send(
+					new DeleteObjectCommand({
+						Bucket: this.bucketName,
+						Key: file.path
+					})
+				)
+				await this.prisma.file.delete({ where: { id: file.id } })
+			} catch (e) {
+				console.error(`Cleanup failed for expired pending file ${file.path}: ${(e as Error).message}`)
 			}
 		}
 	}

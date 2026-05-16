@@ -26,21 +26,21 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
 	}
 
 	private async ensureSystemUser() {
-		const existing = await this.user.findUnique({
-			where: { id: this.SYSTEM_USER_ID }
+		await this.user.upsert({
+			where: { id: this.SYSTEM_USER_ID },
+			update: {
+				id: this.SYSTEM_USER_ID,
+				login: this.config.get("SYSTEM_USER_LOGIN")!,
+				password: this.config.get("SYSTEM_USER_PASSWORD")!,
+				firstName: this.config.get("SYSTEM_USER_NAME")!
+			},
+			create: {
+				id: this.SYSTEM_USER_ID,
+				login: this.config.get("SYSTEM_USER_LOGIN")!,
+				password: this.config.get("SYSTEM_USER_PASSWORD")!,
+				firstName: this.config.get("SYSTEM_USER_NAME")!
+			}
 		})
-
-		if (!existing) {
-			await this.user.create({
-				data: {
-					id: this.SYSTEM_USER_ID,
-					login: '__system__',
-					password: '__system__',
-					firstName: 'System'
-				}
-			})
-			this.logger.log('System user (id=0) created')
-		}
 	}
 
 	private async ensureEncryptionKey() {
