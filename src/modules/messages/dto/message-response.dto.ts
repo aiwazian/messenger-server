@@ -32,7 +32,7 @@ export class MessageResponseDto {
 	senderId: number
 
 	@Expose()
-	chatId: string
+	chatId: number
 
 	@Expose()
 	@OmitNull()

@@ -5,5 +5,5 @@ export class DeleteMessageDto {
 	@IsOptional()
 	@IsBoolean()
 	@Transform(({ value }) => value === 'true' || value === true)
-	deleteForRecipient?: boolean = false
+	deleteForRecipient: boolean = false
 }

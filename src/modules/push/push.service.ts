@@ -1,32 +1,58 @@
-import { Inject, Injectable } from '@nestjs/common'
-import { PUSH_PROVIDER, PushPayload, PushProvider } from './push.types'
+import { Injectable, Logger } from '@nestjs/common'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
+import { PushNotificationPayload } from './push.types'
+import { ConfigService } from '@nestjs/config'
 
 @Injectable()
 export class PushService {
-	constructor(
-		private readonly prisma: PrismaService,
-		@Inject(PUSH_PROVIDER) private readonly provider: PushProvider
-	) {}
+	private readonly logger = new Logger(PushService.name)
 
-	async sendToUsers(userIds: UserId[], payload: PushPayload): Promise<void> {
+	constructor(
+		private readonly config: ConfigService,
+		private readonly prisma: PrismaService
+	) { }
+
+	async sendToUsers(userIds: UserId[], payload: PushNotificationPayload): Promise<void> {
 		if (userIds.length === 0) return
 
-		const tokens = await this.prisma.session.findMany({
+		const sessions = await this.prisma.session.findMany({
 			where: {
 				userId: { in: userIds },
-				fcmToken: { not: null }
 			},
 			select: { fcmToken: true }
 		})
 
-		const uniqueTokens = Array.from(
-			new Set(tokens.map((t: any) => t.fcmToken).filter((t): t is string => !!t))
-		)
+		const pushTokens = Array.from(new Set(sessions.map((s) => s.fcmToken).filter((t) => t !== null)))
 
-		if (uniqueTokens.length === 0) return
+		if (pushTokens.length === 0) return
 
-		await this.provider.sendToTokens(uniqueTokens, payload)
+		const projectId = this.config.get('RUSTORE_PROJECT_ID')
+		const serviceKey = this.config.get('RUSTORE_PUSH_SERVICE_KEY')
+
+		pushTokens.forEach(async token => {
+			try {
+				fetch(`https://vkpns.rustore.ru/v1/projects/${projectId}/messages:send`, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						'Authorization': 'Bearer ' + serviceKey
+					},
+					body: JSON.stringify({
+						message: {
+							token: token,
+							data: {
+								title: payload.title,
+								body: payload.body,
+								chatId: payload.chatId,
+							}
+						}
+					})
+				})
+				this.logger.debug(`Sent push notification to token ${token}`)
+			} catch (e) {
+				this.logger.error('Error sending push notification', e)
+			}
+		})
 	}
 }

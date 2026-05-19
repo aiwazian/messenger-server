@@ -13,7 +13,7 @@ export class SessionsService {
 		private readonly prisma: PrismaService,
 		@Inject(forwardRef(() => RealtimeGateway))
 		private readonly realtimeGateway: RealtimeGateway
-	) {}
+	) { }
 
 	async getAll(userId: UserId, currentToken?: string): Promise<SessionResponseDto[]> {
 		const sessions = await this.prisma.session.findMany({
@@ -71,6 +71,21 @@ export class SessionsService {
 		const token = session.token
 		await this.prisma.session.delete({ where: { id: id } })
 		await this.realtimeGateway.kickUserByToken(token)
+	}
+
+	async updateFcmToken(token: string, fcmToken: string): Promise<void> {
+		const session = await this.prisma.session.findUnique({
+			where: { token }
+		})
+
+		if (!session) {
+			throw new NotFoundException(`Session not found`)
+		}
+
+		await this.prisma.session.update({
+			where: { token },
+			data: { fcmToken }
+		})
 	}
 
 	async deleteByToken(token: string): Promise<void> {

@@ -9,15 +9,15 @@ export class ContentModerationService {
 
 	constructor(private readonly configService: ConfigService) {
 		this.openai = new OpenAI({
-			baseURL: this.configService.get('OPEN_ROUTER_API_URL'),
-			apiKey: this.configService.get('OPEN_ROUTER_API_KEY')
+			baseURL: this.configService.get('AI_API_URL'),
+			apiKey: this.configService.get('AI_API_KEY')
 		})
 	}
 
 	async isAllowed(text: string): Promise<boolean> {
 		try {
 			const response = await this.openai.chat.completions.create({
-				model: this.configService.get('OPEN_ROUTER_API_MODEL')!,
+				model: this.configService.get('AI_API_MODEL')!,
 				messages: [
 					{
 						role: 'system',

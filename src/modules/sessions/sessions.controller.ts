@@ -1,4 +1,4 @@
-import { Controller, Delete, Get, Param, ParseIntPipe, UseGuards } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, UseGuards } from '@nestjs/common'
 import { SessionsService } from './sessions.service'
 import { AuthGuard } from '../../common/guards/auth.guard'
 import { CurrentUserId } from '../../common/decorators/user-id.decorator'
@@ -6,6 +6,7 @@ import { UserId } from '../../common/types/user-id.type'
 import { CurrentUserToken } from '../../common/decorators/user-token.decorator'
 import { PARAMS } from '../../common/constants/param.constants'
 import { SessionOwnerGuard } from '../../common/guards/session-owner.guard'
+import { UpdateFcmTokenDto } from './dto/update-fcm-token.dto'
 
 @Controller('sessions')
 @UseGuards(AuthGuard)
@@ -15,6 +16,11 @@ export class SessionsController {
 	@Get()
 	getAll(@CurrentUserId() userId: UserId, @CurrentUserToken() token: string) {
 		return this.sessionsService.getAll(userId, token)
+	}
+
+	@Patch('fcm-token')
+	updateFcmToken(@CurrentUserToken() token: string, @Body() dto: UpdateFcmTokenDto) {
+		return this.sessionsService.updateFcmToken(token, dto.fcmToken)
 	}
 
 	@Delete(`:${PARAMS.SESSION_ID}`)

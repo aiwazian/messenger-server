@@ -1,11 +1,5 @@
-export type PushPayload = {
+export class PushNotificationPayload {
 	title: string
 	body: string
-	data?: Record<string, string>
+	chatId: string
 }
-
-export interface PushProvider {
-	sendToTokens(tokens: string[], payload: PushPayload): Promise<void>
-}
-
-export const PUSH_PROVIDER = Symbol('PUSH_PROVIDER')

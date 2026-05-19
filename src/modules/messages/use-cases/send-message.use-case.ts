@@ -49,6 +49,11 @@ export class SendMessageUseCase {
 				senderId: senderId,
 				messageType: MessageType.TEXT,
 				encryptionKeyVersion: version
+			},
+			include: {
+				sender: {
+					select: { firstName: true, lastName: true }
+				}
 			}
 		})
 

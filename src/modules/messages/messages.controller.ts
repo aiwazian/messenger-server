@@ -109,7 +109,7 @@ export class MessagesController {
 		@CurrentUserId() userId: UserId,
 		@Body() dto: DeleteMessageDto
 	) {
-		return this.messagesService.deleteMessage(userId, chatId, messageId, dto.deleteForRecipient)
+		return this.messagesService.deleteMessage(userId, chatId, messageId, dto)
 	}
 
 	@Delete()

@@ -19,6 +19,7 @@ import { SocketEvent } from '../../common/socket/socket-events'
 import { Prisma } from '../../../generated/prisma/client'
 import { detectChatType } from '../../common/utils/detect-chat-type.util'
 import { EncryptionService } from '../encryption/encryption.service'
+import { DeleteMessageDto } from './dto/delete-message.dto'
 
 @Injectable()
 export class MessagesService {
@@ -252,12 +253,12 @@ export class MessagesService {
 		userId: UserId,
 		chatId: ChatId,
 		messageId: number,
-		deleteForRecipient: boolean = false
+		dto: DeleteMessageDto
 	): Promise<void> {
 		const chatType = detectChatType(chatId)
 		const isPrivateChat = chatType === ChatType.PRIVATE
 
-		if (isPrivateChat && !deleteForRecipient) {
+		if (isPrivateChat && !dto.deleteForRecipient) {
 			const existingDelete = await this.prisma.deletedMessage.findFirst({
 				where: { messageId, userId: chatId }
 			})
@@ -289,13 +290,15 @@ export class MessagesService {
 			await this.prisma.message.delete({ where: { id: messageId } })
 		}
 
-		const recipients = await this.getRecipients(userId, chatId, chatType)
 
-		const senderPayload = { chatId: chatId.toString(), messageId }
-		this.realtimeGateway.sendToUser(UserId(chatId), SocketEvent.MESSAGE_DELETE, senderPayload)
+		if (dto.deleteForRecipient) {
+			const senderPayload = { chatId: chatId, messageId }
+			this.realtimeGateway.sendToUser(UserId(chatId), SocketEvent.MESSAGE_DELETE, senderPayload)
+		}
 
 		if (!isPrivateChat) {
-			const recipientPayload = { chatId: userId.toString(), messageId }
+			const recipients = await this.getRecipients(userId, chatId, chatType)
+			const recipientPayload = { chatId: userId, messageId }
 			for (const recipientId of recipients) {
 				this.realtimeGateway.sendToUser(recipientId, SocketEvent.MESSAGE_DELETE, recipientPayload)
 			}
@@ -374,15 +377,15 @@ export class MessagesService {
 
 		if (isPrivateChat) {
 			const otherUserId = recipients[0]
-			const payloadForMe = { chatId: chatId.toString() }
+			const payloadForMe = { chatId: chatId }
 			this.realtimeGateway.sendToUser(userId, SocketEvent.HISTORY_CLEAR, payloadForMe)
 
 			if (otherUserId && clearForRecipient) {
-				const payloadForOther = { chatId: userId.toString() }
+				const payloadForOther = { chatId: userId }
 				this.realtimeGateway.sendToUser(otherUserId, SocketEvent.HISTORY_CLEAR, payloadForOther)
 			}
 		} else {
-			const payload = { chatId: chatId.toString() }
+			const payload = { chatId: chatId }
 			this.realtimeGateway.sendToChat(chatId, SocketEvent.HISTORY_CLEAR, payload)
 			this.realtimeGateway.sendToUsersExceptChat(
 				targets,
@@ -455,11 +458,7 @@ export class MessagesService {
 			await this.pushService.sendToUsers(offline, {
 				title: 'Новое сообщение',
 				body: message.text || 'Вложение',
-				data: {
-					type: 'message',
-					chatId: message.chatId,
-					messageId: message.id.toString()
-				}
+				chatId: message.chatId.toString()
 			})
 		}
 	}
