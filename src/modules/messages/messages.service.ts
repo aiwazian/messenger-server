@@ -35,12 +35,7 @@ export class MessagesService {
 
 	async initFileUpload(userId: UserId, chatId: ChatId, dto: FileInitDto) {
 		await this.chatsService.create(userId, chatId)
-		return this.storageService.initUpload(
-			dto.name,
-			dto.size,
-			dto.mimeType,
-			FileType.CHAT_ATTACHMENT
-		)
+		return this.storageService.initUpload(dto.name, dto.size, FileType.CHAT_ATTACHMENT)
 	}
 
 	async confirmFileUpload(

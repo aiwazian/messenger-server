@@ -1,9 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import {
 	PutObjectCommand,
 	GetObjectCommand,
 	DeleteObjectCommand,
-	S3Client
+	S3Client,
+	CopyObjectCommand,
+	MetadataDirective
 } from '@aws-sdk/client-s3'
 import { ConfigService } from '@nestjs/config'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
@@ -16,6 +18,7 @@ import { Cron, CronExpression } from '@nestjs/schedule'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { FileStatus } from '../../../generated/prisma/enums'
 import { FileType } from '../../common/enums/file-type.enum'
+import { fileTypeFromBuffer } from 'file-type'
 
 @Injectable()
 export class StorageService {
@@ -41,18 +44,17 @@ export class StorageService {
 	async initUpload(
 		name: string,
 		size: number,
-		mimeType: string,
 		fileType: FileType = FileType.CHAT_ATTACHMENT
 	): Promise<InitUploadDto> {
 		const id = uuidv4()
-		const path = `${fileType}/${id}/${name}`
+		const path = `${fileType}/${id}`
 
 		const file = await this.prisma.file.create({
 			data: {
 				id,
 				name,
-				size: BigInt(size),
-				mimeType,
+				size,
+				mimeType: 'application/octet-stream',
 				path,
 				status: FileStatus.PENDING,
 				createdAt: Date.now()
@@ -61,7 +63,9 @@ export class StorageService {
 
 		const command = new PutObjectCommand({
 			Bucket: this.bucketName,
-			Key: path
+			Key: path,
+			ContentDisposition: `attachment; filename="${encodeURIComponent(name)}"`,
+			CacheControl: 'private, no-store, no-cache',
 		})
 
 		const signedUrl = await getSignedUrl(this.s3Client, command, { expiresIn: 3600 })
@@ -73,17 +77,43 @@ export class StorageService {
 	}
 
 	async confirmUpload(fileId: string): Promise<FileDto> {
-		const exists = await this.prisma.file.findUnique({ where: { id: fileId } })
-		if (!exists) throw new NotFoundException('File not found')
+		const file = await this.prisma.file.findUnique({ where: { id: fileId } })
+		if (!file) throw new NotFoundException('File not found')
 
-		const file = await this.prisma.file.update({
+		const getCmd = new GetObjectCommand({
+			Bucket: this.bucketName,
+			Key: file.path,
+			Range: 'bytes=0-4095',
+		})
+
+		const response = await this.s3Client.send(getCmd)
+		const chunks: Buffer[] = []
+		for await (const chunk of response.Body as AsyncIterable<Buffer>) {
+			chunks.push(chunk)
+		}
+		const headerBuffer = Buffer.concat(chunks)
+
+		const detected = await fileTypeFromBuffer(headerBuffer)
+		const realMime = detected ? detected.mime : 'application/octet-stream'
+
+		if (realMime !== file.mimeType) {
+			await this.s3Client.send(new CopyObjectCommand({
+				Bucket: this.bucketName,
+				CopySource: `${this.bucketName}/${file.path}`,
+				Key: file.path,
+				ContentType: realMime,
+				MetadataDirective: MetadataDirective.REPLACE,
+			}))
+		}
+
+		const updated = await this.prisma.file.update({
 			where: { id: fileId },
 			data: {
 				status: FileStatus.UPLOADED
 			}
 		})
 
-		return plainToInstance(FileDto, file)
+		return plainToInstance(FileDto, updated)
 	}
 
 	async deleteFile(fileId: string) {
@@ -182,34 +212,5 @@ export class StorageService {
 			size: file.size,
 			mimeType: file.mimeType
 		})
-	}
-
-	async initUserAvatarUpload(name: string, size: number, mimeType: string): Promise<InitUploadDto> {
-		if (!['image/png', 'image/jpeg', 'image/jpg'].includes(mimeType)) {
-			throw new Error('Invalid mime type')
-		}
-		return this.initUpload(name, size, mimeType, FileType.USER_AVATAR)
-	}
-
-	async initChannelAvatarUpload(
-		name: string,
-		size: number,
-		mimeType: string
-	): Promise<InitUploadDto> {
-		if (!['image/png', 'image/jpeg', 'image/jpg'].includes(mimeType)) {
-			throw new Error('Invalid mime type')
-		}
-		return this.initUpload(name, size, mimeType, FileType.CHANNEL_AVATAR)
-	}
-
-	async initGroupAvatarUpload(
-		name: string,
-		size: number,
-		mimeType: string
-	): Promise<InitUploadDto> {
-		if (!['image/png', 'image/jpeg', 'image/jpg'].includes(mimeType)) {
-			throw new Error('Invalid mime type')
-		}
-		return this.initUpload(name, size, mimeType, FileType.GROUP_AVATAR)
 	}
 }

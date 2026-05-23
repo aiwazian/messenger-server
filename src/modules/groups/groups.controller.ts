@@ -32,6 +32,7 @@ import { CreateGroupUseCase } from './use-cases/create-group.use-case'
 import { FileInitDto } from '../messages/dto/file-init.dto'
 import { StorageService } from '../storage/storage.service'
 import { FileDownloadDto } from '../messages/dto/file-download.dto'
+import { FileType } from '../../common/enums/file-type.enum'
 
 @Controller('groups')
 @UseGuards(AuthGuard)
@@ -187,7 +188,7 @@ export class GroupsController {
 	@Post(`:${PARAMS.GROUP_ID}/avatar/init`)
 	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
 	initFileUpload(@Body() dto: FileInitDto) {
-		return this.storageService.initGroupAvatarUpload(dto.name, dto.size, dto.mimeType)
+		return this.storageService.initUpload(dto.name, dto.size, FileType.GROUP_AVATAR)
 	}
 
 	@Post(`:${PARAMS.GROUP_ID}/avatar/confirm/:fileId`)

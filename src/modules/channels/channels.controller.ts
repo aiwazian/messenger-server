@@ -30,6 +30,7 @@ import { CreateChannelUseCase } from './use-cases/create-channel.use-case'
 import { FileInitDto } from '../messages/dto/file-init.dto'
 import { StorageService } from '../storage/storage.service'
 import { FileDownloadDto } from '../messages/dto/file-download.dto'
+import { FileType } from '../../common/enums/file-type.enum'
 
 @Controller('channels')
 @UseGuards(AuthGuard)
@@ -188,7 +189,7 @@ export class ChannelsController {
 	@Post(`:${PARAMS.CHANNEL_ID}/avatar/init`)
 	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
 	initFileUpload(@Body() dto: FileInitDto) {
-		return this.storageService.initChannelAvatarUpload(dto.name, dto.size, dto.mimeType)
+		return this.storageService.initUpload(dto.name, dto.size, FileType.CHANNEL_AVATAR)
 	}
 
 	@Post(`:${PARAMS.CHANNEL_ID}/avatar/confirm/:fileId`)

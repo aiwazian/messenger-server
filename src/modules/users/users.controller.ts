@@ -29,6 +29,7 @@ import { StorageService } from '../storage/storage.service'
 import { FileInitDto } from '../messages/dto/file-init.dto'
 import { InitUploadDto } from '../storage/dto/init-upload.dto'
 import { FileDownloadDto } from '../messages/dto/file-download.dto'
+import { FileType } from '../../common/enums/file-type.enum'
 
 @Controller('users')
 @UseGuards(AuthGuard)
@@ -36,7 +37,7 @@ export class UsersController {
 	constructor(
 		private readonly usersService: UsersService,
 		private readonly storage: StorageService
-	) {}
+	) { }
 
 	@Delete('me')
 	@HttpCode(HttpStatus.NO_CONTENT)
@@ -75,7 +76,7 @@ export class UsersController {
 
 	@Post('me/avatar/init')
 	initFileUpload(@Body() dto: FileInitDto): Promise<InitUploadDto> {
-		return this.storage.initUserAvatarUpload(dto.name, dto.size, dto.mimeType)
+		return this.storage.initUpload(dto.name, dto.size, FileType.USER_AVATAR)
 	}
 
 	@Post('me/avatar/confirm/:fileId')
