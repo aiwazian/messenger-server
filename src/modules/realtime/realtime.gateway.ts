@@ -113,7 +113,19 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 	async handleDisconnect(client: Socket) {
 		this.logger.debug(`Client disconnected: ${client.id}`)
 		const userId = client.data.userId as UserId | undefined
+		const token = client.data.token as string | undefined
 		if (!userId) return
+
+		if (token) {
+			try {
+				await this.prisma.session.update({
+					where: { token },
+					data: { lastSeen: BigInt(Date.now()) }
+				})
+			} catch (error: any) {
+				this.logger.warn(`Failed to update session lastSeen: ${error.message}`)
+			}
+		}
 
 		const room = `user:${userId.toString()}`
 		const sockets = await this.server.in(room).allSockets()

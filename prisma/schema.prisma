@@ -103,6 +103,7 @@ model Session {
     osVersion   String
     osName      String
     createdAt   BigInt
+    lastSeen    BigInt?
 
     user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
