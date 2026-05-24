@@ -213,6 +213,6 @@ export class ChannelsController {
 
 	@Get('avatars/:fileId')
 	async getAvatarDownloadUrl(@Param('fileId') fileId: string): Promise<FileDownloadDto> {
-		return this.storageService.getDownloadUrl(fileId)
+		return this.channelsService.getAvatarDownloadUrl(fileId)
 	}
 }

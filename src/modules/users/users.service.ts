@@ -19,6 +19,7 @@ import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
 import { hashPassword } from '../../common/utils/password.util'
 import { PrivacyRule } from '../../../generated/prisma/enums'
+import { FileDownloadDto } from '../messages/dto/file-download.dto'
 
 @Injectable()
 export class UsersService {
@@ -28,7 +29,7 @@ export class UsersService {
 		@Inject(forwardRef(() => StorageService))
 		private readonly storageService: StorageService,
 		private readonly sessionsService: SessionsService
-	) {}
+	) { }
 
 	async deleteMe(userId: UserId, session: any): Promise<void> {
 		const currentTime = BigInt(Date.now())
@@ -199,6 +200,14 @@ export class UsersService {
 				sortOrder: nextSortOrder
 			}
 		})
+	}
+
+	async getAvatarDownloadUrl(fileId: string): Promise<FileDownloadDto> {
+		const photo = await this.prisma.userPhoto.findFirst({
+			where: { fileId }
+		})
+		if (!photo) throw new NotFoundException('Avatar not found')
+		return this.storageService.getDownloadUrl(fileId)
 	}
 
 	async deleteAvatar(userId: UserId, fileId: string): Promise<void> {

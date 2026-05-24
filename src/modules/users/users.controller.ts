@@ -92,7 +92,7 @@ export class UsersController {
 
 	@Get('avatars/:fileId')
 	async getAvatarDownloadUrl(@Param('fileId') fileId: string): Promise<FileDownloadDto> {
-		return this.storage.getDownloadUrl(fileId)
+		return this.usersService.getAvatarDownloadUrl(fileId)
 	}
 
 	@Get(`:${PARAMS.USER_ID}`)
