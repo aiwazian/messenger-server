@@ -1,477 +1,485 @@
 generator client {
-    provider = "prisma-client"
-    output   = "../generated/prisma"
+  provider = "prisma-client"
+  output   = "../generated/prisma"
 }
 
 datasource db {
-    provider = "postgresql"
+  provider = "postgresql"
 }
 
 enum ChannelType {
-    PUBLIC
-    PRIVATE
+  PUBLIC
+  PRIVATE
 }
 
 enum GroupType {
-    PUBLIC
-    PRIVATE
+  PUBLIC
+  PRIVATE
 }
 
 enum PrivacyRule {
-    EVERYBODY
-    NOBODY
+  EVERYBODY
+  NOBODY
 }
 
 enum FileStatus {
-    PENDING
-    UPLOADED
-    FAILED
+  PENDING
+  UPLOADED
+  FAILED
 }
 
 enum MessageType {
-    TEXT
-    STICKER
-    SYSTEM
+  TEXT
+  STICKER
+  SYSTEM
 }
 
 enum SystemEventType {
-    CHANNEL_CREATED
-    GROUP_CREATED
-    HISTORY_CLEARED
+  CHANNEL_CREATED
+  GROUP_CREATED
+  HISTORY_CLEARED
 }
 
 enum AttachmentType {
-    IMAGE
-    VIDEO
-    VOICE
-    FILE
+  IMAGE
+  VIDEO
+  VOICE
+  FILE
 }
 
 model User {
-    id          BigInt  @id
-    firstName   String  @default("")
-    lastName    String?
-    bio         String?
-    username    String? @unique
-    login       String  @unique
-    password    String
-    dateOfBirth BigInt?
-    lastSeen    BigInt?
+  id          BigInt  @id
+  firstName   String  @default("")
+  lastName    String?
+  bio         String?
+  username    String? @unique
+  login       String  @unique
+  password    String
+  dateOfBirth BigInt?
+  lastSeen    BigInt?
 
-    chats        Chat[]
-    sessions     Session[]
-    sentMessages Message[]
-    messageReads MessageRead[]
+  chats        Chat[]
+  sessions     Session[]
+  sentMessages Message[]
+  messageReads MessageRead[]
 
-    photos UserPhoto[]
+  photos UserPhoto[]
 
-    ownedGroups      Group[]
-    groupMemberships GroupMember[]
-    groupBlackLists  GroupBlackList[]
-    groupPermissions GroupMemberPermission[]
+  ownedGroups      Group[]
+  groupMemberships GroupMember[]
+  groupBlackLists  GroupBlackList[]
+  groupPermissions GroupMemberPermission[]
 
-    ownedChannels        Channel[]
-    channelSubscriptions ChannelSubscriber[]
-    channelBlackLists    ChannelBlackList[]
-    channelPermissions   ChannelMemberPermission[]
+  ownedChannels        Channel[]
+  channelSubscriptions ChannelSubscriber[]
+  channelBlackLists    ChannelBlackList[]
+  channelPermissions   ChannelMemberPermission[]
 
-    privacySettings          PrivacySettings?
-    scheduledAccountDeletion ScheduledAccountDeletion?
+  privacySettings          PrivacySettings?
+  scheduledAccountDeletion ScheduledAccountDeletion?
 
-    messageReactions MessageReaction[]
+  messageReactions MessageReaction[]
 }
 
 model UserPhoto {
-    id        Int     @id @default(autoincrement())
-    userId    BigInt
-    fileId    String  @unique
-    isCurrent Boolean @default(false)
-    sortOrder Int     @default(0)
+  id        Int     @id @default(autoincrement())
+  userId    BigInt
+  fileId    String  @unique
+  isCurrent Boolean @default(false)
+  sortOrder Int     @default(0)
 
-    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-    file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
-    @@index([userId, isCurrent])
+  @@index([userId, isCurrent])
 }
 
 model Session {
-    id          Int     @id @default(autoincrement())
-    userId      BigInt
-    token       String  @unique
-    fcmToken    String?
-    deviceModel String
-    osVersion   String
-    osName      String
-    createdAt   BigInt
-    lastSeen    BigInt?
+  id          Int     @id @default(autoincrement())
+  userId      BigInt
+  token       String  @unique
+  fcmToken    String?
+  deviceModel String
+  osVersion   String
+  osName      String
+  createdAt   BigInt
+  lastSeen    BigInt?
 
-    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    @@unique([userId, token])
-    @@index([userId])
+  @@unique([userId, token])
+  @@index([userId])
 }
 
 model Chat {
-    id     Int    @id @default(autoincrement())
-    userId BigInt
-    chatId BigInt
+  id     Int    @id @default(autoincrement())
+  userId BigInt
+  chatId BigInt
 
-    chat_uniq_id String @unique
+  chat_uniq_id String @unique
 
-    isPinned   Boolean @default(false)
-    isArchived Boolean @default(false)
+  isPinned   Boolean @default(false)
+  isArchived Boolean @default(false)
 
-    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    wallpaperId String?
-    wallpaper   File?   @relation("ChatWallpaper", fields: [wallpaperId], references: [id], onDelete: SetNull)
+  wallpaperId Int?
+  wallpaper   Wallpaper? @relation(fields: [wallpaperId], references: [id], onDelete: SetNull)
 
-    @@index([userId])
-    @@index([chatId])
+  @@index([userId])
+  @@index([chatId])
 }
 
 model EncryptionKey {
-    id        Int     @id @default(autoincrement())
-    version   Int     @unique
-    createdAt BigInt
-    retiredAt BigInt?
+  id        Int     @id @default(autoincrement())
+  version   Int     @unique
+  createdAt BigInt
+  retiredAt BigInt?
 
-    messages Message[]
+  messages Message[]
 
-    @@index([retiredAt])
+  @@index([retiredAt])
 }
 
 model Message {
-    id          BigInt      @id @default(autoincrement())
-    sequenceId  BigInt
-    chatId      BigInt
-    text        String?
-    sendTime    BigInt
-    editedAt    BigInt?
-    messageType MessageType
+  id          BigInt      @id @default(autoincrement())
+  sequenceId  BigInt
+  chatId      BigInt
+  text        String?
+  sendTime    BigInt
+  editedAt    BigInt?
+  messageType MessageType
 
-    encryptionKeyVersion Int
-    encryptionKey        EncryptionKey? @relation(fields: [encryptionKeyVersion], references: [version])
+  encryptionKeyVersion Int
+  encryptionKey        EncryptionKey? @relation(fields: [encryptionKeyVersion], references: [version])
 
-    senderId BigInt
-    sender   User   @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  senderId BigInt
+  sender   User   @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
-    replyToId BigInt?
-    replyTo   Message?  @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
-    replies   Message[] @relation("MessageReplies")
+  replyToId BigInt?
+  replyTo   Message?  @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   Message[] @relation("MessageReplies")
 
-    forwardedFromMessageId BigInt?
-    forwardedFromMessage   Message?  @relation("MessageForwards", fields: [forwardedFromMessageId], references: [id], onDelete: Cascade)
-    forwards               Message[] @relation("MessageForwards")
+  forwardedFromMessageId BigInt?
+  forwardedFromMessage   Message?  @relation("MessageForwards", fields: [forwardedFromMessageId], references: [id], onDelete: Cascade)
+  forwards               Message[] @relation("MessageForwards")
 
-    readReceipts     MessageRead[]
-    attachments      MessageAttachment[]
-    systemEvent      SystemMessageEvent?
-    deletedFor       DeletedMessage[]
-    messageReactions MessageReaction[]
+  readReceipts     MessageRead[]
+  attachments      MessageAttachment[]
+  systemEvent      SystemMessageEvent?
+  deletedFor       DeletedMessage[]
+  messageReactions MessageReaction[]
 
-    @@index([chatId, sendTime])
-    @@index([senderId])
-    @@index([chatId])
-    @@index([chatId, messageType])
-    @@index([encryptionKeyVersion])
+  @@index([chatId, sendTime])
+  @@index([senderId])
+  @@index([chatId])
+  @@index([chatId, messageType])
+  @@index([encryptionKeyVersion])
 }
 
 model SystemMessageEvent {
-    id        Int             @id @default(autoincrement())
-    messageId BigInt          @unique
-    eventType SystemEventType
+  id        Int             @id @default(autoincrement())
+  messageId BigInt          @unique
+  eventType SystemEventType
 
-    message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
-    @@index([eventType])
+  @@index([eventType])
 }
 
 model MessageRead {
-    id        Int    @id @default(autoincrement())
-    messageId BigInt
-    userId    BigInt
-    readAt    BigInt
+  id        Int    @id @default(autoincrement())
+  messageId BigInt
+  userId    BigInt
+  readAt    BigInt
 
-    message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
-    user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    @@unique([messageId, userId])
-    @@index([userId, readAt])
+  @@unique([messageId, userId])
+  @@index([userId, readAt])
 }
 
 model MessageReaction {
-    id        Int    @id @default(autoincrement())
-    messageId BigInt
-    userId    BigInt
-    emoji     String
-    reactedAt BigInt
+  id        Int    @id @default(autoincrement())
+  messageId BigInt
+  userId    BigInt
+  emoji     String
+  reactedAt BigInt
 
-    message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
-    user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    @@unique([messageId, userId, emoji])
-    @@index([messageId])
-    @@index([userId])
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+  @@index([userId])
 }
 
 model DeletedMessage {
-    id        Int    @id @default(autoincrement())
-    messageId BigInt
-    userId    BigInt
-    deletedAt BigInt
+  id        Int    @id @default(autoincrement())
+  messageId BigInt
+  userId    BigInt
+  deletedAt BigInt
 
-    message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
-    @@unique([messageId, userId])
-    @@index([userId])
-    @@index([messageId])
+  @@unique([messageId, userId])
+  @@index([userId])
+  @@index([messageId])
 }
 
 model File {
-    id        String     @id @default(uuid())
-    name      String
-    size      BigInt
-    mimeType  String
-    path      String
-    status    FileStatus @default(PENDING)
-    createdAt BigInt
+  id        String     @id @default(uuid())
+  name      String
+  size      BigInt
+  mimeType  String
+  path      String
+  status    FileStatus @default(PENDING)
+  createdAt BigInt
 
-    attachments    MessageAttachment[]
-    userPhotos     UserPhoto[]
-    channelPhotos  ChannelPhoto[]
-    groupPhotos    GroupPhoto[]
-    chatWallpapers Chat[]              @relation("ChatWallpaper")
+  attachments   MessageAttachment[]
+  userPhotos    UserPhoto[]
+  channelPhotos ChannelPhoto[]
+  groupPhotos   GroupPhoto[]
+  wallpapers    Wallpaper[]
 
-    @@index([status])
+  @@index([status])
 }
 
 model MessageAttachment {
-    id        Int            @id @default(autoincrement())
-    messageId BigInt
-    fileId    String         @unique
-    type      AttachmentType
-    sortOrder Int            @default(0)
+  id        Int            @id @default(autoincrement())
+  messageId BigInt
+  fileId    String         @unique
+  type      AttachmentType
+  sortOrder Int            @default(0)
 
-    message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
-    file    File    @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  file    File    @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
-    @@unique([messageId, fileId])
-    @@index([messageId])
+  @@unique([messageId, fileId])
+  @@index([messageId])
 }
 
 model Channel {
-    id          BigInt      @id
-    name        String
-    bio         String?
-    ownerId     BigInt
-    channelType ChannelType @default(PRIVATE)
-    username    String?     @unique
+  id          BigInt      @id
+  name        String
+  bio         String?
+  ownerId     BigInt
+  channelType ChannelType @default(PRIVATE)
+  username    String?     @unique
 
-    owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
-    photos       ChannelPhoto[]
-    subscribers  ChannelSubscriber[]
-    blockedUsers ChannelBlackList[]
-    permissions  ChannelMemberPermission[]
-    inviteLinks  ChannelInviteLink[]
+  photos       ChannelPhoto[]
+  subscribers  ChannelSubscriber[]
+  blockedUsers ChannelBlackList[]
+  permissions  ChannelMemberPermission[]
+  inviteLinks  ChannelInviteLink[]
 }
 
 model ChannelPhoto {
-    id        Int     @id @default(autoincrement())
-    channelId BigInt
-    fileId    String  @unique
-    isCurrent Boolean @default(false)
+  id        Int     @id @default(autoincrement())
+  channelId BigInt
+  fileId    String  @unique
+  isCurrent Boolean @default(false)
 
-    channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
-    file    File    @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  file    File    @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
-    @@index([channelId, isCurrent])
+  @@index([channelId, isCurrent])
 }
 
 model ChannelSubscriber {
-    id        Int    @id @default(autoincrement())
-    userId    BigInt
-    channelId BigInt
+  id        Int    @id @default(autoincrement())
+  userId    BigInt
+  channelId BigInt
 
-    user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-    channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
-    @@unique([userId, channelId])
-    @@index([userId])
-    @@index([channelId])
+  @@unique([userId, channelId])
+  @@index([userId])
+  @@index([channelId])
 }
 
 model ChannelBlackList {
-    id        Int    @id @default(autoincrement())
-    userId    BigInt
-    channelId BigInt
+  id        Int    @id @default(autoincrement())
+  userId    BigInt
+  channelId BigInt
 
-    user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-    channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
-    @@unique([userId, channelId])
+  @@unique([userId, channelId])
 }
 
 model ChannelMemberPermission {
-    id        Int    @id @default(autoincrement())
-    channelId BigInt
-    userId    BigInt
+  id        Int    @id @default(autoincrement())
+  channelId BigInt
+  userId    BigInt
 
-    canPostMessages Boolean @default(false)
-    canSendMedia    Boolean @default(false)
-    canPinMessages  Boolean @default(false)
-    canInviteUsers  Boolean @default(false)
-    canDeleteUsers  Boolean @default(false)
-    canEditInfo     Boolean @default(false)
-    canManageAdmins Boolean @default(false)
+  canPostMessages Boolean @default(false)
+  canSendMedia    Boolean @default(false)
+  canPinMessages  Boolean @default(false)
+  canInviteUsers  Boolean @default(false)
+  canDeleteUsers  Boolean @default(false)
+  canEditInfo     Boolean @default(false)
+  canManageAdmins Boolean @default(false)
 
-    grantedBy BigInt?
-    grantedAt BigInt
+  grantedBy BigInt?
+  grantedAt BigInt
 
-    channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
-    user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    @@unique([channelId, userId])
-    @@index([channelId])
+  @@unique([channelId, userId])
+  @@index([channelId])
 }
 
 model Group {
-    id        BigInt    @id
-    ownerId   BigInt
-    name      String
-    username  String?   @unique
-    bio       String?
-    groupType GroupType @default(PRIVATE)
+  id        BigInt    @id
+  ownerId   BigInt
+  name      String
+  username  String?   @unique
+  bio       String?
+  groupType GroupType @default(PRIVATE)
 
-    owner       User                    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-    photos      GroupPhoto[]
-    members     GroupMember[]
-    blocked     GroupBlackList[]
-    permissions GroupMemberPermission[]
-    inviteLinks GroupInviteLink[]
+  owner       User                    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  photos      GroupPhoto[]
+  members     GroupMember[]
+  blocked     GroupBlackList[]
+  permissions GroupMemberPermission[]
+  inviteLinks GroupInviteLink[]
 }
 
 model GroupPhoto {
-    id        Int     @id @default(autoincrement())
-    groupId   BigInt
-    fileId    String  @unique
-    isCurrent Boolean @default(false)
+  id        Int     @id @default(autoincrement())
+  groupId   BigInt
+  fileId    String  @unique
+  isCurrent Boolean @default(false)
 
-    group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
-    file  File  @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  file  File  @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
-    @@index([groupId, isCurrent])
+  @@index([groupId, isCurrent])
 }
 
 model GroupMember {
-    id      Int    @id @default(autoincrement())
-    groupId BigInt
-    userId  BigInt
+  id      Int    @id @default(autoincrement())
+  groupId BigInt
+  userId  BigInt
 
-    user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-    group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
-    @@unique([groupId, userId])
-    @@index([userId])
-    @@index([groupId])
+  @@unique([groupId, userId])
+  @@index([userId])
+  @@index([groupId])
 }
 
 model GroupBlackList {
-    id      Int    @id @default(autoincrement())
-    userId  BigInt
-    groupId BigInt
+  id      Int    @id @default(autoincrement())
+  userId  BigInt
+  groupId BigInt
 
-    user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-    group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
-    @@unique([userId, groupId])
+  @@unique([userId, groupId])
 }
 
 model GroupMemberPermission {
-    id      Int    @id @default(autoincrement())
-    groupId BigInt
-    userId  BigInt
+  id      Int    @id @default(autoincrement())
+  groupId BigInt
+  userId  BigInt
 
-    canPostMessages Boolean @default(true)
-    canSendMedia    Boolean @default(true)
-    canPinMessages  Boolean @default(false)
-    canInviteUsers  Boolean @default(true)
-    canDeleteUsers  Boolean @default(false)
-    canEditInfo     Boolean @default(false)
-    canManageAdmins Boolean @default(false)
+  canPostMessages Boolean @default(true)
+  canSendMedia    Boolean @default(true)
+  canPinMessages  Boolean @default(false)
+  canInviteUsers  Boolean @default(true)
+  canDeleteUsers  Boolean @default(false)
+  canEditInfo     Boolean @default(false)
+  canManageAdmins Boolean @default(false)
 
-    grantedBy BigInt?
-    grantedAt BigInt
+  grantedBy BigInt?
+  grantedAt BigInt
 
-    group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
-    user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    @@unique([groupId, userId])
-    @@index([groupId])
+  @@unique([groupId, userId])
+  @@index([groupId])
 }
 
 model GroupInviteLink {
-    id        Int     @id @default(autoincrement())
-    code      String  @unique
-    groupId   BigInt
-    creatorId BigInt
-    maxUses   Int?
-    uses      Int     @default(0)
-    expiresAt BigInt?
+  id        Int     @id @default(autoincrement())
+  code      String  @unique
+  groupId   BigInt
+  creatorId BigInt
+  maxUses   Int?
+  uses      Int     @default(0)
+  expiresAt BigInt?
 
-    group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
-    @@index([groupId])
+  @@index([groupId])
 }
 
 model ChannelInviteLink {
-    id        Int     @id @default(autoincrement())
-    code      String  @unique
-    channelId BigInt
-    creatorId BigInt
-    maxUses   Int?
-    uses      Int     @default(0)
-    expiresAt BigInt?
+  id        Int     @id @default(autoincrement())
+  code      String  @unique
+  channelId BigInt
+  creatorId BigInt
+  maxUses   Int?
+  uses      Int     @default(0)
+  expiresAt BigInt?
 
-    channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
-    @@index([channelId])
+  @@index([channelId])
 }
 
 model PrivacySettings {
-    id     Int    @id @default(autoincrement())
-    userId BigInt @unique
+  id     Int    @id @default(autoincrement())
+  userId BigInt @unique
 
-    lastSeen    PrivacyRule @default(EVERYBODY)
-    messages    PrivacyRule @default(EVERYBODY)
-    bio         PrivacyRule @default(EVERYBODY)
-    dateOfBirth PrivacyRule @default(EVERYBODY)
-    invites     PrivacyRule @default(EVERYBODY)
+  lastSeen    PrivacyRule @default(EVERYBODY)
+  messages    PrivacyRule @default(EVERYBODY)
+  bio         PrivacyRule @default(EVERYBODY)
+  dateOfBirth PrivacyRule @default(EVERYBODY)
+  invites     PrivacyRule @default(EVERYBODY)
 
-    deleteAfterDays Int @default(365)
+  deleteAfterDays Int @default(365)
 
-    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model ScheduledAccountDeletion {
-    id          Int    @id @default(autoincrement())
-    userId      BigInt @unique
-    scheduledAt BigInt
-    deleteAt    BigInt
+  id          Int    @id @default(autoincrement())
+  userId      BigInt @unique
+  scheduledAt BigInt
+  deleteAt    BigInt
 
-    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    @@index([deleteAt])
+  @@index([deleteAt])
 }
 
 model FileCleanupTask {
-    id        Int    @id @default(autoincrement())
-    fileId    String
-    filePath  String
-    attempts  Int    @default(0)
-    createdAt BigInt
-    nextRetry BigInt
+  id        Int    @id @default(autoincrement())
+  fileId    String
+  filePath  String
+  attempts  Int    @default(0)
+  createdAt BigInt
+  nextRetry BigInt
 
-    @@index([nextRetry])
+  @@index([nextRetry])
+}
+
+model Wallpaper {
+  id     Int    @id @default(autoincrement())
+  fileId String @unique
+
+  file  File   @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  chats Chat[]
 }

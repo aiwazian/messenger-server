@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import { Injectable, NotFoundException } from '@nestjs/common'
 import {
 	PutObjectCommand,
 	GetObjectCommand,
@@ -64,8 +64,6 @@ export class StorageService {
 		const command = new PutObjectCommand({
 			Bucket: this.bucketName,
 			Key: path,
-			ContentDisposition: `attachment; filename="${encodeURIComponent(name)}"`,
-			CacheControl: 'private, no-store, no-cache',
 		})
 
 		const signedUrl = await getSignedUrl(this.s3Client, command, { expiresIn: 3600 })
@@ -80,30 +78,34 @@ export class StorageService {
 		const file = await this.prisma.file.findUnique({ where: { id: fileId } })
 		if (!file) throw new NotFoundException('File not found')
 
-		const getCmd = new GetObjectCommand({
-			Bucket: this.bucketName,
-			Key: file.path,
-			Range: 'bytes=0-4095',
-		})
-
-		const response = await this.s3Client.send(getCmd)
-		const chunks: Buffer[] = []
-		for await (const chunk of response.Body as AsyncIterable<Buffer>) {
-			chunks.push(chunk)
-		}
-		const headerBuffer = Buffer.concat(chunks)
-
-		const detected = await fileTypeFromBuffer(headerBuffer)
-		const realMime = detected ? detected.mime : 'application/octet-stream'
-
-		if (realMime !== file.mimeType) {
-			await this.s3Client.send(new CopyObjectCommand({
+		try {
+			const getCmd = new GetObjectCommand({
 				Bucket: this.bucketName,
-				CopySource: `${this.bucketName}/${file.path}`,
 				Key: file.path,
-				ContentType: realMime,
-				MetadataDirective: MetadataDirective.REPLACE,
-			}))
+				Range: 'bytes=0-4095',
+			})
+
+			const response = await this.s3Client.send(getCmd)
+			const chunks: Buffer[] = []
+			for await (const chunk of response.Body as AsyncIterable<Buffer>) {
+				chunks.push(chunk)
+			}
+			const headerBuffer = Buffer.concat(chunks)
+
+			const detected = await fileTypeFromBuffer(headerBuffer)
+			const realMime = detected ? detected.mime : 'application/octet-stream'
+
+			if (realMime !== file.mimeType) {
+				await this.s3Client.send(new CopyObjectCommand({
+					Bucket: this.bucketName,
+					CopySource: `${this.bucketName}/${file.path}`,
+					Key: file.path,
+					ContentType: realMime,
+					MetadataDirective: MetadataDirective.REPLACE,
+				}))
+			}
+		} catch (error) {
+			console.error(`Failed to process file header for ${file.path}: ${(error as Error).message}`)
 		}
 
 		const updated = await this.prisma.file.update({
