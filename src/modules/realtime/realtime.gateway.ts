@@ -62,7 +62,19 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 	async handleConnection(client: Socket, ...args: any[]) {
 		try {
 			const userIdRaw = client.data.userId
+			const token = client.data.token as string | undefined
 			if (!userIdRaw) return
+
+			if (token) {
+				try {
+					await this.prisma.session.update({
+						where: { token },
+						data: { lastSeen: BigInt(Date.now()) }
+					})
+				} catch (error: any) {
+					this.logger.warn(`Failed to update session lastSeen on connect: ${error.message}`)
+				}
+			}
 
 			const userId = UserId(userIdRaw)
 			const userRoom = `user:${userId.toString()}`
@@ -130,11 +142,6 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		const room = `user:${userId.toString()}`
 		const sockets = await this.server.in(room).allSockets()
 		if (sockets.size > 0) return
-
-		await this.prisma.user.update({
-			where: { id: userId },
-			data: { lastSeen: BigInt(Date.now()) }
-		})
 
 		const recipients = await this.getPresenceRecipients(userId)
 		if (recipients.length > 0) {

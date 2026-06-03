@@ -4,8 +4,10 @@ import {
 	NotFoundException,
 	ForbiddenException,
 	Inject,
-	forwardRef
+	forwardRef,
+	Logger
 } from '@nestjs/common'
+import { Cron, CronExpression } from '@nestjs/schedule'
 import { UpdateUserDto } from './dto/update-user.dto'
 import { plainToInstance } from 'class-transformer'
 import { UserResponseDto } from './dto/user-response.dto'
@@ -23,6 +25,8 @@ import { FileDownloadDto } from '../messages/dto/file-download.dto'
 
 @Injectable()
 export class UsersService {
+	private readonly logger = new Logger(UsersService.name)
+
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly searchService: SearchService,
@@ -30,6 +34,77 @@ export class UsersService {
 		private readonly storageService: StorageService,
 		private readonly sessionsService: SessionsService
 	) { }
+
+	@Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+	async deleteInactiveAccounts() {
+		const privacySettings = await this.prisma.privacySettings.findMany({
+			where: {
+				deleteAfterDays: { gt: 0 }
+			},
+			include: {
+				user: {
+					include: {
+						sessions: true
+					}
+				}
+			}
+		})
+
+		const now = Date.now()
+
+		for (const setting of privacySettings) {
+			const user = setting.user
+			if (!user) continue
+
+			const deleteAfterMs = setting.deleteAfterDays * 24 * 60 * 60 * 1000
+			const thresholdTime = now - deleteAfterMs
+
+			const idStr = user.id.toString()
+			const createdAtStr = idStr.substring(1, idStr.length - 5)
+			const createdAt = Number(createdAtStr)
+
+			let maxActivity = createdAt || 0
+
+			for (const session of user.sessions) {
+				const sessionActivity = Number(session.lastSeen || session.createdAt)
+				if (sessionActivity > maxActivity) {
+					maxActivity = sessionActivity
+				}
+			}
+
+			if (maxActivity > 0 && maxActivity < thresholdTime) {
+				try {
+					const userId = UserId(user.id)
+
+					// 1. Find all files associated with messages from this user
+					const files = await this.prisma.file.findMany({
+						where: {
+							attachments: {
+								some: {
+									message: {
+										senderId: userId
+									}
+								}
+							}
+						}
+					})
+
+					// 2. Schedule files for deletion
+					for (const file of files) {
+						await this.storageService.deleteFile(file.id)
+					}
+
+					// 3. Logout from all sessions and kick from websocket
+					await this.sessionsService.deleteAll(userId)
+
+					// 4. Delete user. Prisma cascade will handle the rest
+					await this.prisma.user.delete({ where: { id: userId } })
+				} catch (error: any) {
+					this.logger.error(`Failed to delete inactive user ${user.id}: ${error.message}`)
+				}
+			}
+		}
+	}
 
 	async deleteMe(userId: UserId, session: any): Promise<void> {
 		const currentTime = BigInt(Date.now())
@@ -109,6 +184,10 @@ export class UsersService {
 				privacySettings: true,
 				photos: {
 					orderBy: [{ sortOrder: 'asc' }]
+				},
+				sessions: {
+					orderBy: [{ lastSeen: 'desc' }],
+					take: 1
 				}
 			}
 		})
@@ -117,6 +196,9 @@ export class UsersService {
 
 		const response = plainToInstance(UserResponseDto, user)
 		response.avatars = user.photos.map((p) => ({ fileId: p.fileId, sortOrder: p.sortOrder }))
+
+		const latestSession = user.sessions?.[0]
+		const lastSeenVal = latestSession?.lastSeen ? Number(latestSession.lastSeen) : undefined
 
 		if (currentUserId && currentUserId !== id) {
 			const privacy = user.privacySettings
@@ -129,12 +211,12 @@ export class UsersService {
 				}
 				if (privacy.lastSeen === PrivacyRule.NOBODY) {
 					response.lastSeen = undefined
-				} else if (user.lastSeen) {
-					response.lastSeen = Number(user.lastSeen)
+				} else if (lastSeenVal) {
+					response.lastSeen = lastSeenVal
 				}
 			}
-		} else if (user.lastSeen) {
-			response.lastSeen = Number(user.lastSeen)
+		} else if (lastSeenVal) {
+			response.lastSeen = lastSeenVal
 		}
 
 		return response
@@ -144,15 +226,6 @@ export class UsersService {
 		const settings = await this.prisma.privacySettings.findUnique({
 			where: { userId }
 		})
-		if (!settings) {
-			return plainToInstance(PrivacySettingsDto, {
-				lastSeen: PrivacyRule.EVERYBODY,
-				messages: PrivacyRule.EVERYBODY,
-				bio: PrivacyRule.EVERYBODY,
-				dateOfBirth: PrivacyRule.EVERYBODY,
-				invites: PrivacyRule.EVERYBODY
-			})
-		}
 		return plainToInstance(PrivacySettingsDto, settings)
 	}
 
@@ -160,17 +233,9 @@ export class UsersService {
 		userId: UserId,
 		dto: UpdatePrivacySettingsDto
 	): Promise<PrivacySettingsDto> {
-		const settings = await this.prisma.privacySettings.upsert({
+		const settings = await this.prisma.privacySettings.update({
 			where: { userId },
-			update: dto,
-			create: {
-				userId,
-				lastSeen: dto.lastSeen ?? PrivacyRule.EVERYBODY,
-				messages: dto.messages ?? PrivacyRule.EVERYBODY,
-				bio: dto.bio ?? PrivacyRule.EVERYBODY,
-				dateOfBirth: dto.dateOfBirth ?? PrivacyRule.EVERYBODY,
-				invites: dto.invites ?? PrivacyRule.EVERYBODY
-			}
+			data: dto
 		})
 		return plainToInstance(PrivacySettingsDto, settings)
 	}

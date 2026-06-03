@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional } from 'class-validator'
+import { IsEnum, IsIn, IsNumber, IsOptional } from 'class-validator'
 import { PrivacyRule } from '../../../../generated/prisma/enums'
 
 export class UpdatePrivacySettingsDto {
@@ -21,4 +21,9 @@ export class UpdatePrivacySettingsDto {
 	@IsOptional()
 	@IsEnum(PrivacyRule)
 	invites?: PrivacyRule
+
+	@IsOptional()
+	@IsNumber()
+	@IsIn([30, 90, 180, 365])
+	deleteAfterDays?: number
 }

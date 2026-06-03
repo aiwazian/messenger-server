@@ -17,4 +17,7 @@ export class PrivacySettingsDto {
 
 	@Expose()
 	invites: PrivacyRule
+
+	@Expose()
+	deleteAfterDays: number
 }

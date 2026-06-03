@@ -56,7 +56,6 @@ model User {
   login       String  @unique
   password    String
   dateOfBirth BigInt?
-  lastSeen    BigInt?
 
   chats        Chat[]
   sessions     Session[]
