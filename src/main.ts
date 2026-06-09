@@ -4,6 +4,7 @@ import { ClassSerializerInterceptor, Logger, ValidationPipe } from '@nestjs/comm
 import { ConfigService } from '@nestjs/config'
 import { BigIntInterceptor } from './common/interceptors/big-int.interceptor'
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter'
+import helmet from 'helmet'
 
 async function bootstrap() {
 	const logger = new Logger('Bootstrap')
@@ -11,6 +12,7 @@ async function bootstrap() {
 	const configService = app.get(ConfigService)
 	const httpAdapter = app.get(HttpAdapterHost)
 
+	app.use(helmet())
 	app.setGlobalPrefix('api')
 	app.useGlobalInterceptors(new BigIntInterceptor())
 	app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)))

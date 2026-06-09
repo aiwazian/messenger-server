@@ -8,11 +8,20 @@ const REFRESH_TOKEN_EXPIRY = '90d'
 
 @Injectable()
 export class JwtAuthService {
-	constructor(private readonly jwtService: NestJwtService) {}
+	constructor(private readonly jwtService: NestJwtService) { }
 
 	generateToken(userId: UserId, tokenType: 'access' | 'refresh' = 'access'): string {
 		const expiresIn = tokenType === 'access' ? ACCESS_TOKEN_EXPIRY : REFRESH_TOKEN_EXPIRY
-		return this.jwtService.sign({ sub: userId.toString(), type: tokenType }, { expiresIn })
+		return this.jwtService.sign(
+			{
+				sub: userId.toString(),
+				type: tokenType
+			},
+			{
+				expiresIn: expiresIn,
+				algorithm: 'HS256'
+			}
+		)
 	}
 
 	generateTokenPair(userId: UserId): { accessToken: string; refreshToken: string } {
@@ -38,7 +47,9 @@ export class JwtAuthService {
 
 	verifyRefreshToken(token: string): TokenPayload {
 		try {
-			const payload = this.jwtService.verify(token)
+			const payload = this.jwtService.verify(token, {
+				algorithms: ['HS256']
+			})
 
 			if (payload.type !== 'refresh') {
 				throw new UnauthorizedException('Invalid token type')

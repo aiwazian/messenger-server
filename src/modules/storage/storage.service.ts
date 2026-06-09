@@ -9,7 +9,7 @@ import {
 } from '@aws-sdk/client-s3'
 import { ConfigService } from '@nestjs/config'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
-import { v4 as uuidv4 } from 'uuid'
+import { randomUUID } from 'crypto'
 import { InitUploadDto } from './dto/init-upload.dto'
 import { plainToInstance } from 'class-transformer'
 import { FileDto } from './dto/file.dto'
@@ -46,7 +46,7 @@ export class StorageService {
 		size: number,
 		fileType: FileType = FileType.CHAT_ATTACHMENT
 	): Promise<InitUploadDto> {
-		const id = uuidv4()
+		const id = randomUUID()
 		const path = `${fileType}/${id}`
 
 		const file = await this.prisma.file.create({
