@@ -17,13 +17,14 @@ import { UserResponseDto } from './dto/user-response.dto'
 import { PrivacySettingsDto } from './dto/privacy-settings.dto'
 import { UpdatePrivacySettingsDto } from './dto/update-privacy-settings.dto'
 import { ChangePasswordDto } from './dto/change-password.dto'
+import { ChangeLoginDto } from './dto/change-login.dto'
 import { CurrentUserId } from '../../common/decorators/user-id.decorator'
 import { AuthGuard } from '../../common/guards/auth.guard'
-import { CurrentSession } from '../../common/decorators/session.decorator'
 import { UserId } from '../../common/types/user-id.type'
 import { UserExistsGuard } from '../../common/guards/user-exists.guard'
 import { PARAMS } from '../../common/constants/param.constants'
 import { PrivacyGuard } from '../../common/guards/privacy.guard'
+import { SessionAgeGuard } from '../../common/guards/session-age.guard'
 import { ParseUserIdPipe } from '../../common/pipes/parse-user-id.pipe'
 import { StorageService } from '../storage/storage.service'
 import { FileInitDto } from '../messages/dto/file-init.dto'
@@ -40,15 +41,24 @@ export class UsersController {
 	) { }
 
 	@Delete('me')
+	@UseGuards(SessionAgeGuard)
 	@HttpCode(HttpStatus.NO_CONTENT)
-	deleteMe(@CurrentUserId() userId: UserId, @CurrentSession() session: any): Promise<void> {
-		return this.usersService.deleteMe(userId, session)
+	deleteMe(@CurrentUserId() userId: UserId): Promise<void> {
+		return this.usersService.deleteMe(userId)
 	}
 
 	@Patch('me/password')
+	@UseGuards(SessionAgeGuard)
 	@HttpCode(HttpStatus.OK)
 	changePassword(@CurrentUserId() userId: UserId, @Body() dto: ChangePasswordDto): Promise<void> {
 		return this.usersService.changePassword(userId, dto)
+	}
+
+	@Patch('me/login')
+	@UseGuards(SessionAgeGuard)
+	@HttpCode(HttpStatus.OK)
+	changeLogin(@CurrentUserId() userId: UserId, @Body() dto: ChangeLoginDto): Promise<void> {
+		return this.usersService.changeLogin(userId, dto.login)
 	}
 
 	@Get('me')
@@ -91,7 +101,7 @@ export class UsersController {
 	}
 
 	@Get('avatars/:fileId')
-	async getAvatarDownloadUrl(@Param('fileId') fileId: string): Promise<FileDownloadDto> {
+	getAvatarDownloadUrl(@Param('fileId') fileId: string): Promise<FileDownloadDto> {
 		return this.usersService.getAvatarDownloadUrl(fileId)
 	}
 

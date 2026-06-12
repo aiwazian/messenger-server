@@ -6,6 +6,7 @@ import { UserId } from '../../common/types/user-id.type'
 import { CurrentUserToken } from '../../common/decorators/user-token.decorator'
 import { PARAMS } from '../../common/constants/param.constants'
 import { SessionOwnerGuard } from '../../common/guards/session-owner.guard'
+import { SessionAgeGuard } from '../../common/guards/session-age.guard'
 import { UpdateFcmTokenDto } from './dto/update-fcm-token.dto'
 
 @Controller('sessions')
@@ -24,12 +25,13 @@ export class SessionsController {
 	}
 
 	@Delete(`:${PARAMS.SESSION_ID}`)
-	@UseGuards(SessionOwnerGuard)
+	@UseGuards(SessionOwnerGuard, SessionAgeGuard)
 	delete(@Param(PARAMS.SESSION_ID, ParseIntPipe) id: number) {
 		return this.sessionsService.deleteById(id)
 	}
 
 	@Delete()
+	@UseGuards(SessionAgeGuard)
 	deleteAll(@CurrentUserId() userId: UserId, @CurrentUserToken() token: string) {
 		return this.sessionsService.deleteAll(userId, token)
 	}

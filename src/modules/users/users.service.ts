@@ -2,7 +2,6 @@ import {
 	ConflictException,
 	Injectable,
 	NotFoundException,
-	ForbiddenException,
 	Inject,
 	forwardRef,
 	Logger
@@ -106,15 +105,7 @@ export class UsersService {
 		}
 	}
 
-	async deleteMe(userId: UserId, session: any): Promise<void> {
-		const currentTime = BigInt(Date.now())
-		const sessionCreatedAt = BigInt(session.createdAt)
-		const twentyFourHoursInMs = BigInt(24 * 60 * 60 * 1000)
-
-		if (currentTime - sessionCreatedAt < twentyFourHoursInMs) {
-			throw new ForbiddenException('Чтобы завершить сессию должно пройти 24 часа с начала сессии')
-		}
-
+	async deleteMe(userId: UserId): Promise<void> {
 		const user = await this.prisma.user.findUnique({ where: { id: userId } })
 		if (!user) throw new NotFoundException('User not found')
 
@@ -151,6 +142,21 @@ export class UsersService {
 		await this.prisma.user.update({
 			where: { id },
 			data: { password: passwordHash }
+		})
+	}
+
+	async changeLogin(id: UserId, login: string): Promise<void> {
+		const user = await this.prisma.user.findUnique({ where: { id } })
+		if (!user) throw new NotFoundException('User not found')
+
+		if (login !== user.username) {
+			const isAvailable = await this.searchService.isUsernameAvailable(login)
+			if (!isAvailable) throw new ConflictException('Username is already taken')
+		}
+
+		await this.prisma.user.update({
+			where: { id },
+			data: { username: login }
 		})
 	}
 
