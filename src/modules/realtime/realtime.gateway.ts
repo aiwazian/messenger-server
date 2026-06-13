@@ -21,6 +21,7 @@ import { PrivacyRule } from '../../../generated/prisma/enums'
 @WebSocketGateway()
 export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
 	private readonly logger = new Logger(RealtimeGateway.name)
+	private readonly onlineUsers = new Set<string>()
 
 	@WebSocketServer()
 	server: Server
@@ -83,11 +84,15 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
 			this.logger.debug(`Client connected: ${userId.toString()}`)
 
-			const recipients = await this.getPresenceRecipients(userId)
-			if (recipients.length > 0) {
-				this.server
-					.to(recipients.map((id) => `user:${id.toString()}`))
-					.emit(SocketEvent.USER_ONLINE, { userId: userId.toString() })
+			if (!this.onlineUsers.has(userId.toString())) {
+				this.onlineUsers.add(userId.toString())
+
+				const recipients = await this.getPresenceRecipients(userId)
+				if (recipients.length > 0) {
+					this.server
+						.to(recipients.map((id) => `user:${id.toString()}`))
+						.emit(SocketEvent.USER_ONLINE, { userId: userId.toString() })
+				}
 			}
 		} catch (error: any) {
 			this.logger.error(
@@ -142,6 +147,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		const room = `user:${userId.toString()}`
 		const sockets = await this.server.in(room).fetchSockets()
 		if (sockets.length > 0) return
+
+		this.onlineUsers.delete(userId.toString())
 
 		const recipients = await this.getPresenceRecipients(userId)
 		if (recipients.length > 0) {
@@ -213,8 +220,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 	}
 
 	isUserOnline(userId: UserId): boolean {
-		const room = this.server.sockets.adapter.rooms.get(`user:${userId.toString()}`)
-		return !!room && room.size > 0
+		return this.onlineUsers.has(userId.toString())
 	}
 
 	private prepareData(data: any) {
@@ -251,8 +257,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		if (visibility === PrivacyRule.EVERYBODY) {
 			const directChats = await this.prisma.chat.findMany({
 				where: {
-					userId,
-					chatId: userId
+					userId
 				},
 				select: { chatId: true }
 			})

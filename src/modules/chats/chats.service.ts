@@ -301,6 +301,40 @@ export class ChatsService {
 		})
 	}
 
+	async getOnlineUserIds(userId: UserId): Promise<string[]> {
+		const chats = await this.prisma.chat.findMany({
+			where: { userId },
+			select: { chatId: true }
+		})
+
+		const privateChats = chats.filter(
+			(chat) => detectChatType(ChatId(chat.chatId)) === ChatType.PRIVATE && chat.chatId !== userId
+		)
+
+		if (privateChats.length === 0) return []
+
+		const partnerIds = privateChats.map((c) => c.chatId)
+
+		const privacySettings = await this.prisma.privacySettings.findMany({
+			where: { userId: { in: partnerIds } },
+			select: { userId: true, lastSeen: true }
+		})
+
+		const nobodySet = new Set(
+			privacySettings
+				.filter((s) => s.lastSeen === 'NOBODY')
+				.map((s) => s.userId.toString())
+		)
+
+		return privateChats
+			.filter((chat) => {
+				const partnerId = chat.chatId.toString()
+				if (nobodySet.has(partnerId)) return false
+				return this.realtimeGateway.isUserOnline(UserId(chat.chatId))
+			})
+			.map((chat) => chat.chatId.toString())
+	}
+
 	private async getLastMessage(userId: UserId, chatId: ChatId): Promise<MessageResponseDto | null> {
 		const message = await this.prisma.message.findFirst({
 			where: {

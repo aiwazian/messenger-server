@@ -21,6 +21,8 @@ import { UserId } from '../../common/types/user-id.type'
 import { hashPassword } from '../../common/utils/password.util'
 import { PrivacyRule } from '../../../generated/prisma/enums'
 import { FileDownloadDto } from '../messages/dto/file-download.dto'
+import { RealtimeGateway } from '../realtime/realtime.gateway'
+import { SocketEvent } from '../../common/socket/socket-events'
 
 @Injectable()
 export class UsersService {
@@ -31,7 +33,8 @@ export class UsersService {
 		private readonly searchService: SearchService,
 		@Inject(forwardRef(() => StorageService))
 		private readonly storageService: StorageService,
-		private readonly sessionsService: SessionsService
+		private readonly sessionsService: SessionsService,
+		private readonly realtimeGateway: RealtimeGateway
 	) {}
 
 	@Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
@@ -242,10 +245,49 @@ export class UsersService {
 		userId: UserId,
 		dto: UpdatePrivacySettingsDto
 	): Promise<PrivacySettingsDto> {
+		const oldSettings = await this.prisma.privacySettings.findUnique({
+			where: { userId },
+			select: { lastSeen: true }
+		})
+
 		const settings = await this.prisma.privacySettings.update({
 			where: { userId },
 			data: dto
 		})
+
+		if (dto.lastSeen !== undefined && dto.lastSeen !== oldSettings?.lastSeen) {
+			const chats = await this.prisma.chat.findMany({
+				where: { userId },
+				select: { chatId: true }
+			})
+
+			const recipientIds = chats
+				.filter((c) => c.chatId !== userId)
+				.map((c) => c.chatId)
+
+			if (dto.lastSeen === PrivacyRule.NOBODY) {
+				for (const recipientId of recipientIds) {
+					this.realtimeGateway.sendToUser(
+						UserId(recipientId),
+						SocketEvent.USER_OFFLINE,
+						{ userId: userId.toString() }
+					)
+				}
+			} else if (dto.lastSeen === PrivacyRule.EVERYBODY) {
+				if (this.realtimeGateway.isUserOnline(userId)) {
+					for (const recipientId of recipientIds) {
+						if (this.realtimeGateway.isUserOnline(UserId(recipientId))) {
+							this.realtimeGateway.sendToUser(
+								UserId(recipientId),
+								SocketEvent.USER_ONLINE,
+								{ userId: userId.toString() }
+							)
+						}
+					}
+				}
+			}
+		}
+
 		return plainToInstance(PrivacySettingsDto, settings)
 	}
 

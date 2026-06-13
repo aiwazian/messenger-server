@@ -35,6 +35,11 @@ export class ChatsController {
 		return this.chatsService.getAll(userId)
 	}
 
+	@Get('online')
+	getOnlineUsers(@CurrentUserId() userId: UserId) {
+		return this.chatsService.getOnlineUserIds(userId)
+	}
+
 	@Get(':chatId')
 	@UseGuards(CanReadChatGuard)
 	getById(@CurrentUserId() userId: UserId, @Param('chatId') chatId: string) {
