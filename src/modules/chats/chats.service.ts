@@ -8,13 +8,16 @@ import { ChatId } from '../../common/types/chat-id.type'
 import { ChatType } from '../../common/enums/chat-type.enum'
 import { detectChatType } from '../../common/utils/detect-chat-type.util'
 import { EncryptionService } from '../encryption/encryption.service'
+import { RealtimeGateway } from '../realtime/realtime.gateway'
+import { SocketEvent } from '../../common/socket/socket-events'
 import { ChannelType, GroupType } from '../../../generated/prisma/enums'
 
 @Injectable()
 export class ChatsService {
 	constructor(
 		private readonly prisma: PrismaService,
-		private readonly encryption: EncryptionService
+		private readonly encryption: EncryptionService,
+		private readonly realtimeGateway: RealtimeGateway
 	) {}
 
 	async getAll(userId: UserId): Promise<ChatResponseDto[]> {
@@ -280,6 +283,9 @@ export class ChatsService {
 			},
 			data: { isPinned: true }
 		})
+		this.realtimeGateway.sendToUser(userId, SocketEvent.PIN_CHAT, {
+			chatIds: chatIds.map((id) => id.toString())
+		})
 	}
 
 	async unpinChats(userId: UserId, chatIds: ChatId[]): Promise<void> {
@@ -289,6 +295,9 @@ export class ChatsService {
 				chatId: { in: chatIds }
 			},
 			data: { isPinned: false }
+		})
+		this.realtimeGateway.sendToUser(userId, SocketEvent.UNPIN_CHAT, {
+			chatIds: chatIds.map((id) => id.toString())
 		})
 	}
 

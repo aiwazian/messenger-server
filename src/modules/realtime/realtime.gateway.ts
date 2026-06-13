@@ -29,7 +29,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		@Inject(forwardRef(() => SessionsService))
 		private readonly sessionsService: SessionsService,
 		private readonly prisma: PrismaService
-	) {}
+	) { }
 
 	afterInit(server: Server) {
 		server.use(async (socket, next) => {
@@ -140,8 +140,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		}
 
 		const room = `user:${userId.toString()}`
-		const sockets = await this.server.in(room).allSockets()
-		if (sockets.size > 0) return
+		const sockets = await this.server.in(room).fetchSockets()
+		if (sockets.length > 0) return
 
 		const recipients = await this.getPresenceRecipients(userId)
 		if (recipients.length > 0) {
