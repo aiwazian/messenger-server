@@ -1,4 +1,13 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, UseGuards } from '@nestjs/common'
+import {
+	Body,
+	Controller,
+	Delete,
+	Get,
+	Param,
+	ParseIntPipe,
+	Patch,
+	UseGuards
+} from '@nestjs/common'
 import { SessionsService } from './sessions.service'
 import { AuthGuard } from '../../common/guards/auth.guard'
 import { CurrentUserId } from '../../common/decorators/user-id.decorator'

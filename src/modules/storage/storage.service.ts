@@ -63,7 +63,7 @@ export class StorageService {
 
 		const command = new PutObjectCommand({
 			Bucket: this.bucketName,
-			Key: path,
+			Key: path
 		})
 
 		const signedUrl = await getSignedUrl(this.s3Client, command, { expiresIn: 3600 })
@@ -82,7 +82,7 @@ export class StorageService {
 			const getCmd = new GetObjectCommand({
 				Bucket: this.bucketName,
 				Key: file.path,
-				Range: 'bytes=0-4095',
+				Range: 'bytes=0-4095'
 			})
 
 			const response = await this.s3Client.send(getCmd)
@@ -96,13 +96,15 @@ export class StorageService {
 			const realMime = detected ? detected.mime : 'application/octet-stream'
 
 			if (realMime !== file.mimeType) {
-				await this.s3Client.send(new CopyObjectCommand({
-					Bucket: this.bucketName,
-					CopySource: `${this.bucketName}/${file.path}`,
-					Key: file.path,
-					ContentType: realMime,
-					MetadataDirective: MetadataDirective.REPLACE,
-				}))
+				await this.s3Client.send(
+					new CopyObjectCommand({
+						Bucket: this.bucketName,
+						CopySource: `${this.bucketName}/${file.path}`,
+						Key: file.path,
+						ContentType: realMime,
+						MetadataDirective: MetadataDirective.REPLACE
+					})
+				)
 			}
 		} catch (error) {
 			console.error(`Failed to process file header for ${file.path}: ${(error as Error).message}`)
@@ -188,7 +190,9 @@ export class StorageService {
 				)
 				await this.prisma.file.delete({ where: { id: file.id } })
 			} catch (e) {
-				console.error(`Cleanup failed for expired pending file ${file.path}: ${(e as Error).message}`)
+				console.error(
+					`Cleanup failed for expired pending file ${file.path}: ${(e as Error).message}`
+				)
 			}
 		}
 	}

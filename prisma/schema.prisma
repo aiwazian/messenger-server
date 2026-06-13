@@ -442,11 +442,12 @@ model PrivacySettings {
   id     Int    @id @default(autoincrement())
   userId BigInt @unique
 
-  lastSeen    PrivacyRule @default(EVERYBODY)
-  messages    PrivacyRule @default(EVERYBODY)
-  bio         PrivacyRule @default(EVERYBODY)
-  dateOfBirth PrivacyRule @default(EVERYBODY)
-  invites     PrivacyRule @default(EVERYBODY)
+  lastSeen     PrivacyRule @default(EVERYBODY)
+  messages     PrivacyRule @default(EVERYBODY)
+  bio          PrivacyRule @default(EVERYBODY)
+  dateOfBirth  PrivacyRule @default(EVERYBODY)
+  invites      PrivacyRule @default(EVERYBODY)
+  profilePhoto PrivacyRule @default(EVERYBODY)
 
   deleteAfterDays Int @default(365)
 

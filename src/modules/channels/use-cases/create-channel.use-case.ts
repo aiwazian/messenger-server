@@ -1,17 +1,17 @@
-import { Injectable } from "@nestjs/common"
-import { generateChannelId } from "../../../common/utils/id-generator.util"
-import { UserId } from "../../../common/types/user-id.type"
-import { CreateChannelDto } from "../dto/create-channel.dto"
-import { ChannelResponseDto } from "../dto/channel.dto"
-import { ChannelType, MessageType, SystemEventType } from "../../../../generated/prisma/enums"
-import { PrismaService } from "../../../providers/prisma/prisma.service"
-import { RealtimeGateway } from "../../realtime/realtime.gateway"
-import { EncryptionService } from "../../encryption/encryption.service"
-import { ChatsService } from "../../chats/chats.service"
-import { ChatId } from "../../../common/types/chat-id.type"
-import { plainToInstance } from "class-transformer"
-import { ChatResponseDto } from "../../chats/dto/chat-response.dto"
-import { SocketEvent } from "../../../common/socket/socket-events"
+import { Injectable } from '@nestjs/common'
+import { generateChannelId } from '../../../common/utils/id-generator.util'
+import { UserId } from '../../../common/types/user-id.type'
+import { CreateChannelDto } from '../dto/create-channel.dto'
+import { ChannelResponseDto } from '../dto/channel.dto'
+import { ChannelType, MessageType, SystemEventType } from '../../../../generated/prisma/enums'
+import { PrismaService } from '../../../providers/prisma/prisma.service'
+import { RealtimeGateway } from '../../realtime/realtime.gateway'
+import { EncryptionService } from '../../encryption/encryption.service'
+import { ChatsService } from '../../chats/chats.service'
+import { ChatId } from '../../../common/types/chat-id.type'
+import { plainToInstance } from 'class-transformer'
+import { ChatResponseDto } from '../../chats/dto/chat-response.dto'
+import { SocketEvent } from '../../../common/socket/socket-events'
 
 @Injectable()
 export class CreateChannelUseCase {
@@ -20,7 +20,7 @@ export class CreateChannelUseCase {
 		private readonly chatsService: ChatsService,
 		private readonly realtimeGateway: RealtimeGateway,
 		private readonly encryption: EncryptionService
-	) { }
+	) {}
 
 	async execute(ownerId: UserId, dto: CreateChannelDto): Promise<ChannelResponseDto> {
 		const channelId = generateChannelId()

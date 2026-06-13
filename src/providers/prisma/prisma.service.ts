@@ -30,15 +30,15 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
 			where: { id: this.SYSTEM_USER_ID },
 			update: {
 				id: this.SYSTEM_USER_ID,
-				login: this.config.get("SYSTEM_USER_LOGIN")!,
-				password: this.config.get("SYSTEM_USER_PASSWORD")!,
-				firstName: this.config.get("SYSTEM_USER_NAME")!
+				login: this.config.get('SYSTEM_USER_LOGIN')!,
+				password: this.config.get('SYSTEM_USER_PASSWORD')!,
+				firstName: this.config.get('SYSTEM_USER_NAME')!
 			},
 			create: {
 				id: this.SYSTEM_USER_ID,
-				login: this.config.get("SYSTEM_USER_LOGIN")!,
-				password: this.config.get("SYSTEM_USER_PASSWORD")!,
-				firstName: this.config.get("SYSTEM_USER_NAME")!
+				login: this.config.get('SYSTEM_USER_LOGIN')!,
+				password: this.config.get('SYSTEM_USER_PASSWORD')!,
+				firstName: this.config.get('SYSTEM_USER_NAME')!
 			}
 		})
 	}

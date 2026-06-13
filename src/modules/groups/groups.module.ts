@@ -13,6 +13,12 @@ import { StorageService } from '../storage/storage.service'
 @Module({
 	imports: [JwtAuthModule, SessionsModule, SearchModule, ChatsModule],
 	controllers: [GroupsController],
-	providers: [GroupsService, EncryptionService, InviteLinksService, CreateGroupUseCase, StorageService]
+	providers: [
+		GroupsService,
+		EncryptionService,
+		InviteLinksService,
+		CreateGroupUseCase,
+		StorageService
+	]
 })
-export class GroupsModule { }
+export class GroupsModule {}

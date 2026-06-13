@@ -12,7 +12,7 @@ export class AuthController {
 	constructor(
 		private readonly authService: AuthService,
 		private readonly sessionService: SessionsService
-	) { }
+	) {}
 
 	@Get('check/:login')
 	@Throttle({ default: { limit: 10, ttl: 60000 } })

@@ -41,7 +41,7 @@ export class GroupsController {
 		private readonly groupsService: GroupsService,
 		private readonly createGroupUseCase: CreateGroupUseCase,
 		private readonly storageService: StorageService
-	) { }
+	) {}
 
 	@Post()
 	createGroup(@CurrentUserId() userId: UserId, @Body() dto: CreateGroupDto) {

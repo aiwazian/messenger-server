@@ -7,4 +7,4 @@ import { PushService } from './push.service'
 	providers: [PushService],
 	exports: [PushService]
 })
-export class PushModule { }
+export class PushModule {}

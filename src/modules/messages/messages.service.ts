@@ -31,7 +31,7 @@ export class MessagesService {
 		private readonly realtimeGateway: RealtimeGateway,
 		private readonly storageService: StorageService,
 		private readonly encryption: EncryptionService
-	) { }
+	) {}
 
 	async initFileUpload(userId: UserId, chatId: ChatId, dto: FileInitDto) {
 		await this.chatsService.create(userId, chatId)
@@ -284,7 +284,6 @@ export class MessagesService {
 			}
 			await this.prisma.message.delete({ where: { id: messageId } })
 		}
-
 
 		if (dto.deleteForRecipient) {
 			const senderPayload = { chatId: chatId, messageId }

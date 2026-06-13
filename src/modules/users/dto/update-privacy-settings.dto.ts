@@ -23,6 +23,10 @@ export class UpdatePrivacySettingsDto {
 	invites?: PrivacyRule
 
 	@IsOptional()
+	@IsEnum(PrivacyRule)
+	profilePhoto?: PrivacyRule
+
+	@IsOptional()
 	@IsNumber()
 	@IsIn([30, 90, 180, 365])
 	deleteAfterDays?: number

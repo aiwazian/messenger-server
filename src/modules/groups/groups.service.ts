@@ -16,7 +16,7 @@ import { UserResponseDto } from '../users/dto/user-response.dto'
 import { RealtimeGateway } from '../realtime/realtime.gateway'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
-import { GroupType, PrivacyRule, } from '../../../generated/prisma/enums'
+import { GroupType, PrivacyRule } from '../../../generated/prisma/enums'
 import { GroupId } from '../../common/types/group-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
 import { Prisma } from '../../../generated/prisma/client'
@@ -36,7 +36,7 @@ export class GroupsService {
 		private readonly searchService: SearchService,
 		private readonly realtimeGateway: RealtimeGateway,
 		private readonly storageService: StorageService
-	) { }
+	) {}
 
 	async update(id: GroupId, dto: UpdateGroupDto): Promise<GroupResponseDto> {
 		const existingGroup = await this.prisma.group.findUnique({ where: { id } })
@@ -87,7 +87,7 @@ export class GroupsService {
 		await this.prisma.$transaction(async (tx) => {
 			await tx.groupMember
 				.delete({ where: { groupId_userId: { groupId: id, userId } } })
-				.catch(() => { })
+				.catch(() => {})
 
 			await tx.chat.deleteMany({
 				where: { userId, chatId: id }
@@ -118,7 +118,7 @@ export class GroupsService {
 		await this.prisma.$transaction(async (tx) => {
 			await tx.groupMember
 				.delete({ where: { groupId_userId: { groupId: id, userId: targetUserId } } })
-				.catch(() => { })
+				.catch(() => {})
 
 			await tx.chat.deleteMany({
 				where: { userId: targetUserId, chatId: id }
@@ -172,12 +172,12 @@ export class GroupsService {
 			groupId: id,
 			user: search
 				? {
-					OR: [
-						{ firstName: { contains: search } },
-						{ lastName: { contains: search } },
-						{ username: { contains: search } }
-					]
-				}
+						OR: [
+							{ firstName: { contains: search } },
+							{ lastName: { contains: search } },
+							{ username: { contains: search } }
+						]
+					}
 				: undefined
 		}
 
@@ -287,12 +287,12 @@ export class GroupsService {
 			groupId: id,
 			user: search
 				? {
-					OR: [
-						{ firstName: { contains: search } },
-						{ lastName: { contains: search } },
-						{ username: { contains: search } }
-					]
-				}
+						OR: [
+							{ firstName: { contains: search } },
+							{ lastName: { contains: search } },
+							{ username: { contains: search } }
+						]
+					}
 				: undefined
 		}
 
@@ -315,7 +315,7 @@ export class GroupsService {
 			.delete({
 				where: { userId_groupId: { userId: targetUserId, groupId: id } }
 			})
-			.catch(() => { })
+			.catch(() => {})
 	}
 
 	async getGroupInviteLinks(groupId: GroupId): Promise<InviteLinkResponseDto[]> {

@@ -33,7 +33,7 @@ export class MessagesController {
 	constructor(
 		private readonly messagesService: MessagesService,
 		private readonly sendMessageUseCase: SendMessageUseCase
-	) { }
+	) {}
 
 	@Post()
 	@UseGuards(CanSendMessageGuard)
@@ -123,8 +123,8 @@ export class MessagesController {
 	}
 
 	@Post('voice')
-	sendVoiceMessage() { }
+	sendVoiceMessage() {}
 
 	@Post('reaction')
-	sendReaction() { }
+	sendReaction() {}
 }

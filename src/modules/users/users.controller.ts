@@ -38,7 +38,7 @@ export class UsersController {
 	constructor(
 		private readonly usersService: UsersService,
 		private readonly storage: StorageService
-	) { }
+	) {}
 
 	@Delete('me')
 	@UseGuards(SessionAgeGuard)
@@ -124,6 +124,9 @@ export class UsersController {
 			}
 			if (!req.privacy.canSeeDateOfBirth) {
 				response.dateOfBirth = undefined
+			}
+			if (!req.privacy.canSeeProfilePhoto) {
+				response.avatars = []
 			}
 		}
 

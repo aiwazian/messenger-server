@@ -8,4 +8,4 @@ import { SessionsModule } from '../sessions/sessions.module'
 	providers: [RealtimeGateway],
 	exports: [RealtimeGateway]
 })
-export class RealtimeModule { }
+export class RealtimeModule {}

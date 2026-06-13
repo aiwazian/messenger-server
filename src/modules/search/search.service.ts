@@ -14,7 +14,7 @@ export class SearchService {
 		private readonly config: ConfigService,
 		private readonly prisma: PrismaService,
 		private readonly moderation: ContentModerationService
-	) { }
+	) {}
 
 	async isUsernameAvailable(username: string): Promise<boolean> {
 		if (this.config.get('NODE_ENV') === 'production') {

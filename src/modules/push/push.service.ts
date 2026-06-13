@@ -11,32 +11,34 @@ export class PushService {
 	constructor(
 		private readonly config: ConfigService,
 		private readonly prisma: PrismaService
-	) { }
+	) {}
 
 	async sendToUsers(userIds: UserId[], payload: PushNotificationPayload): Promise<void> {
 		if (userIds.length === 0) return
 
 		const sessions = await this.prisma.session.findMany({
 			where: {
-				userId: { in: userIds },
+				userId: { in: userIds }
 			},
 			select: { fcmToken: true }
 		})
 
-		const pushTokens = Array.from(new Set(sessions.map((s) => s.fcmToken).filter((t) => t !== null)))
+		const pushTokens = Array.from(
+			new Set(sessions.map((s) => s.fcmToken).filter((t) => t !== null))
+		)
 
 		if (pushTokens.length === 0) return
 
 		const projectId = this.config.get('RUSTORE_PROJECT_ID')
 		const serviceKey = this.config.get('RUSTORE_PUSH_SERVICE_KEY')
 
-		pushTokens.forEach(async token => {
+		pushTokens.forEach(async (token) => {
 			try {
 				fetch(`https://vkpns.rustore.ru/v1/projects/${projectId}/messages:send`, {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						'Authorization': 'Bearer ' + serviceKey
+						Authorization: 'Bearer ' + serviceKey
 					},
 					body: JSON.stringify({
 						message: {
@@ -44,7 +46,7 @@ export class PushService {
 							data: {
 								title: payload.title,
 								body: payload.body,
-								chatId: payload.chatId,
+								chatId: payload.chatId
 							}
 						}
 					})

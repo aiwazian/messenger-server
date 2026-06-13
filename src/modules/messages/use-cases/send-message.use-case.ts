@@ -19,7 +19,7 @@ export class SendMessageUseCase {
 		private readonly encryption: EncryptionService,
 		private readonly chatsService: ChatsService,
 		private readonly messageService: MessagesService
-	) { }
+	) {}
 
 	async execute(
 		senderId: UserId,

@@ -39,7 +39,7 @@ export class ChannelsController {
 		private readonly channelsService: ChannelsService,
 		private readonly createChannelUseCase: CreateChannelUseCase,
 		private readonly storageService: StorageService
-	) { }
+	) {}
 
 	@Post()
 	createChannel(@CurrentUserId() userId: UserId, @Body() dto: CreateChannelDto) {

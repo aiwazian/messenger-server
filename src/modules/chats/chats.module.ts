@@ -14,4 +14,4 @@ import { MessagesModule } from '../messages/messages.module'
 	providers: [ChatsService, EncryptionService, DeleteChatUseCase],
 	exports: [ChatsService]
 })
-export class ChatsModule { }
+export class ChatsModule {}

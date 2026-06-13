@@ -32,7 +32,7 @@ export class UsersService {
 		@Inject(forwardRef(() => StorageService))
 		private readonly storageService: StorageService,
 		private readonly sessionsService: SessionsService
-	) { }
+	) {}
 
 	@Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
 	async deleteInactiveAccounts() {
@@ -214,6 +214,9 @@ export class UsersService {
 				}
 				if (privacy.dateOfBirth === PrivacyRule.NOBODY) {
 					response.dateOfBirth = undefined
+				}
+				if (privacy.profilePhoto === PrivacyRule.NOBODY) {
+					response.avatars = []
 				}
 				if (privacy.lastSeen === PrivacyRule.NOBODY) {
 					response.lastSeen = undefined

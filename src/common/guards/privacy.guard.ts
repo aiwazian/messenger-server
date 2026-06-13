@@ -26,7 +26,8 @@ export class PrivacyGuard implements CanActivate {
 
 			request.privacy = {
 				canSeeBio: true,
-				canSeeDateOfBirth: true
+				canSeeDateOfBirth: true,
+				canSeeProfilePhoto: true
 			}
 			return true
 		}
@@ -34,14 +35,16 @@ export class PrivacyGuard implements CanActivate {
 		if (targetUserId === currentUserId) {
 			request.privacy = {
 				canSeeBio: true,
-				canSeeDateOfBirth: true
+				canSeeDateOfBirth: true,
+				canSeeProfilePhoto: true
 			}
 			return true
 		}
 
 		request.privacy = {
 			canSeeBio: settings.bio === PrivacyRule.EVERYBODY,
-			canSeeDateOfBirth: settings.dateOfBirth === PrivacyRule.EVERYBODY
+			canSeeDateOfBirth: settings.dateOfBirth === PrivacyRule.EVERYBODY,
+			canSeeProfilePhoto: settings.profilePhoto === PrivacyRule.EVERYBODY
 		}
 
 		return true

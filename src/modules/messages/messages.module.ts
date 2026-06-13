@@ -11,12 +11,16 @@ import { PrismaService } from '../../providers/prisma/prisma.service'
 import { EncryptionModule } from '../encryption/encryption.module'
 
 @Module({
-	imports: [JwtAuthModule,
+	imports: [
+		JwtAuthModule,
 		forwardRef(() => SessionsModule),
 		PushModule,
-		forwardRef(() => ChatsModule), StorageModule, EncryptionModule],
+		forwardRef(() => ChatsModule),
+		StorageModule,
+		EncryptionModule
+	],
 	controllers: [MessagesController],
 	providers: [MessagesService, SendMessageUseCase, PrismaService],
 	exports: [MessagesService]
 })
-export class MessagesModule { }
+export class MessagesModule {}

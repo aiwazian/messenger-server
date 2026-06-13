@@ -28,7 +28,7 @@ export class ChatsController {
 		private readonly chatsService: ChatsService,
 		private readonly inviteLinksService: InviteLinksService,
 		private readonly deleteChatUseCase: DeleteChatUseCase
-	) { }
+	) {}
 
 	@Get()
 	getAll(@CurrentUserId() userId: UserId) {

@@ -13,7 +13,7 @@ export class SessionsService {
 		private readonly prisma: PrismaService,
 		@Inject(forwardRef(() => RealtimeGateway))
 		private readonly realtimeGateway: RealtimeGateway
-	) { }
+	) {}
 
 	async getAll(userId: UserId, currentToken?: string): Promise<SessionResponseDto[]> {
 		const sessions = await this.prisma.session.findMany({

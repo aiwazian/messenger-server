@@ -14,7 +14,7 @@ export class InviteLinksService {
 		private readonly config: ConfigService,
 		private readonly prisma: PrismaService,
 		private readonly chatsService: ChatsService
-	) { }
+	) {}
 
 	async getInfo(userId: UserId, code: string): Promise<InternalInviteLinkResponse> {
 		let link: ChannelInviteLink | GroupInviteLink | null =

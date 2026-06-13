@@ -8,4 +8,4 @@ import { JwtAuthModule } from '../security/jwt.module'
 	providers: [StorageService],
 	exports: [StorageService]
 })
-export class StorageModule { }
+export class StorageModule {}

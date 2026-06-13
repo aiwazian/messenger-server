@@ -14,6 +14,12 @@ import { StorageService } from '../storage/storage.service'
 @Module({
 	imports: [JwtAuthModule, SessionsModule, SearchModule, ChatsModule, PrismaModule],
 	controllers: [ChannelsController],
-	providers: [ChannelsService, EncryptionService, InviteLinksService, CreateChannelUseCase, StorageService]
+	providers: [
+		ChannelsService,
+		EncryptionService,
+		InviteLinksService,
+		CreateChannelUseCase,
+		StorageService
+	]
 })
-export class ChannelsModule { }
+export class ChannelsModule {}
