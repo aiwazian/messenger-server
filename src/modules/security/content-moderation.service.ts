@@ -43,14 +43,37 @@ export class ContentModerationService {
 						content: text
 					}
 				],
-				response_format: { type: 'json_object' }
+				response_format: {
+					type: 'json_schema',
+					json_schema: {
+						name: 'ModerationResult',
+						strict: true,
+						schema: {
+							type: 'object',
+							properties: {
+								is_allowed: {
+									type: 'boolean',
+									description: 'Whether the message is allowed'
+								}
+							},
+							required: ['is_allowed'],
+							additionalProperties: false
+						}
+					},
+				},
+				stream: false
 			})
 
 			const content = response.choices[0].message.content
 			if (!content) return false
 
-			const data = JSON.parse(content)
-			return data.is_allowed === true
+			try {
+				const data = JSON.parse(content)
+				return data.is_allowed === true
+			} catch (e) {
+				this.logger.error(`Invalid JSON from AI: ${content}`)
+				return false
+			}
 		} catch (error) {
 			this.logger.error('Content moderation failed', error)
 			return false
