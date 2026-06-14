@@ -2,7 +2,7 @@
     "name": "messenger",
     "version": "1.0.0",
     "author": "Karen Aiwazian",
-    "license": "Apache-2.0",
+    "license": "AGPL-3.0-only",
     "scripts": {
         "build": "nest build",
         "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
