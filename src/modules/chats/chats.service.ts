@@ -321,9 +321,7 @@ export class ChatsService {
 		})
 
 		const nobodySet = new Set(
-			privacySettings
-				.filter((s) => s.lastSeen === 'NOBODY')
-				.map((s) => s.userId.toString())
+			privacySettings.filter((s) => s.lastSeen === 'NOBODY').map((s) => s.userId.toString())
 		)
 
 		return privateChats
@@ -336,28 +334,52 @@ export class ChatsService {
 	}
 
 	private async getLastMessage(userId: UserId, chatId: ChatId): Promise<MessageResponseDto | null> {
-		const message = await this.prisma.message.findFirst({
-			where: {
+		const chatType = detectChatType(chatId)
+
+		let messageWhere: any
+		if (chatType === ChatType.PRIVATE) {
+			messageWhere = {
 				OR: [
 					{ senderId: userId, chatId: chatId },
 					{ senderId: chatId, chatId: userId }
 				]
-			},
-			include: {
-				attachments: {
-					include: {
-						file: true
-					}
-				},
-				systemEvent: true
-			},
-			orderBy: {
-				sendTime: 'desc'
 			}
+		} else {
+			messageWhere = { chatId }
+		}
+
+		const message = await this.prisma.message.findFirst({
+			where: messageWhere,
+			include: {
+				attachments: { include: { file: true } },
+				systemEvent: true,
+				readReceipts: {
+					select: {
+						userId: true,
+						readAt: true,
+						user: { select: { firstName: true, lastName: true } }
+					}
+				}
+			},
+			orderBy: { sendTime: 'desc' }
 		})
 
-		if (message == null) {
-			return null
+		if (message == null) return null
+
+		let isRead: boolean | undefined
+
+		if (chatType === ChatType.PRIVATE) {
+			const myReceipt = message.readReceipts.find((r) => r.userId === userId)
+			const otherReceipt = message.readReceipts.find((r) => r.userId !== userId)
+
+			if (message.senderId === userId) {
+				isRead = !!otherReceipt
+			} else {
+				isRead = !!myReceipt
+			}
+		} else if (chatType === ChatType.GROUP) {
+			const otherReceipts = message.readReceipts.filter((r) => r.userId !== message.senderId)
+			isRead = otherReceipts.length > 0
 		}
 
 		return plainToInstance(MessageResponseDto, {
@@ -365,15 +387,12 @@ export class ChatsService {
 			text: message.text
 				? this.encryption.decrypt(message.text, this.encryption.currentVersion)
 				: null,
-			isRead: true,
+			isRead,
 			systemEventType: message.systemEvent?.eventType,
 			attachments: message.attachments.map((f) =>
 				plainToInstance(MessageAttachmentDto, { ...f.file, type: f.type, fileId: f.fileId })
 			),
-			senderId:
-				detectChatType(ChatId(message.chatId)) === ChatType.CHANNEL
-					? message.chatId
-					: message.senderId,
+			senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
 			messageType: message.messageType
 		})
 	}

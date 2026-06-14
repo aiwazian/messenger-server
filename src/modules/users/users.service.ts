@@ -261,27 +261,21 @@ export class UsersService {
 				select: { chatId: true }
 			})
 
-			const recipientIds = chats
-				.filter((c) => c.chatId !== userId)
-				.map((c) => c.chatId)
+			const recipientIds = chats.filter((c) => c.chatId !== userId).map((c) => c.chatId)
 
 			if (dto.lastSeen === PrivacyRule.NOBODY) {
 				for (const recipientId of recipientIds) {
-					this.realtimeGateway.sendToUser(
-						UserId(recipientId),
-						SocketEvent.USER_OFFLINE,
-						{ userId: userId.toString() }
-					)
+					this.realtimeGateway.sendToUser(UserId(recipientId), SocketEvent.USER_OFFLINE, {
+						userId: userId.toString()
+					})
 				}
 			} else if (dto.lastSeen === PrivacyRule.EVERYBODY) {
 				if (this.realtimeGateway.isUserOnline(userId)) {
 					for (const recipientId of recipientIds) {
 						if (this.realtimeGateway.isUserOnline(UserId(recipientId))) {
-							this.realtimeGateway.sendToUser(
-								UserId(recipientId),
-								SocketEvent.USER_ONLINE,
-								{ userId: userId.toString() }
-							)
+							this.realtimeGateway.sendToUser(UserId(recipientId), SocketEvent.USER_ONLINE, {
+								userId: userId.toString()
+							})
 						}
 					}
 				}

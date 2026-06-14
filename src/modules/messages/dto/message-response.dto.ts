@@ -24,6 +24,21 @@ export class MessageAttachmentDto {
 }
 
 @Exclude()
+export class MessageReadInfoDto {
+	@Expose()
+	userId: number
+
+	@Expose()
+	firstName: string
+
+	@Expose()
+	lastName?: string
+
+	@Expose()
+	readAt: number
+}
+
+@Exclude()
 export class MessageResponseDto {
 	@Expose()
 	id: number
@@ -59,4 +74,8 @@ export class MessageResponseDto {
 	@Expose()
 	@OmitNull()
 	systemEventType?: string
+
+	@Expose()
+	@OmitNull()
+	readInfo?: MessageReadInfoDto[]
 }

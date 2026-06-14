@@ -2,7 +2,11 @@ import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/commo
 import { TextMessageDto } from './dto/text-message.dto'
 import { plainToInstance } from 'class-transformer'
 import { ChatsService } from '../chats/chats.service'
-import { MessageAttachmentDto, MessageResponseDto } from './dto/message-response.dto'
+import {
+	MessageAttachmentDto,
+	MessageReadInfoDto,
+	MessageResponseDto
+} from './dto/message-response.dto'
 import { PushService } from '../push/push.service'
 import { RealtimeGateway } from '../realtime/realtime.gateway'
 import { StorageService } from '../storage/storage.service'
@@ -23,6 +27,9 @@ import { DeleteMessageDto } from './dto/delete-message.dto'
 
 @Injectable()
 export class MessagesService {
+	private lastCleanupTime = 0
+	private readonly CLEANUP_INTERVAL_MS = 60 * 60 * 1000
+
 	constructor(
 		private readonly prisma: PrismaService,
 		@Inject(forwardRef(() => ChatsService))
@@ -137,6 +144,8 @@ export class MessagesService {
 		limit: number = 50,
 		offset: number = 0
 	): Promise<MessageResponseDto[]> {
+		this.cleanupOldReadReceipts()
+
 		const chatType = detectChatType(chatId)
 
 		let messageWhere: Prisma.MessageWhereInput
@@ -167,7 +176,13 @@ export class MessagesService {
 		const messages = await this.prisma.message.findMany({
 			where: messageWhere,
 			include: {
-				readReceipts: { where: { userId }, select: { userId: true } },
+				readReceipts: {
+					select: {
+						userId: true,
+						readAt: true,
+						user: { select: { firstName: true, lastName: true } }
+					}
+				},
 				attachments: { include: { file: true } },
 				systemEvent: { select: { eventType: true } }
 			},
@@ -177,13 +192,46 @@ export class MessagesService {
 		})
 
 		return messages.reverse().map((message) => {
-			const isRead = true // TODO
+			let isRead: boolean | undefined
+			let readInfo: MessageReadInfoDto[] | undefined
+
+			if (chatType === ChatType.CHANNEL) {
+				isRead = undefined
+				readInfo = undefined
+			} else if (chatType === ChatType.PRIVATE) {
+				const myReceipt = message.readReceipts.find((r) => r.userId === userId)
+				const otherReceipt = message.readReceipts.find((r) => r.userId !== userId)
+
+				if (message.senderId === userId) {
+					isRead = !!otherReceipt
+				} else {
+					isRead = !!myReceipt
+				}
+				readInfo = undefined
+			} else if (chatType === ChatType.GROUP) {
+				const otherReceipts = message.readReceipts.filter((r) => r.userId !== message.senderId)
+				isRead = otherReceipts.length > 0
+				if (message.senderId === userId) {
+					readInfo = otherReceipts.map((r) =>
+						plainToInstance(MessageReadInfoDto, {
+							userId: r.userId,
+							firstName: r.user.firstName,
+							lastName: r.user.lastName,
+							readAt: r.readAt
+						})
+					)
+				} else {
+					readInfo = undefined
+				}
+			}
+
 			return plainToInstance(MessageResponseDto, {
 				...message,
 				text: message.text
 					? this.encryption.decrypt(message.text, this.encryption.currentVersion)
 					: null,
-				isRead: isRead,
+				isRead,
+				readInfo,
 				systemEventType: message.systemEvent?.eventType,
 				attachments: message.attachments.map((f) =>
 					plainToInstance(MessageAttachmentDto, { ...f.file, fileId: f.fileId, type: f.type })
@@ -201,46 +249,150 @@ export class MessagesService {
 
 		if (!message) throw new NotFoundException('Message not found')
 
-		const existing = await this.prisma.messageRead.findFirst({
-			where: { messageId, userId }
+		const chatType = detectChatType(ChatId(message.chatId))
+		if (chatType === ChatType.CHANNEL) return
+
+		const now = Date.now()
+
+		const earlierMessages = await this.prisma.message.findMany({
+			where: {
+				chatId: message.chatId,
+				senderId: message.senderId,
+				sendTime: { lte: message.sendTime }
+			},
+			select: { id: true }
 		})
 
-		if (!existing) {
-			await this.prisma.messageRead.create({
-				data: { messageId, userId, readAt: Date.now() }
-			})
+		const existingReads = await this.prisma.messageRead.findMany({
+			where: {
+				userId,
+				messageId: { in: earlierMessages.map((m) => m.id) }
+			},
+			select: { messageId: true }
+		})
+
+		const existingSet = new Set(existingReads.map((r) => r.messageId))
+		const newReads = earlierMessages
+			.filter((m) => !existingSet.has(m.id))
+			.map((m) => ({ messageId: m.id, userId, readAt: now }))
+
+		if (newReads.length > 0) {
+			for (const read of newReads) {
+				try {
+					await this.prisma.messageRead.upsert({
+						where: {
+							messageId_userId: { messageId: read.messageId, userId: read.userId }
+						},
+						update: {},
+						create: read
+					})
+				} catch {
+					// ignore race condition duplicates
+				}
+			}
 		}
 
-		const chatType = detectChatType(ChatId(message.chatId))
 		if (chatType === ChatType.PRIVATE) {
-			// await this.prisma.message.update({
-			// 	where: { id: messageId }
-			// }) TODO
+			const senderId = UserId(message.senderId)
+			if (senderId !== userId) {
+				this.realtimeGateway.sendToUser(senderId, SocketEvent.CHAT_READ, {
+					chatId: message.chatId.toString(),
+					messageId: messageId.toString(),
+					userId: userId.toString(),
+					time: now.toString(),
+					senderId: message.senderId.toString(),
+					sendTime: message.sendTime.toString()
+				})
+			}
+		} else if (chatType === ChatType.GROUP) {
+			const members = await this.prisma.groupMember.findMany({
+				where: { groupId: message.chatId },
+				select: { userId: true }
+			})
+			const recipientIds = members.map((m) => UserId(m.userId)).filter((id) => id !== userId)
+			for (const recipientId of recipientIds) {
+				this.realtimeGateway.sendToUser(recipientId, SocketEvent.CHAT_READ, {
+					chatId: message.chatId.toString(),
+					messageId: messageId.toString(),
+					userId: userId.toString(),
+					time: now.toString(),
+					senderId: message.senderId.toString(),
+					sendTime: message.sendTime.toString()
+				})
+			}
 		}
 	}
 
 	async markAllRead(userId: UserId, chatId: ChatId): Promise<void> {
+		const chatType = detectChatType(chatId)
+		if (chatType === ChatType.CHANNEL) return
+
+		let messageWhere: any
+		if (chatType === ChatType.PRIVATE) {
+			messageWhere = {
+				OR: [
+					{ senderId: userId, chatId: chatId },
+					{ senderId: chatId, chatId: userId }
+				]
+			}
+		} else {
+			messageWhere = { chatId }
+		}
+
 		const unread = await this.prisma.message.findMany({
 			where: {
-				chatId,
+				...messageWhere,
 				readReceipts: { none: { userId } }
 			},
-			select: { id: true }
+			select: { id: true, senderId: true, sendTime: true }
 		})
 
 		if (unread.length === 0) return
 
 		const now = Date.now()
-		await this.prisma.messageRead.createMany({
-			data: unread.map((m) => ({ messageId: m.id, userId, readAt: now }))
-		})
+		for (const m of unread) {
+			try {
+				await this.prisma.messageRead.upsert({
+					where: {
+						messageId_userId: { messageId: m.id, userId }
+					},
+					update: {},
+					create: { messageId: m.id, userId, readAt: now }
+				})
+			} catch {
+				// ignore race condition duplicates
+			}
+		}
 
-		const chatType = detectChatType(chatId)
 		if (chatType === ChatType.PRIVATE) {
-			// await this.prisma.message.updateMany({
-			// 	where: { id: { in: unread.map((m) => m.id) } },
-			// 	data: { isRead: true }
-			// }) TODO
+			const lastUnread = unread.reduce((latest, m) => (m.sendTime > latest.sendTime ? m : latest))
+
+			this.realtimeGateway.sendToUser(UserId(chatId), SocketEvent.CHAT_READ, {
+				chatId: chatId.toString(),
+				messageId: lastUnread.id.toString(),
+				userId: userId.toString(),
+				time: now.toString(),
+				senderId: lastUnread.senderId.toString(),
+				sendTime: lastUnread.sendTime.toString()
+			})
+		} else if (chatType === ChatType.GROUP) {
+			const members = await this.prisma.groupMember.findMany({
+				where: { groupId: chatId },
+				select: { userId: true }
+			})
+			const recipientIds = members.map((m) => UserId(m.userId)).filter((id) => id !== userId)
+			const lastUnread = unread.reduce((latest, m) => (m.sendTime > latest.sendTime ? m : latest))
+
+			for (const recipientId of recipientIds) {
+				this.realtimeGateway.sendToUser(recipientId, SocketEvent.CHAT_READ, {
+					chatId: chatId.toString(),
+					messageId: lastUnread.id.toString(),
+					userId: userId.toString(),
+					time: now.toString(),
+					senderId: lastUnread.senderId.toString(),
+					sendTime: lastUnread.sendTime.toString()
+				})
+			}
 		}
 	}
 
@@ -484,5 +636,20 @@ export class MessagesService {
 		}
 
 		return []
+	}
+
+	private async cleanupOldReadReceipts(): Promise<void> {
+		const now = Date.now()
+		if (now - this.lastCleanupTime < this.CLEANUP_INTERVAL_MS) return
+		this.lastCleanupTime = now
+
+		const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000
+		try {
+			await this.prisma.messageRead.deleteMany({
+				where: { readAt: { lt: sevenDaysAgo } }
+			})
+		} catch (e) {
+			// ignore cleanup errors
+		}
 	}
 }

@@ -10,6 +10,7 @@ import {
 import { GroupResponseDto } from './dto/group-response.dto'
 import { UpdateGroupDto } from './dto/update-group.dto'
 import { ChatsService } from '../chats/chats.service'
+import { ChatResponseDto } from '../chats/dto/chat-response.dto'
 import { SearchService } from '../search/search.service'
 import { StorageService } from '../storage/storage.service'
 import { UserResponseDto } from '../users/dto/user-response.dto'
@@ -248,6 +249,11 @@ export class GroupsService {
 			throw new BadRequestException('Some users are banned from this group')
 		}
 
+		const group = await this.prisma.group.findUnique({ where: { id } })
+		if (!group) throw new NotFoundException('Group not found')
+
+		const newMemberIds: UserId[] = []
+
 		for (const userId of userIdBigInts) {
 			const existing = await this.prisma.groupMember.findUnique({
 				where: { groupId_userId: { groupId: id, userId } }
@@ -258,6 +264,18 @@ export class GroupsService {
 				data: { groupId: id, userId }
 			})
 			await this.chatsService.create(UserId(userId), ChatId(id))
+			newMemberIds.push(UserId(userId))
+		}
+
+		const chatPayload = plainToInstance(ChatResponseDto, {
+			id: group.id,
+			name: group.name,
+			isPinned: false,
+			lastMessage: null
+		})
+
+		for (const memberId of newMemberIds) {
+			this.realtimeGateway.sendToUser(memberId, SocketEvent.CHAT_NEW, chatPayload)
 		}
 
 		this.realtimeGateway.sendToUser(ownerId, SocketEvent.CHAT_UPDATED, { chatId: id })
