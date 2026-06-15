@@ -57,6 +57,9 @@ model User {
   password    String
   dateOfBirth BigInt?
 
+  profileChannelId BigInt?
+  profileChannel   Channel? @relation("UserProfileChannel", fields: [profileChannelId], references: [id], onDelete: SetNull)
+
   chats        Chat[]
   sessions     Session[]
   sentMessages Message[]
@@ -69,7 +72,7 @@ model User {
   groupBlackLists  GroupBlackList[]
   groupPermissions GroupMemberPermission[]
 
-  ownedChannels        Channel[]
+  ownedChannels        Channel[] @relation("OwnedChannels")
   channelSubscriptions ChannelSubscriber[]
   channelBlackLists    ChannelBlackList[]
   channelPermissions   ChannelMemberPermission[]
@@ -267,7 +270,9 @@ model Channel {
   channelType ChannelType @default(PRIVATE)
   username    String?     @unique
 
-  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner User @relation("OwnedChannels", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  profileUsers User[] @relation("UserProfileChannel")
 
   photos       ChannelPhoto[]
   subscribers  ChannelSubscriber[]

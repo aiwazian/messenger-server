@@ -32,4 +32,8 @@ export class UserResponseDto {
 
 	@Expose()
 	avatars: { fileId: string; sortOrder: number }[]
+
+	@Expose()
+	@OmitNull()
+	profileChannelId?: string
 }

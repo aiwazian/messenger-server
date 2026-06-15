@@ -59,7 +59,7 @@ export class ContentModerationService {
 							required: ['is_allowed'],
 							additionalProperties: false
 						}
-					},
+					}
 				},
 				stream: false
 			})

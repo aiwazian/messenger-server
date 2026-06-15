@@ -1,4 +1,5 @@
 import {
+	BadRequestException,
 	ConflictException,
 	Injectable,
 	NotFoundException,
@@ -206,6 +207,10 @@ export class UsersService {
 		const response = plainToInstance(UserResponseDto, user)
 		response.avatars = user.photos.map((p) => ({ fileId: p.fileId, sortOrder: p.sortOrder }))
 
+		if (user.profileChannelId) {
+			response.profileChannelId = user.profileChannelId.toString()
+		}
+
 		const latestSession = user.sessions?.[0]
 		const lastSeenVal = latestSession?.lastSeen ? Number(latestSession.lastSeen) : undefined
 
@@ -334,5 +339,53 @@ export class UsersService {
 
 	async isExists(id: UserId): Promise<boolean> {
 		return !!(await this.prisma.user.findFirst({ where: { id } }))
+	}
+
+	async setProfileChannel(userId: UserId, channelId: string): Promise<void> {
+		const channel = await this.prisma.channel.findUnique({
+			where: { id: BigInt(channelId) }
+		})
+		if (!channel) throw new NotFoundException('Channel not found')
+
+		if (channel.channelType !== 'PUBLIC') {
+			throw new BadRequestException('Only public channels can be set as profile channel')
+		}
+
+		await this.prisma.user.update({
+			where: { id: userId },
+			data: { profileChannelId: BigInt(channelId) }
+		})
+	}
+
+	async removeProfileChannel(userId: UserId): Promise<void> {
+		await this.prisma.user.update({
+			where: { id: userId },
+			data: { profileChannelId: null }
+		})
+	}
+
+	async getOwnedPublicChannels(userId: UserId): Promise<any[]> {
+		const channels = await this.prisma.channel.findMany({
+			where: {
+				ownerId: userId,
+				channelType: 'PUBLIC'
+			},
+			include: {
+				photos: {
+					where: { isCurrent: true },
+					take: 1
+				},
+				_count: {
+					select: { subscribers: true }
+				}
+			}
+		})
+
+		return channels.map((ch) => ({
+			id: ch.id.toString(),
+			name: ch.name,
+			subscribers: ch._count.subscribers,
+			avatar: ch.photos[0] ? { fileId: ch.photos[0].fileId } : undefined
+		}))
 	}
 }

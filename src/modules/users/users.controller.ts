@@ -31,6 +31,7 @@ import { FileInitDto } from '../messages/dto/file-init.dto'
 import { InitUploadDto } from '../storage/dto/init-upload.dto'
 import { FileDownloadDto } from '../messages/dto/file-download.dto'
 import { FileType } from '../../common/enums/file-type.enum'
+import { SetProfileChannelDto } from './dto/set-profile-channel.dto'
 
 @Controller('users')
 @UseGuards(AuthGuard)
@@ -131,5 +132,25 @@ export class UsersController {
 		}
 
 		return response
+	}
+
+	@Patch('me/profile-channel')
+	@HttpCode(HttpStatus.OK)
+	setProfileChannel(
+		@CurrentUserId() userId: UserId,
+		@Body() dto: SetProfileChannelDto
+	): Promise<void> {
+		return this.usersService.setProfileChannel(userId, dto.channelId)
+	}
+
+	@Delete('me/profile-channel')
+	@HttpCode(HttpStatus.NO_CONTENT)
+	removeProfileChannel(@CurrentUserId() userId: UserId): Promise<void> {
+		return this.usersService.removeProfileChannel(userId)
+	}
+
+	@Get('me/owned-channels')
+	getOwnedPublicChannels(@CurrentUserId() userId: UserId) {
+		return this.usersService.getOwnedPublicChannels(userId)
 	}
 }
