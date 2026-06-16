@@ -7,6 +7,10 @@ export const OmitNull = () => {
 				return undefined
 			}
 
+			if (typeof value === 'string' && value.trim() === '') {
+				return undefined
+			}
+
 			if (Array.isArray(value) && value.length === 0) {
 				return undefined
 			}

@@ -139,7 +139,7 @@ export class GroupsService {
 		const group = await this.prisma.group.findUnique({
 			where: { id },
 			include: {
-				_count: { select: { members: true } },
+				_count: { select: { members: true, blocked: true } },
 				members: {
 					where: { userId: userId },
 					select: { userId: true }
@@ -156,6 +156,7 @@ export class GroupsService {
 		const response = plainToInstance(GroupResponseDto, {
 			...group,
 			membersCount: group._count.members,
+			removedUsers: group._count.blocked,
 			isMember,
 			isOwner
 		})

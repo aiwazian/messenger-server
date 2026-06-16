@@ -5,7 +5,7 @@ import { ChannelType } from '../../../../generated/prisma/enums'
 @Exclude()
 export class ChannelResponseDto {
 	@Expose()
-	id: string
+	id: number
 
 	@Expose()
 	name: string
@@ -31,7 +31,7 @@ export class ChannelResponseDto {
 
 	@Expose()
 	@OmitNull()
-	removedUser?: string
+	removedUsers?: number
 
 	@Expose()
 	isSubscribed: boolean

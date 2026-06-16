@@ -39,4 +39,8 @@ export class GroupResponseDto {
 	@Expose()
 	@OmitNull()
 	avatars?: { fileId: string }[]
+
+	@Expose()
+	@OmitNull()
+	removedUsers?: number
 }
