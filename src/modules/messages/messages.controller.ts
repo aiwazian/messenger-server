@@ -4,6 +4,7 @@ import {
 	Get,
 	Param,
 	Post,
+	Patch,
 	UseGuards,
 	ParseIntPipe,
 	Query,
@@ -24,7 +25,9 @@ import { CurrentUserId } from '../../common/decorators/user-id.decorator'
 import { UserId } from '../../common/types/user-id.type'
 import { CanReadChatGuard } from '../../common/guards/can-read-chat.guard'
 import { CanDeleteMessageGuard } from '../../common/guards/can-delete-message.guard'
+import { CanEditMessageGuard } from '../../common/guards/can-edit-message.guard'
 import { CanClearHistoryGuard } from '../../common/guards/can-clear-history.guard'
+import { EditMessageDto } from './dto/edit-message.dto'
 import { SendMessageUseCase } from './use-cases/send-message.use-case'
 
 @Controller('chats/:chatId/messages')
@@ -110,6 +113,18 @@ export class MessagesController {
 		@Body() dto: DeleteMessageDto
 	) {
 		return this.messagesService.deleteMessage(userId, chatId, messageId, dto)
+	}
+
+	@Patch(':messageId')
+	@UseGuards(CanEditMessageGuard)
+	editMessage(
+		@Param('chatId', ParseChatIdPipe) chatId: ChatId,
+		@Param('messageId', ParseIntPipe) messageId: number,
+		@CurrentUserId() userId: UserId,
+		@Body() dto: EditMessageDto,
+		@Headers('x-socket-id') socketId: string
+	) {
+		return this.messagesService.editMessage(userId, chatId, messageId, dto, socketId)
 	}
 
 	@Delete()

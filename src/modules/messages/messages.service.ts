@@ -24,6 +24,7 @@ import { Prisma } from '../../../generated/prisma/client'
 import { detectChatType } from '../../common/utils/detect-chat-type.util'
 import { EncryptionService } from '../encryption/encryption.service'
 import { DeleteMessageDto } from './dto/delete-message.dto'
+import { EditMessageDto } from './dto/edit-message.dto'
 
 @Injectable()
 export class MessagesService {
@@ -449,6 +450,66 @@ export class MessagesService {
 				this.realtimeGateway.sendToUser(recipientId, SocketEvent.MESSAGE_DELETE, recipientPayload)
 			}
 		}
+	}
+
+	async editMessage(
+		userId: UserId,
+		chatId: ChatId,
+		messageId: number,
+		dto: EditMessageDto,
+		excludeSocketId: string
+	): Promise<MessageResponseDto> {
+		const now = Date.now()
+		const { encrypted, version } = this.encryption.encrypt(dto.text)
+
+		const message = await this.prisma.message.update({
+			where: { id: messageId },
+			data: {
+				text: encrypted,
+				editedAt: now,
+				encryptionKeyVersion: version
+			},
+			include: {
+				attachments: { include: { file: true } }
+			}
+		})
+
+		const chatType = detectChatType(chatId)
+
+		const messageInstance = plainToInstance(MessageResponseDto, {
+			...message,
+			text: dto.text,
+			isRead: undefined,
+			attachments: message.attachments.map((f) =>
+				plainToInstance(MessageAttachmentDto, { ...f.file, fileId: f.fileId, type: f.type })
+			),
+			senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
+			messageType: message.messageType
+		})
+
+		if (BigInt(chatId) === BigInt(userId)) {
+			this.realtimeGateway.sendToUser(
+				userId,
+				SocketEvent.MESSAGE_EDIT,
+				messageInstance,
+				excludeSocketId
+			)
+		} else {
+			this.realtimeGateway.sendToChat(chatId, SocketEvent.MESSAGE_EDIT, messageInstance, excludeSocketId)
+		}
+
+		const recipients = await this.getRecipients(userId, chatId, chatType)
+		if (recipients.length > 0) {
+			this.realtimeGateway.sendToUsersExceptChat(
+				recipients,
+				chatId,
+				SocketEvent.MESSAGE_EDIT,
+				messageInstance,
+				excludeSocketId
+			)
+		}
+
+		return messageInstance
 	}
 
 	async clearHistory(
