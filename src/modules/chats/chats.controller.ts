@@ -12,7 +12,6 @@ import {
 } from '@nestjs/common'
 import { ChatsService } from './chats.service'
 import { InviteLinksService } from '../invites/invite-links.service'
-import { AuthGuard } from '../../common/guards/auth.guard'
 import { UserId } from '../../common/types/user-id.type'
 import { CurrentUserId } from '../../common/decorators/user-id.decorator'
 import { CanReadChatGuard } from '../../common/guards/can-read-chat.guard'
@@ -22,7 +21,6 @@ import { DeleteChatDto } from './dto/delete-chat.dto'
 import { DeleteChatUseCase } from './use-cases/delete-chat.use-case'
 
 @Controller('chats')
-@UseGuards(AuthGuard)
 export class ChatsController {
 	constructor(
 		private readonly chatsService: ChatsService,

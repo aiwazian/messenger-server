@@ -15,7 +15,6 @@ import { GroupsService } from './groups.service'
 import { CreateGroupDto } from './dto/create-group.dto'
 import { UpdateGroupDto } from './dto/update-group.dto'
 import { AddMembersDto } from './dto/add-members.dto'
-import { AuthGuard } from '../../common/guards/auth.guard'
 import { CurrentUserId } from '../../common/decorators/user-id.decorator'
 import { UserId } from '../../common/types/user-id.type'
 import { PARAMS } from '../../common/constants/param.constants'
@@ -35,7 +34,6 @@ import { FileDownloadDto } from '../messages/dto/file-download.dto'
 import { FileType } from '../../common/enums/file-type.enum'
 
 @Controller('groups')
-@UseGuards(AuthGuard)
 export class GroupsController {
 	constructor(
 		private readonly groupsService: GroupsService,

@@ -1,11 +1,10 @@
-import { MiddlewareConsumer, Module, RequestMethod } from '@nestjs/common'
+import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
 import { AppController } from './app.controller'
 import { AppService } from './app.service'
 import { UsersModule } from './modules/users/users.module'
 import { ChannelsModule } from './modules/channels/channels.module'
 import { AuthModule } from './modules/auth/auth.module'
-import { AuthMiddleware } from './common/middlewares/auth.middleware'
 import { SessionsModule } from './modules/sessions/sessions.module'
 import { RealtimeModule } from './modules/realtime/realtime.module'
 import { GroupsModule } from './modules/groups/groups.module'
@@ -18,6 +17,8 @@ import { StorageModule } from './modules/storage/storage.module'
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
 import { APP_GUARD } from '@nestjs/core'
 import { ScheduleModule } from '@nestjs/schedule'
+import { AuthGuard } from './common/guards/auth.guard'
+import { JwtAuthModule } from './modules/security/jwt.module'
 
 @Module({
 	imports: [
@@ -40,7 +41,8 @@ import { ScheduleModule } from '@nestjs/schedule'
 		MessagesModule,
 		SearchModule,
 		PushModule,
-		StorageModule
+		StorageModule,
+		JwtAuthModule
 	],
 	controllers: [AppController],
 	providers: [
@@ -48,17 +50,11 @@ import { ScheduleModule } from '@nestjs/schedule'
 		{
 			provide: APP_GUARD,
 			useClass: ThrottlerGuard
+		},
+		{
+			provide: APP_GUARD,
+			useClass: AuthGuard
 		}
 	]
 })
-export class AppModule {
-	configure(consumer: MiddlewareConsumer) {
-		consumer
-			.apply(AuthMiddleware)
-			.exclude(
-				{ path: 'auth/*path', method: RequestMethod.ALL },
-				{ path: 'auth', method: RequestMethod.ALL }
-			)
-			.forRoutes('*path')
-	}
-}
+export class AppModule {}

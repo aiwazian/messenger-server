@@ -9,7 +9,6 @@ import {
 	UseGuards
 } from '@nestjs/common'
 import { SessionsService } from './sessions.service'
-import { AuthGuard } from '../../common/guards/auth.guard'
 import { CurrentUserId } from '../../common/decorators/user-id.decorator'
 import { UserId } from '../../common/types/user-id.type'
 import { CurrentUserToken } from '../../common/decorators/user-token.decorator'
@@ -19,7 +18,6 @@ import { SessionAgeGuard } from '../../common/guards/session-age.guard'
 import { UpdateFcmTokenDto } from './dto/update-fcm-token.dto'
 
 @Controller('sessions')
-@UseGuards(AuthGuard)
 export class SessionsController {
 	constructor(private readonly sessionsService: SessionsService) {}
 

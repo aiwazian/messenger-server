@@ -39,14 +39,14 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 				if (!token) {
 					this.logger.warn(`No token provided for socket ${socket.id}`)
 					socket.emit(SocketEvent.UNAUTHORIZED)
-					return next()
+					return next(new Error('Unauthorized'))
 				}
 
 				const session = await this.sessionsService.findByToken(token)
 				if (!session) {
 					this.logger.warn(`Invalid token provided for socket ${socket.id}`)
 					socket.emit(SocketEvent.UNAUTHORIZED)
-					return next()
+					return next(new Error('Unauthorized'))
 				}
 
 				socket.data.userId = session.userId
@@ -55,7 +55,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 			} catch (error: any) {
 				this.logger.error(`Auth error in socket middleware: ${error.message}`)
 				socket.emit(SocketEvent.UNAUTHORIZED)
-				next()
+				next(new Error('Unauthorized'))
 			}
 		})
 	}

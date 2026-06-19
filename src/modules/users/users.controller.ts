@@ -19,7 +19,6 @@ import { UpdatePrivacySettingsDto } from './dto/update-privacy-settings.dto'
 import { ChangePasswordDto } from './dto/change-password.dto'
 import { ChangeLoginDto } from './dto/change-login.dto'
 import { CurrentUserId } from '../../common/decorators/user-id.decorator'
-import { AuthGuard } from '../../common/guards/auth.guard'
 import { UserId } from '../../common/types/user-id.type'
 import { UserExistsGuard } from '../../common/guards/user-exists.guard'
 import { PARAMS } from '../../common/constants/param.constants'
@@ -34,7 +33,6 @@ import { FileType } from '../../common/enums/file-type.enum'
 import { SetProfileChannelDto } from './dto/set-profile-channel.dto'
 
 @Controller('users')
-@UseGuards(AuthGuard)
 export class UsersController {
 	constructor(
 		private readonly usersService: UsersService,

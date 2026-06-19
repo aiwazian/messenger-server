@@ -17,7 +17,6 @@ import { DeleteMessageDto } from './dto/delete-message.dto'
 import { ClearHistoryDto } from './dto/clear-history.dto'
 import { FileInitDto } from './dto/file-init.dto'
 import { FileConfirmDto } from './dto/file-confirm.dto'
-import { AuthGuard } from '../../common/guards/auth.guard'
 import { CanSendMessageGuard } from '../../common/guards/can-send-message.guard'
 import { ParseChatIdPipe } from '../../common/pipes/parse-chat-id.pipe'
 import { ChatId } from '../../common/types/chat-id.type'
@@ -31,7 +30,6 @@ import { EditMessageDto } from './dto/edit-message.dto'
 import { SendMessageUseCase } from './use-cases/send-message.use-case'
 
 @Controller('chats/:chatId/messages')
-@UseGuards(AuthGuard)
 export class MessagesController {
 	constructor(
 		private readonly messagesService: MessagesService,

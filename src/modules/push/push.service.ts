@@ -29,7 +29,7 @@ export class PushService {
 
 		if (pushTokens.length === 0) return
 
-		const projectId = this.config.get('RUSTORE_PROJECT_ID')
+		const projectId = this.config.get('RUSTORE_PUSH_PROJECT_ID')
 		const serviceKey = this.config.get('RUSTORE_PUSH_SERVICE_KEY')
 
 		pushTokens.forEach(async (token) => {

@@ -14,7 +14,6 @@ import {
 import { ChannelsService } from './channels.service'
 import { CreateChannelDto } from './dto/create-channel.dto'
 import { UpdateChannelDto } from './dto/update-channel.dto'
-import { AuthGuard } from '../../common/guards/auth.guard'
 import { CurrentUserId } from '../../common/decorators/user-id.decorator'
 import { UserId } from '../../common/types/user-id.type'
 import { ChannelExistsGuard } from '../../common/guards/channel-exists.guard'
@@ -33,7 +32,6 @@ import { FileDownloadDto } from '../messages/dto/file-download.dto'
 import { FileType } from '../../common/enums/file-type.enum'
 
 @Controller('channels')
-@UseGuards(AuthGuard)
 export class ChannelsController {
 	constructor(
 		private readonly channelsService: ChannelsService,

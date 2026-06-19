@@ -1,5 +1,4 @@
 import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common'
-import { TextMessageDto } from './dto/text-message.dto'
 import { plainToInstance } from 'class-transformer'
 import { ChatsService } from '../chats/chats.service'
 import {
@@ -495,7 +494,12 @@ export class MessagesService {
 				excludeSocketId
 			)
 		} else {
-			this.realtimeGateway.sendToChat(chatId, SocketEvent.MESSAGE_EDIT, messageInstance, excludeSocketId)
+			this.realtimeGateway.sendToChat(
+				chatId,
+				SocketEvent.MESSAGE_EDIT,
+				messageInstance,
+				excludeSocketId
+			)
 		}
 
 		const recipients = await this.getRecipients(userId, chatId, chatType)
@@ -662,10 +666,11 @@ export class MessagesService {
 		}
 
 		if (offline.length > 0) {
-			await this.pushService.sendToUsers(offline, {
+			const actualChatId = chatType === ChatType.CHANNEL ? message.chatId : message.senderId
+			this.pushService.sendToUsers(offline, {
 				title: 'Новое сообщение',
 				body: message.text || 'Вложение',
-				chatId: message.chatId.toString()
+				chatId: actualChatId.toString()
 			})
 		}
 	}
