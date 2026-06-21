@@ -17,6 +17,7 @@ import { SocketEvent, SocketEventType } from '../../common/socket/socket-events'
 import { UserId } from '../../common/types/user-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
 import { PrivacyRule } from '../../../generated/prisma/enums'
+import { ChatsService } from '../chats/chats.service'
 
 @WebSocketGateway()
 export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
@@ -29,8 +30,10 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 	constructor(
 		@Inject(forwardRef(() => SessionsService))
 		private readonly sessionsService: SessionsService,
+		@Inject(forwardRef(() => ChatsService))
+		private readonly chatsService: ChatsService,
 		private readonly prisma: PrismaService
-	) {}
+	) { }
 
 	afterInit(server: Server) {
 		server.use(async (socket, next) => {
@@ -105,26 +108,28 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
 	@SubscribeMessage(SocketEvent.CHAT_OPEN)
 	async handleChatOpen(@MessageBody() payload: any, @ConnectedSocket() client: Socket) {
+		const raw = payload?.chatId ?? payload
+		let chatId: ChatId
+		const userId = client.data.userId as UserId
 		try {
-			const raw = payload?.chatId ?? payload
-			const chatId = ChatId(raw)
-			const userId = client.data.userId as UserId
-
-			const prev = client.data.activeChatId as ChatId | undefined
-			if (prev && prev !== chatId) {
-				client.leave(`chat:${prev.toString()}`)
-			}
-
-			client.join(`chat:${chatId.toString()}`)
-			client.data.activeChatId = chatId
-			this.logger.debug(
-				`Client ${client.id} (user ${userId}) joined room chat:${chatId.toString()}`
-			)
+			chatId = ChatId(raw)
 		} catch (e: any) {
-			this.logger.warn(
-				`Access denied or invalid chat id from client ${client.id}: ${e?.message ?? e}`
-			)
+			return
 		}
+
+		try {
+			await this.chatsService.canReadChat(userId, chatId)
+		} catch (e: any) {
+			client.emit(SocketEvent.ACCESS_DENIED, { chatId: chatId.toString() })
+			return
+		}
+
+		const prev = client.data.activeChatId as ChatId | undefined
+		if (prev && prev !== chatId) {
+			client.leave(`chat:${prev.toString()}`)
+		}
+		client.join(`chat:${chatId.toString()}`)
+		client.data.activeChatId = chatId
 	}
 
 	async handleDisconnect(client: Socket) {

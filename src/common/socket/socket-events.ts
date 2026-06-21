@@ -1,4 +1,6 @@
 export const SocketEvent = {
+	ACCESS_DENIED: 'access_denied',
+
 	MESSAGE_NEW: 'message:new',
 	MESSAGE_EDIT: 'message:edit',
 	MESSAGE_UPDATE: 'message:update',
