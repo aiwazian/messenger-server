@@ -19,6 +19,19 @@ export class CanSendMessageGuard implements CanActivate {
 		const chatType = detectChatType(chatId)
 
 		if (chatType === ChatType.PRIVATE) {
+			const blackList = await this.prisma.userBlackList.findFirst({
+				where: {
+					OR: [
+						{ blockerId: userId, blockedId: chatId },
+						{ blockerId: chatId, blockedId: userId }
+					]
+				}
+			})
+
+			if (blackList) {
+				throw new ForbiddenException('Sending messages is restricted due to blocking')
+			}
+
 			return true
 		}
 

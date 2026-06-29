@@ -9,4 +9,4 @@ import { ChatsModule } from '../chats/chats.module'
 	providers: [RealtimeGateway],
 	exports: [RealtimeGateway]
 })
-export class RealtimeModule { }
+export class RealtimeModule {}

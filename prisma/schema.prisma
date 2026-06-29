@@ -81,6 +81,9 @@ model User {
   scheduledAccountDeletion ScheduledAccountDeletion?
 
   messageReactions MessageReaction[]
+
+  blockedUsers  UserBlackList[] @relation("Blocker")
+  blockedBy     UserBlackList[] @relation("Blocked")
 }
 
 model UserPhoto {
@@ -487,4 +490,18 @@ model Wallpaper {
 
   file  File   @relation(fields: [fileId], references: [id], onDelete: Cascade)
   chats Chat[]
+}
+
+model UserBlackList {
+  id        Int    @id @default(autoincrement())
+  blockerId BigInt
+  blockedId BigInt
+  createdAt BigInt
+
+  blocker User @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockerId])
+  @@index([blockedId])
 }

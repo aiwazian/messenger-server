@@ -215,6 +215,20 @@ export class UsersService {
 		const lastSeenVal = latestSession?.lastSeen ? Number(latestSession.lastSeen) : undefined
 
 		if (currentUserId && currentUserId !== id) {
+			const blackLists = await this.prisma.userBlackList.findMany({
+				where: {
+					OR: [
+						{ blockerId: currentUserId, blockedId: id },
+						{ blockerId: id, blockedId: currentUserId }
+					]
+				}
+			})
+
+			for (const bl of blackLists) {
+				if (bl.blockerId === currentUserId) response.isBlocked = true
+				if (bl.blockerId === id) response.isBlockedByThem = true
+			}
+
 			const privacy = user.privacySettings
 			if (privacy) {
 				if (privacy.bio === PrivacyRule.NOBODY) {
@@ -223,10 +237,10 @@ export class UsersService {
 				if (privacy.dateOfBirth === PrivacyRule.NOBODY) {
 					response.dateOfBirth = undefined
 				}
-				if (privacy.profilePhoto === PrivacyRule.NOBODY) {
+				if (privacy.profilePhoto === PrivacyRule.NOBODY || response.isBlockedByThem) {
 					response.avatars = []
 				}
-				if (privacy.lastSeen === PrivacyRule.NOBODY) {
+				if (privacy.lastSeen === PrivacyRule.NOBODY || response.isBlockedByThem) {
 					response.lastSeen = undefined
 				} else if (lastSeenVal) {
 					response.lastSeen = lastSeenVal
@@ -387,5 +401,55 @@ export class UsersService {
 			subscribers: ch._count.subscribers,
 			avatar: ch.photos[0] ? { fileId: ch.photos[0].fileId } : undefined
 		}))
+	}
+
+	async blockUser(blockerId: UserId, blockedId: UserId): Promise<void> {
+		if (blockerId === blockedId) {
+			throw new BadRequestException('You cannot block yourself')
+		}
+		const user = await this.prisma.user.findUnique({ where: { id: blockedId } })
+		if (!user) throw new NotFoundException('User not found')
+
+		await this.prisma.userBlackList.upsert({
+			where: {
+				blockerId_blockedId: { blockerId, blockedId }
+			},
+			update: {},
+			create: {
+				blockerId,
+				blockedId,
+				createdAt: Date.now()
+			}
+		})
+	}
+
+	async unblockUser(blockerId: UserId, blockedId: UserId): Promise<void> {
+		await this.prisma.userBlackList.deleteMany({
+			where: { blockerId, blockedId }
+		})
+	}
+
+	async getBlockedUsers(userId: UserId): Promise<UserResponseDto[]> {
+		const blackLists = await this.prisma.userBlackList.findMany({
+			where: { blockerId: userId },
+			include: {
+				blocked: {
+					include: {
+						photos: {
+							orderBy: [{ sortOrder: 'asc' }]
+						}
+					}
+				}
+			}
+		})
+
+		return blackLists.map((bl) => {
+			const response = plainToInstance(UserResponseDto, bl.blocked)
+			response.avatars = bl.blocked.photos.map((p) => ({
+				fileId: p.fileId,
+				sortOrder: p.sortOrder
+			}))
+			return response
+		})
 	}
 }

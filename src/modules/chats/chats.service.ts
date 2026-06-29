@@ -1,4 +1,10 @@
-import { ForbiddenException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common'
+import {
+	ForbiddenException,
+	forwardRef,
+	Inject,
+	Injectable,
+	NotFoundException
+} from '@nestjs/common'
 import { ChatResponseDto } from './dto/chat-response.dto'
 import { plainToInstance } from 'class-transformer'
 import { MessageAttachmentDto, MessageResponseDto } from '../messages/dto/message-response.dto'
@@ -19,7 +25,7 @@ export class ChatsService {
 		private readonly encryption: EncryptionService,
 		@Inject(forwardRef(() => RealtimeGateway))
 		private readonly realtimeGateway: RealtimeGateway
-	) { }
+	) {}
 
 	async getAll(userId: UserId): Promise<ChatResponseDto[]> {
 		const chats = await this.prisma.chat.findMany({

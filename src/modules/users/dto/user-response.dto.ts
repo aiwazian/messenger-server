@@ -36,4 +36,10 @@ export class UserResponseDto {
 	@Expose()
 	@OmitNull()
 	profileChannelId?: string
+
+	@Expose()
+	isBlocked?: boolean
+
+	@Expose()
+	isBlockedByThem?: boolean
 }

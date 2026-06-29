@@ -117,7 +117,13 @@ export class UsersController {
 			return response
 		}
 
-		if (req.privacy) {
+		if (response.isBlockedByThem) {
+			response.bio = undefined
+			response.dateOfBirth = undefined
+			response.avatars = []
+			response.lastSeen = undefined
+			response.profileChannelId = undefined
+		} else if (req.privacy) {
 			if (!req.privacy.canSeeBio) {
 				response.bio = undefined
 			}
@@ -150,5 +156,28 @@ export class UsersController {
 	@Get('me/owned-channels')
 	getOwnedPublicChannels(@CurrentUserId() userId: UserId) {
 		return this.usersService.getOwnedPublicChannels(userId)
+	}
+
+	@Get('me/blocked')
+	getBlockedUsers(@CurrentUserId() userId: UserId): Promise<UserResponseDto[]> {
+		return this.usersService.getBlockedUsers(userId)
+	}
+
+	@Post(':id/block')
+	@HttpCode(HttpStatus.OK)
+	blockUser(
+		@CurrentUserId() currentUserId: UserId,
+		@Param('id', ParseUserIdPipe) targetUserId: UserId
+	): Promise<void> {
+		return this.usersService.blockUser(currentUserId, targetUserId)
+	}
+
+	@Delete(':id/block')
+	@HttpCode(HttpStatus.NO_CONTENT)
+	unblockUser(
+		@CurrentUserId() currentUserId: UserId,
+		@Param('id', ParseUserIdPipe) targetUserId: UserId
+	): Promise<void> {
+		return this.usersService.unblockUser(currentUserId, targetUserId)
 	}
 }

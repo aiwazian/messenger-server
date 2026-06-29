@@ -33,7 +33,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		@Inject(forwardRef(() => ChatsService))
 		private readonly chatsService: ChatsService,
 		private readonly prisma: PrismaService
-	) { }
+	) {}
 
 	afterInit(server: Server) {
 		server.use(async (socket, next) => {
