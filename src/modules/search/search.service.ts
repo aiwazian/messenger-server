@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
-import { SearchResponseDto, SearchResultType } from './dto/search-response.dto'
+import { SearchResponseDto } from './dto/search-response.dto'
 import { plainToInstance } from 'class-transformer'
-import { SearchQueryDto, SearchType } from './dto/search-query.dto'
+import { SearchQueryDto } from './dto/search-query.dto'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { ChatId } from '../../common/types/chat-id.type'
 import { ChannelType, GroupType } from '../../../generated/prisma/enums'
@@ -16,31 +16,31 @@ export class SearchService {
 		private readonly moderation: ContentModerationService
 	) {}
 
-	async isUsernameAvailable(username: string): Promise<boolean> {
+	async isUsernameAvailable(username: string): Promise<{ available: boolean }> {
 		if (this.config.get('NODE_ENV') === 'production') {
 			const isAllowed = await this.moderation.isAllowed(username)
-			if (!isAllowed) return false
+			if (!isAllowed) return { available: false }
 		}
 
 		const userExists = await this.prisma.user.findFirst({
 			where: { username },
 			select: { id: true }
 		})
-		if (userExists) return false
+		if (userExists) return { available: false }
 
 		const groupExists = await this.prisma.group.findFirst({
 			where: { username },
 			select: { id: true }
 		})
-		if (groupExists) return false
+		if (groupExists) return { available: false }
 
 		const channelExists = await this.prisma.channel.findFirst({
 			where: { username },
 			select: { id: true }
 		})
-		if (channelExists) return false
+		if (channelExists) return { available: false }
 
-		return true
+		return { available: true }
 	}
 
 	async resolveUsername(
@@ -89,14 +89,6 @@ export class SearchService {
 	}
 
 	async search(dto: SearchQueryDto, userId: bigint): Promise<SearchResponseDto[]> {
-		if (dto.type === SearchType.FILES) {
-			return this.searchFiles(dto, userId)
-		} else {
-			return this.searchChats(dto, userId)
-		}
-	}
-
-	private async searchChats(dto: SearchQueryDto, userId: bigint): Promise<SearchResponseDto[]> {
 		const query = dto.q || ''
 		const limit = dto.limit || 20
 		const offset = dto.offset || 0
@@ -105,7 +97,13 @@ export class SearchService {
 			this.prisma.user.findMany({
 				where: { username: { contains: query } },
 				take: limit,
-				skip: offset
+				skip: offset,
+				select: {
+					id: true,
+					firstName: true,
+					lastName: true,
+					username: true
+				}
 			}),
 			this.prisma.channel.findMany({
 				where: {
@@ -128,7 +126,12 @@ export class SearchService {
 					]
 				},
 				take: limit,
-				skip: offset
+				skip: offset,
+				select: {
+					id: true,
+					name: true,
+					username: true
+				}
 			}),
 			this.prisma.group.findMany({
 				where: {
@@ -151,98 +154,35 @@ export class SearchService {
 					]
 				},
 				take: limit,
-				skip: offset
+				skip: offset,
+				select: {
+					id: true,
+					name: true,
+					username: true
+				}
 			})
 		])
 
 		const userResults: SearchResponseDto[] = users.map((user) => ({
-			type: SearchResultType.CHAT,
 			chatId: ChatId(user.id).toString(),
-			name: `${user.firstName} ${user.lastName || ''}`.trim()
+			name: `${user.firstName} ${user.lastName || ''}`.trim(),
+			username: user.username
 		}))
 
 		const channelResults: SearchResponseDto[] = channels.map((channel) => ({
-			type: SearchResultType.CHAT,
 			chatId: ChatId(channel.id).toString(),
-			name: channel.name
+			name: channel.name,
+			username: channel.username
 		}))
 
 		const groupResults: SearchResponseDto[] = groups.map((group) => ({
-			type: SearchResultType.CHAT,
 			chatId: ChatId(group.id).toString(),
-			name: group.name
+			name: group.name,
+			username: group.username
 		}))
 
 		const combined = [...userResults, ...channelResults, ...groupResults]
 
 		return plainToInstance(SearchResponseDto, combined.slice(offset, offset + limit))
-	}
-
-	private async searchFiles(dto: SearchQueryDto, userId: bigint): Promise<SearchResponseDto[]> {
-		const query = dto.q || ''
-		const limit = dto.limit || 20
-		const offset = dto.offset || 0
-
-		const userChats = await this.prisma.chat.findMany({
-			where: { userId },
-			select: { chatId: true }
-		})
-		const userChatIds = userChats.map((c) => c.chatId)
-
-		const files = await this.prisma.file.findMany({
-			where: {
-				name: { contains: query },
-				attachments: {
-					some: {
-						message: {
-							chatId: { in: userChatIds }
-						}
-					}
-				}
-			},
-			include: {
-				attachments: {
-					include: {
-						message: {
-							include: {
-								sender: {
-									select: {
-										id: true,
-										firstName: true,
-										lastName: true
-									}
-								}
-							}
-						}
-					}
-				}
-			},
-			take: limit,
-			skip: offset,
-			orderBy: {
-				createdAt: 'desc'
-			}
-		})
-
-		const results: SearchResponseDto[] = files.map((file) => {
-			const message = file.attachments[0]?.message
-			const senderName = message?.sender
-				? `${message.sender.firstName ?? ''} ${message.sender.lastName ?? ''}`.trim()
-				: 'Unknown'
-
-			return {
-				type: SearchResultType.FILE,
-				chatId: ChatId(message?.chatId || 0n).toString(),
-				name: file.name,
-				fileId: file.id,
-				size: file.size.toString(),
-				mimeType: file.mimeType,
-				messageId: message?.id.toString(),
-				senderName,
-				createdAt: file.createdAt.toString()
-			}
-		})
-
-		return plainToInstance(SearchResponseDto, results)
 	}
 }

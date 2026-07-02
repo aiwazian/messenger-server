@@ -8,13 +8,12 @@ export class SearchController {
 	constructor(private readonly searchService: SearchService) {}
 
 	@Get('check/:username')
-	async isUsernameAvailable(@Param('username') username: string) {
-		const available = await this.searchService.isUsernameAvailable(username)
-		return { available }
+	isUsernameAvailable(@Param('username') username: string) {
+		return this.searchService.isUsernameAvailable(username)
 	}
 
 	@Get('resolve/:username')
-	async resolveUsername(@Param('username') username: string, @CurrentUserId() userId: bigint) {
+	resolveUsername(@Param('username') username: string, @CurrentUserId() userId: bigint) {
 		return this.searchService.resolveUsername(username, userId)
 	}
 
