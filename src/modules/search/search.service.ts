@@ -89,13 +89,18 @@ export class SearchService {
 	}
 
 	async search(dto: SearchQueryDto, userId: bigint): Promise<SearchResponseDto[]> {
-		const query = dto.q || ''
-		const limit = dto.limit || 20
-		const offset = dto.offset || 0
+		const query = dto.q.toLowerCase()
+		const limit = dto.limit
+		const offset = dto.offset
 
 		const [users, channels, groups] = await Promise.all([
 			this.prisma.user.findMany({
-				where: { username: { contains: query } },
+				where: {
+					username: {
+						contains: query,
+						mode: 'insensitive'
+					}
+				},
 				take: limit,
 				skip: offset,
 				select: {
@@ -109,7 +114,14 @@ export class SearchService {
 				where: {
 					AND: [
 						{
-							OR: [{ username: { contains: query } }]
+							OR: [
+								{
+									username: {
+										contains: query,
+										mode: 'insensitive'
+									}
+								}
+							]
 						},
 						{
 							OR: [
@@ -137,7 +149,14 @@ export class SearchService {
 				where: {
 					AND: [
 						{
-							OR: [{ username: { contains: query } }]
+							OR: [
+								{
+									username: {
+										contains: query,
+										mode: 'insensitive'
+									}
+								}
+							]
 						},
 						{
 							OR: [

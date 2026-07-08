@@ -206,9 +206,24 @@ export class ChannelsService {
 			user: search
 				? {
 						OR: [
-							{ firstName: { contains: search } },
-							{ lastName: { contains: search } },
-							{ username: { contains: search } }
+							{
+								firstName: {
+									contains: search,
+									mode: 'insensitive'
+								}
+							},
+							{
+								lastName: {
+									contains: search,
+									mode: 'insensitive'
+								}
+							},
+							{
+								username: {
+									contains: search,
+									mode: 'insensitive'
+								}
+							}
 						]
 					}
 				: undefined
@@ -253,9 +268,24 @@ export class ChannelsService {
 			user: search
 				? {
 						OR: [
-							{ firstName: { contains: search } },
-							{ lastName: { contains: search } },
-							{ username: { contains: search } }
+							{
+								firstName: {
+									contains: search,
+									mode: 'insensitive'
+								}
+							},
+							{
+								lastName: {
+									contains: search,
+									mode: 'insensitive'
+								}
+							},
+							{
+								username: {
+									contains: search,
+									mode: 'insensitive'
+								}
+							}
 						]
 					}
 				: undefined
