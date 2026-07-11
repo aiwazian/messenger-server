@@ -148,6 +148,35 @@ export class ChannelsController {
 		return this.channelsService.isBanned(id, userId)
 	}
 
+	@Get(`:${PARAMS.CHANNEL_ID}/join-requests`)
+	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	getJoinRequests(
+		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
+		@Query('skip') skip: string = '0',
+		@Query('take') take: string = '100',
+		@Query('search') search?: string
+	) {
+		return this.channelsService.getJoinRequests(id, parseInt(skip), parseInt(take), search)
+	}
+
+	@Post(`:${PARAMS.CHANNEL_ID}/join-requests/:userId/accept`)
+	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	acceptJoinRequest(
+		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
+		@Param('userId', ParseUserIdPipe) targetUserId: UserId
+	) {
+		return this.channelsService.acceptJoinRequest(id, targetUserId)
+	}
+
+	@Post(`:${PARAMS.CHANNEL_ID}/join-requests/:userId/reject`)
+	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	rejectJoinRequest(
+		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
+		@Param('userId', ParseUserIdPipe) targetUserId: UserId
+	) {
+		return this.channelsService.rejectJoinRequest(id, targetUserId)
+	}
+
 	@Get(`:${PARAMS.CHANNEL_ID}/invite-links`)
 	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
 	getInviteLinks(@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId) {

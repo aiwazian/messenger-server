@@ -324,6 +324,107 @@ export class ChannelsService {
 		return plainToInstance(IsBannedDto, { isBanned: bannedUser != null })
 	}
 
+	async getJoinRequests(
+		channelId: ChannelId,
+		skip: number,
+		take: number,
+		search?: string
+	): Promise<UserResponseDto[]> {
+		const where: Prisma.ChannelJoinRequestWhereInput = {
+			channelId,
+			user: search
+				? {
+						OR: [
+							{
+								firstName: {
+									contains: search,
+									mode: 'insensitive'
+								}
+							},
+							{
+								lastName: {
+									contains: search,
+									mode: 'insensitive'
+								}
+							},
+							{
+								username: {
+									contains: search,
+									mode: 'insensitive'
+								}
+							}
+						]
+					}
+				: undefined
+		}
+
+		const requests = await this.prisma.channelJoinRequest.findMany({
+			where,
+			skip,
+			take,
+			include: { user: true },
+			orderBy: { createdAt: 'desc' }
+		})
+
+		return plainToInstance(
+			UserResponseDto,
+			requests.map((r) => r.user)
+		)
+	}
+
+	async acceptJoinRequest(channelId: ChannelId, targetUserId: UserId): Promise<void> {
+		const request = await this.prisma.channelJoinRequest.findUnique({
+			where: { channelId_userId: { channelId, userId: targetUserId } }
+		})
+
+		if (!request) {
+			throw new NotFoundException('Join request not found')
+		}
+
+		await this.prisma.$transaction(async (tx) => {
+			await tx.channelJoinRequest.delete({
+				where: { channelId_userId: { channelId, userId: targetUserId } }
+			})
+
+			const existingMember = await tx.channelSubscriber.findUnique({
+				where: { userId_channelId: { channelId, userId: targetUserId } }
+			})
+
+			if (!existingMember) {
+				await tx.channelSubscriber.create({
+					data: { channelId, userId: targetUserId }
+				})
+			}
+		})
+
+		await this.chatsService.create(targetUserId, ChatId(channelId))
+
+		const channel = await this.prisma.channel.findUnique({ where: { id: channelId } })
+		if (channel) {
+			const lastMessage = await this.prisma.message.findFirst({
+				where: { chatId: channelId },
+				orderBy: { sendTime: 'desc' }
+			})
+
+			const chatPayload = plainToInstance(ChatResponseDto, {
+				id: channel.id,
+				name: channel.name,
+				isPinned: false,
+				lastMessage: plainToInstance(MessageResponseDto, lastMessage)
+			})
+
+			this.realtimeGateway.sendToUser(targetUserId, SocketEvent.CHAT_NEW, chatPayload)
+		}
+	}
+
+	async rejectJoinRequest(channelId: ChannelId, targetUserId: UserId): Promise<void> {
+		await this.prisma.channelJoinRequest
+			.delete({
+				where: { channelId_userId: { channelId, userId: targetUserId } }
+			})
+			.catch(() => {})
+	}
+
 	async getChannelInviteLinks(channelId: ChannelId): Promise<InviteLinkResponseDto[]> {
 		const links = await this.prisma.channelInviteLink.findMany({
 			where: { channelId }
@@ -344,7 +445,8 @@ export class ChannelsService {
 				channelId,
 				creatorId,
 				maxUses: dto.maxUses,
-				expiresAt: dto.expiresAt ? BigInt(dto.expiresAt) : null
+				expiresAt: dto.expiresAt ? BigInt(dto.expiresAt) : null,
+				requireApproval: dto.requireApproval ?? false
 			}
 		})
 		return plainToInstance(InviteLinkResponseDto, {

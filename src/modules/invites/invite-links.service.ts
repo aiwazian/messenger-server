@@ -117,7 +117,8 @@ export class InviteLinksService {
 			chatId: chatId,
 			name,
 			description,
-			membersCount
+			membersCount,
+			requireApproval: link.requireApproval
 		})
 	}
 
@@ -167,17 +168,43 @@ export class InviteLinksService {
 
 		if (existingChat) return link
 
-		if (!isChannel) {
-			await this.prisma.groupMember.create({
-				data: { groupId: chatId, userId }
-			})
+		if (link.requireApproval) {
+			if (!isChannel) {
+				const existingRequest = await this.prisma.groupJoinRequest.findUnique({
+					where: { groupId_userId: { groupId: chatId, userId } }
+				})
+				if (!existingRequest) {
+					await this.prisma.groupJoinRequest.create({
+						data: { groupId: chatId, userId, inviteLinkId: link.id, createdAt: BigInt(Date.now()) }
+					})
+				}
+			} else {
+				const existingRequest = await this.prisma.channelJoinRequest.findUnique({
+					where: { channelId_userId: { channelId: chatId, userId } }
+				})
+				if (!existingRequest) {
+					await this.prisma.channelJoinRequest.create({
+						data: {
+							channelId: chatId,
+							userId,
+							inviteLinkId: link.id,
+							createdAt: BigInt(Date.now())
+						}
+					})
+				}
+			}
 		} else {
-			await this.prisma.channelSubscriber.create({
-				data: { channelId: chatId, userId }
-			})
+			if (!isChannel) {
+				await this.prisma.groupMember.create({
+					data: { groupId: chatId, userId }
+				})
+			} else {
+				await this.prisma.channelSubscriber.create({
+					data: { channelId: chatId, userId }
+				})
+			}
+			await this.chatsService.create(userId, ChatId(chatId))
 		}
-
-		await this.chatsService.create(userId, ChatId(chatId))
 
 		let updatedLink: ChannelInviteLink | GroupInviteLink | null = null
 		if (isChannel) {

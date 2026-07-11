@@ -180,4 +180,18 @@ export class UsersController {
 	): Promise<void> {
 		return this.usersService.unblockUser(currentUserId, targetUserId)
 	}
+
+	@Get('me/join-requests')
+	getPendingJoinRequests(@CurrentUserId() userId: UserId) {
+		return this.usersService.getPendingJoinRequests(userId)
+	}
+
+	@Delete('me/join-requests/:chatId')
+	@HttpCode(HttpStatus.NO_CONTENT)
+	cancelJoinRequest(
+		@CurrentUserId() userId: UserId,
+		@Param('chatId') chatId: string
+	): Promise<void> {
+		return this.usersService.cancelJoinRequest(userId, chatId)
+	}
 }

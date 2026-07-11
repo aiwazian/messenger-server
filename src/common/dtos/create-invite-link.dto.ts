@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, Max, Min } from 'class-validator'
+import { IsInt, IsOptional, Max, Min, IsBoolean } from 'class-validator'
 
 export class CreateInviteLinkDto {
 	@IsOptional()
@@ -10,4 +10,8 @@ export class CreateInviteLinkDto {
 	@IsOptional()
 	@IsInt()
 	expiresAt?: number
+
+	@IsOptional()
+	@IsBoolean()
+	requireApproval?: boolean
 }

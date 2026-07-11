@@ -138,6 +138,35 @@ export class GroupsController {
 		return this.groupsService.getBlackList(id, Number(skip) || 0, Number(take) || 100, search)
 	}
 
+	@Get(`:${PARAMS.GROUP_ID}/join-requests`)
+	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
+	getJoinRequests(
+		@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId,
+		@Query('skip') skip: number,
+		@Query('take') take: number,
+		@Query('search') search?: string
+	) {
+		return this.groupsService.getJoinRequests(id, Number(skip) || 0, Number(take) || 100, search)
+	}
+
+	@Post(`:${PARAMS.GROUP_ID}/join-requests/:userId/accept`)
+	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
+	acceptJoinRequest(
+		@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId,
+		@Param('userId', ParseUserIdPipe) targetUserId: UserId
+	) {
+		return this.groupsService.acceptJoinRequest(id, targetUserId)
+	}
+
+	@Post(`:${PARAMS.GROUP_ID}/join-requests/:userId/reject`)
+	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
+	rejectJoinRequest(
+		@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId,
+		@Param('userId', ParseUserIdPipe) targetUserId: UserId
+	) {
+		return this.groupsService.rejectJoinRequest(id, targetUserId)
+	}
+
 	@Post(`:${PARAMS.GROUP_ID}/unban/:userId`)
 	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
 	unban(

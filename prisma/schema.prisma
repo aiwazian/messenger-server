@@ -49,7 +49,7 @@ enum AttachmentType {
 
 model User {
   id          BigInt  @id
-  firstName   String  @default("")
+  firstName   String
   lastName    String?
   bio         String?
   username    String? @unique
@@ -72,7 +72,7 @@ model User {
   groupBlackLists  GroupBlackList[]
   groupPermissions GroupMemberPermission[]
 
-  ownedChannels        Channel[] @relation("OwnedChannels")
+  ownedChannels        Channel[]                 @relation("OwnedChannels")
   channelSubscriptions ChannelSubscriber[]
   channelBlackLists    ChannelBlackList[]
   channelPermissions   ChannelMemberPermission[]
@@ -82,8 +82,11 @@ model User {
 
   messageReactions MessageReaction[]
 
-  blockedUsers  UserBlackList[] @relation("Blocker")
-  blockedBy     UserBlackList[] @relation("Blocked")
+  blockedUsers UserBlackList[] @relation("Blocker")
+  blockedBy    UserBlackList[] @relation("Blocked")
+
+  channelJoinRequests ChannelJoinRequest[]
+  groupJoinRequests   GroupJoinRequest[]
 }
 
 model UserPhoto {
@@ -282,6 +285,7 @@ model Channel {
   blockedUsers ChannelBlackList[]
   permissions  ChannelMemberPermission[]
   inviteLinks  ChannelInviteLink[]
+  joinRequests ChannelJoinRequest[]
 }
 
 model ChannelPhoto {
@@ -357,6 +361,7 @@ model Group {
   blocked     GroupBlackList[]
   permissions GroupMemberPermission[]
   inviteLinks GroupInviteLink[]
+  joinRequests GroupJoinRequest[]
 }
 
 model GroupPhoto {
@@ -419,31 +424,63 @@ model GroupMemberPermission {
 }
 
 model GroupInviteLink {
-  id        Int     @id @default(autoincrement())
-  code      String  @unique
-  groupId   BigInt
-  creatorId BigInt
-  maxUses   Int?
-  uses      Int     @default(0)
-  expiresAt BigInt?
+  id              Int     @id @default(autoincrement())
+  code            String  @unique
+  groupId         BigInt
+  creatorId       BigInt
+  maxUses         Int?
+  uses            Int     @default(0)
+  expiresAt       BigInt?
+  requireApproval Boolean @default(false)
 
   group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
   @@index([groupId])
 }
 
+model GroupJoinRequest {
+  id           Int     @id @default(autoincrement())
+  groupId      BigInt
+  userId       BigInt
+  inviteLinkId Int?
+  createdAt    BigInt
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@index([groupId])
+  @@index([userId])
+}
+
 model ChannelInviteLink {
-  id        Int     @id @default(autoincrement())
-  code      String  @unique
-  channelId BigInt
-  creatorId BigInt
-  maxUses   Int?
-  uses      Int     @default(0)
-  expiresAt BigInt?
+  id              Int     @id @default(autoincrement())
+  code            String  @unique
+  channelId       BigInt
+  creatorId       BigInt
+  maxUses         Int?
+  uses            Int     @default(0)
+  expiresAt       BigInt?
+  requireApproval Boolean @default(false)
 
   channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
   @@index([channelId])
+}
+
+model ChannelJoinRequest {
+  id           Int     @id @default(autoincrement())
+  channelId    BigInt
+  userId       BigInt
+  inviteLinkId Int?
+  createdAt    BigInt
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, userId])
+  @@index([channelId])
+  @@index([userId])
 }
 
 model PrivacySettings {

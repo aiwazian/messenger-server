@@ -24,4 +24,8 @@ export class InternalInviteLinkResponse {
 	@Expose()
 	@OmitNull()
 	isJoined: number
+
+	@Expose()
+	@OmitNull()
+	requireApproval: boolean
 }

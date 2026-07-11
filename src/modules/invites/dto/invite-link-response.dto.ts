@@ -23,4 +23,8 @@ export class InviteLinkResponseDto {
 	@Expose()
 	@OmitNull()
 	uses?: number
+
+	@Expose()
+	@OmitNull()
+	requireApproval?: boolean
 }

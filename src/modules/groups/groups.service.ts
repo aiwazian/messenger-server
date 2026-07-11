@@ -367,6 +367,102 @@ export class GroupsService {
 			.catch(() => {})
 	}
 
+	async getJoinRequests(
+		id: GroupId,
+		skip: number,
+		take: number,
+		search?: string
+	): Promise<UserResponseDto[]> {
+		const where: Prisma.GroupJoinRequestWhereInput = {
+			groupId: id,
+			user: search
+				? {
+						OR: [
+							{
+								firstName: {
+									contains: search,
+									mode: 'insensitive'
+								}
+							},
+							{
+								lastName: {
+									contains: search,
+									mode: 'insensitive'
+								}
+							},
+							{
+								username: {
+									contains: search,
+									mode: 'insensitive'
+								}
+							}
+						]
+					}
+				: undefined
+		}
+
+		const requests = await this.prisma.groupJoinRequest.findMany({
+			where,
+			skip,
+			take,
+			include: { user: true },
+			orderBy: { createdAt: 'desc' }
+		})
+
+		return plainToInstance(
+			UserResponseDto,
+			requests.map((r) => r.user)
+		)
+	}
+
+	async acceptJoinRequest(id: GroupId, targetUserId: UserId): Promise<void> {
+		const request = await this.prisma.groupJoinRequest.findUnique({
+			where: { groupId_userId: { groupId: id, userId: targetUserId } }
+		})
+
+		if (!request) {
+			throw new NotFoundException('Join request not found')
+		}
+
+		await this.prisma.$transaction(async (tx) => {
+			await tx.groupJoinRequest.delete({
+				where: { groupId_userId: { groupId: id, userId: targetUserId } }
+			})
+
+			const existingMember = await tx.groupMember.findUnique({
+				where: { groupId_userId: { groupId: id, userId: targetUserId } }
+			})
+
+			if (!existingMember) {
+				await tx.groupMember.create({
+					data: { groupId: id, userId: targetUserId }
+				})
+			}
+		})
+
+		await this.chatsService.create(targetUserId, ChatId(id))
+
+		const group = await this.prisma.group.findUnique({ where: { id } })
+		if (group) {
+			const chatPayload = plainToInstance(ChatResponseDto, {
+				id: group.id,
+				name: group.name,
+				isPinned: false,
+				lastMessage: null
+			})
+
+			this.realtimeGateway.sendToUser(targetUserId, SocketEvent.CHAT_NEW, chatPayload)
+		}
+	}
+
+	async rejectJoinRequest(id: GroupId, targetUserId: UserId): Promise<void> {
+		await this.prisma.groupJoinRequest
+			.delete({
+				where: { groupId_userId: { groupId: id, userId: targetUserId } }
+			})
+			.catch(() => {})
+	}
+
 	async getGroupInviteLinks(groupId: GroupId): Promise<InviteLinkResponseDto[]> {
 		const links = await this.prisma.groupInviteLink.findMany({
 			where: { groupId }
@@ -387,7 +483,8 @@ export class GroupsService {
 				groupId,
 				creatorId,
 				maxUses: dto.maxUses,
-				expiresAt: dto.expiresAt
+				expiresAt: dto.expiresAt,
+				requireApproval: dto.requireApproval ?? false
 			}
 		})
 

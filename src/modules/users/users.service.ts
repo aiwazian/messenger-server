@@ -36,7 +36,7 @@ export class UsersService {
 		private readonly storageService: StorageService,
 		private readonly sessionsService: SessionsService,
 		private readonly realtimeGateway: RealtimeGateway
-	) {}
+	) { }
 
 	@Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
 	async deleteInactiveAccounts() {
@@ -450,6 +450,60 @@ export class UsersService {
 				sortOrder: p.sortOrder
 			}))
 			return response
+		})
+	}
+
+	async getPendingJoinRequests(userId: UserId) {
+		const groupRequests = await this.prisma.groupJoinRequest.findMany({
+			where: { userId },
+			include: {
+				group: {
+					include: { photos: { where: { isCurrent: true }, take: 1 } }
+				}
+			},
+			orderBy: { createdAt: 'desc' }
+		})
+
+		const channelRequests = await this.prisma.channelJoinRequest.findMany({
+			where: { userId },
+			include: {
+				channel: {
+					include: { photos: { where: { isCurrent: true }, take: 1 } }
+				}
+			},
+			orderBy: { createdAt: 'desc' }
+		})
+
+		const pendingRequests = [
+			...groupRequests.map(r => ({
+				chatId: r.groupId.toString(),
+				chatName: r.group.name,
+				createdAt: r.createdAt.toString(),
+				avatarFileId: r.group.photos[0]?.fileId || null
+			})),
+			...channelRequests.map(r => ({
+				chatId: r.channelId.toString(),
+				chatName: r.channel.name,
+				createdAt: r.createdAt.toString(),
+				avatarFileId: r.channel.photos[0]?.fileId || null
+			}))
+		]
+
+		pendingRequests.sort((a, b) => Number(BigInt(b.createdAt) - BigInt(a.createdAt)))
+
+		return pendingRequests
+	}
+
+	async cancelJoinRequest(userId: UserId, chatId: string): Promise<void> {
+		const chatBigInt = BigInt(chatId)
+
+		await this.prisma.$transaction(async tx => {
+			await tx.groupJoinRequest.deleteMany({
+				where: { userId, groupId: chatBigInt }
+			})
+			await tx.channelJoinRequest.deleteMany({
+				where: { userId, channelId: chatBigInt }
+			})
 		})
 	}
 }
