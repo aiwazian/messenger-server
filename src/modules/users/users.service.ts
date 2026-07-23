@@ -20,10 +20,13 @@ import { SessionsService } from '../sessions/sessions.service'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
 import { hashPassword } from '../../common/utils/password.util'
-import { PrivacyRule } from '../../../generated/prisma/enums'
+import { PrivacyRule } from '../../generated/prisma/enums'
 import { FileDownloadDto } from '../messages/dto/file-download.dto'
 import { RealtimeGateway } from '../realtime/realtime.gateway'
 import { SocketEvent } from '../../common/socket/socket-events'
+import { EmailVerificationStore } from './email-verification.store'
+import { EmailResponseDto } from './dto/email-response.dto'
+import { MailService } from '../mail/mail.service'
 
 @Injectable()
 export class UsersService {
@@ -35,8 +38,10 @@ export class UsersService {
 		@Inject(forwardRef(() => StorageService))
 		private readonly storageService: StorageService,
 		private readonly sessionsService: SessionsService,
-		private readonly realtimeGateway: RealtimeGateway
-	) { }
+		private readonly realtimeGateway: RealtimeGateway,
+		private readonly emailVerificationStore: EmailVerificationStore,
+		private readonly mailService: MailService
+	) {}
 
 	@Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
 	async deleteInactiveAccounts() {
@@ -475,13 +480,13 @@ export class UsersService {
 		})
 
 		const pendingRequests = [
-			...groupRequests.map(r => ({
+			...groupRequests.map((r) => ({
 				chatId: r.groupId.toString(),
 				chatName: r.group.name,
 				createdAt: r.createdAt.toString(),
 				avatarFileId: r.group.photos[0]?.fileId || null
 			})),
-			...channelRequests.map(r => ({
+			...channelRequests.map((r) => ({
 				chatId: r.channelId.toString(),
 				chatName: r.channel.name,
 				createdAt: r.createdAt.toString(),
@@ -497,7 +502,7 @@ export class UsersService {
 	async cancelJoinRequest(userId: UserId, chatId: string): Promise<void> {
 		const chatBigInt = BigInt(chatId)
 
-		await this.prisma.$transaction(async tx => {
+		await this.prisma.$transaction(async (tx) => {
 			await tx.groupJoinRequest.deleteMany({
 				where: { userId, groupId: chatBigInt }
 			})
@@ -505,5 +510,50 @@ export class UsersService {
 				where: { userId, channelId: chatBigInt }
 			})
 		})
+	}
+
+	async setEmail(userId: UserId, email: string): Promise<void> {
+		const user = await this.prisma.user.findUnique({ where: { id: userId } })
+		if (!user) throw new NotFoundException('User not found')
+
+		const code = this.emailVerificationStore.generateCode(userId, email)
+
+		await this.mailService.sendVerifyEmail(email, code)
+	}
+
+	async verifyEmail(userId: UserId, code: string): Promise<EmailResponseDto> {
+		const user = await this.prisma.user.findUnique({ where: { id: userId } })
+		if (!user) throw new NotFoundException('User not found')
+
+		const result = this.emailVerificationStore.verify(userId, code)
+		if (!result.valid || !result.email) {
+			throw new BadRequestException('Invalid verification code')
+		}
+
+		await this.prisma.user.update({
+			where: { id: userId },
+			data: { email: result.email }
+		})
+
+		return plainToInstance(EmailResponseDto, result)
+	}
+
+	async disableEmail(userId: UserId): Promise<void> {
+		await this.prisma.user.update({
+			where: { id: userId },
+			data: { email: null }
+		})
+
+		this.emailVerificationStore.delete(userId)
+	}
+
+	async getEmail(userId: UserId): Promise<EmailResponseDto | null> {
+		const user = await this.prisma.user.findUnique({
+			where: { id: userId },
+			select: { email: true }
+		})
+		if (!user) throw new NotFoundException('User not found')
+
+		return plainToInstance(EmailResponseDto, user)
 	}
 }

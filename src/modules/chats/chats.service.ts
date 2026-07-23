@@ -16,7 +16,7 @@ import { detectChatType } from '../../common/utils/detect-chat-type.util'
 import { EncryptionService } from '../encryption/encryption.service'
 import { RealtimeGateway } from '../realtime/realtime.gateway'
 import { SocketEvent } from '../../common/socket/socket-events'
-import { ChannelType, GroupType } from '../../../generated/prisma/enums'
+import { ChannelType, GroupType } from '../../generated/prisma/enums'
 
 @Injectable()
 export class ChatsService {

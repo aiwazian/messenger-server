@@ -38,6 +38,10 @@ export class UserResponseDto {
 	profileChannelId?: string
 
 	@Expose()
+	@OmitNull()
+	email?: string
+
+	@Expose()
 	isBlocked?: boolean
 
 	@Expose()

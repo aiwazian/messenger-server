@@ -1,5 +1,5 @@
 import { plainToInstance } from 'class-transformer'
-import { GroupType, MessageType, SystemEventType } from '../../../../generated/prisma/enums'
+import { GroupType, MessageType, SystemEventType } from '../../../generated/prisma/enums'
 import { ChatId } from '../../../common/types/chat-id.type'
 import { UserId } from '../../../common/types/user-id.type'
 import { generateGroupId } from '../../../common/utils/id-generator.util'

@@ -1,5 +1,5 @@
 import { IsEnum, IsIn, IsNumber, IsOptional } from 'class-validator'
-import { PrivacyRule } from '../../../../generated/prisma/enums'
+import { PrivacyRule } from '../../../generated/prisma/enums'
 
 export class UpdatePrivacySettingsDto {
 	@IsOptional()

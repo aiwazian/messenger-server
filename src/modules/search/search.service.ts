@@ -4,7 +4,7 @@ import { plainToInstance } from 'class-transformer'
 import { SearchQueryDto } from './dto/search-query.dto'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { ChatId } from '../../common/types/chat-id.type'
-import { ChannelType, GroupType } from '../../../generated/prisma/enums'
+import { ChannelType, GroupType } from '../../generated/prisma/enums'
 import { ContentModerationService } from '../security/content-moderation.service'
 import { ConfigService } from '@nestjs/config'
 

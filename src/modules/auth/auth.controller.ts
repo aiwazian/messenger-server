@@ -6,6 +6,9 @@ import { SignupDto } from './dto/signup.dto'
 import { CurrentUserToken } from '../../common/decorators/user-token.decorator'
 import { Throttle } from '@nestjs/throttler'
 import { Public } from '../../common/decorators/public.decorator'
+import { RequestPasswordResetDto } from './dto/request-password-reset.dto'
+import { VerifyResetCodeDto } from './dto/verify-reset-code.dto'
+import { ResetPasswordDto } from './dto/reset-password.dto'
 
 @Controller('auth')
 export class AuthController {
@@ -38,5 +41,26 @@ export class AuthController {
 	@Post('logout')
 	logout(@CurrentUserToken() token: string) {
 		return this.sessionService.deleteByToken(token)
+	}
+
+	@Post('password-reset/request')
+	@Public()
+	@Throttle({ default: { limit: 5, ttl: 60000 } })
+	requestPasswordReset(@Body() dto: RequestPasswordResetDto) {
+		return this.authService.requestPasswordReset(dto)
+	}
+
+	@Post('password-reset/verify')
+	@Public()
+	@Throttle({ default: { limit: 10, ttl: 60000 } })
+	verifyResetCode(@Body() dto: VerifyResetCodeDto) {
+		return this.authService.verifyResetCode(dto)
+	}
+
+	@Post('password-reset/confirm')
+	@Public()
+	@Throttle({ default: { limit: 5, ttl: 60000 } })
+	resetPassword(@Body() dto: ResetPasswordDto) {
+		return this.authService.resetPassword(dto)
 	}
 }

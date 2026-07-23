@@ -6,7 +6,7 @@ import { ChatId } from '../../common/types/chat-id.type'
 import { plainToInstance } from 'class-transformer'
 import { InternalInviteLinkResponse } from './dto/Internal-invite-link-response'
 import { ChatsService } from '../chats/chats.service'
-import { ChannelInviteLink, GroupInviteLink } from '../../../generated/prisma/client'
+import { ChannelInviteLink, GroupInviteLink } from '../../generated/prisma/client'
 
 @Injectable()
 export class InviteLinksService {

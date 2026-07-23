@@ -16,7 +16,7 @@ import { FileDto } from './dto/file.dto'
 import { FileDownloadDto } from '../messages/dto/file-download.dto'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { PrismaService } from '../../providers/prisma/prisma.service'
-import { FileStatus } from '../../../generated/prisma/enums'
+import { FileStatus } from '../../generated/prisma/enums'
 import { FileType } from '../../common/enums/file-type.enum'
 import { fileTypeFromBuffer } from 'file-type'
 

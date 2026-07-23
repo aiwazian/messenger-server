@@ -1,8 +1,14 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common'
+import {
+	BadRequestException,
+	ConflictException,
+	Injectable,
+	NotFoundException,
+	UnauthorizedException
+} from '@nestjs/common'
 import { SigninDto } from './dto/signin.dto'
 import { SignupDto } from './dto/signup.dto'
 import { SessionsService } from '../sessions/sessions.service'
-import { Prisma, PrivacyRule } from '../../../generated/prisma/client'
+import { Prisma, PrivacyRule } from '../../generated/prisma/client'
 import { AuthResponseDto } from './dto/auth-response.dto'
 import { plainToInstance } from 'class-transformer'
 import { LoginAvailableDto } from './dto/check-login.dto'
@@ -12,13 +18,20 @@ import { hashPassword, verifyPassword } from '../../common/utils/password.util'
 import { UserId } from '../../common/types/user-id.type'
 import { generateUserId } from '../../common/utils/id-generator.util'
 import { CreateSessionDto } from '../sessions/dto/create-session.dto'
+import { EmailVerificationStore } from '../users/email-verification.store'
+import { MailService } from '../mail/mail.service'
+import { RequestPasswordResetDto } from './dto/request-password-reset.dto'
+import { VerifyResetCodeDto } from './dto/verify-reset-code.dto'
+import { ResetPasswordDto } from './dto/reset-password.dto'
 
 @Injectable()
 export class AuthService {
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly sessionService: SessionsService,
-		private readonly jwtAuth: JwtAuthService
+		private readonly jwtAuth: JwtAuthService,
+		private readonly emailVerificationStore: EmailVerificationStore,
+		private readonly mailService: MailService
 	) {}
 
 	async isLoginAvailable(login: string): Promise<LoginAvailableDto> {
@@ -27,10 +40,13 @@ export class AuthService {
 		})
 
 		if (user) {
-			throw new ConflictException('Login already exists')
+			return plainToInstance(LoginAvailableDto, {
+				available: false,
+				canReset: !!user.email
+			})
 		}
 
-		return plainToInstance(LoginAvailableDto, { available: true })
+		return plainToInstance(LoginAvailableDto, { available: true, canReset: false })
 	}
 
 	async signin(dto: SigninDto): Promise<AuthResponseDto> {
@@ -113,5 +129,77 @@ export class AuthService {
 			}
 			throw error
 		}
+	}
+
+	async requestPasswordReset(dto: RequestPasswordResetDto): Promise<void> {
+		const user = await this.prisma.user.findUnique({
+			where: { login: dto.login }
+		})
+
+		if (!user) {
+			throw new NotFoundException('User not found')
+		}
+
+		if (!user.email) {
+			throw new BadRequestException('User has no email')
+		}
+
+		const code = this.emailVerificationStore.generateCode(user.id, user.email)
+		await this.mailService.sendPasswordResetEmail(user.email, code)
+	}
+
+	async verifyResetCode(dto: VerifyResetCodeDto): Promise<{ valid: boolean }> {
+		const user = await this.prisma.user.findUnique({
+			where: { login: dto.login }
+		})
+
+		if (!user) {
+			throw new NotFoundException('User not found')
+		}
+
+		const result = this.emailVerificationStore.validate(user.id, dto.code)
+
+		return { valid: result.valid }
+	}
+
+	async resetPassword(dto: ResetPasswordDto): Promise<AuthResponseDto> {
+		const user = await this.prisma.user.findUnique({
+			where: { login: dto.login }
+		})
+
+		if (!user) {
+			throw new NotFoundException('User not found')
+		}
+
+		const result = this.emailVerificationStore.consume(user.id, dto.code)
+		if (!result.valid) {
+			throw new UnauthorizedException('Invalid or expired code')
+		}
+
+		const passwordHash = await hashPassword(dto.newPassword)
+
+		await this.prisma.user.update({
+			where: { id: user.id },
+			data: { password: passwordHash }
+		})
+
+		const userId = UserId(user.id)
+		const tokens = this.jwtAuth.generateTokenPair(userId)
+
+		const session = await this.sessionService.create(
+			plainToInstance(CreateSessionDto, {
+				userId: userId,
+				token: tokens.accessToken,
+				deviceModel: 'Password Reset',
+				osVersion: '1.0',
+				osName: 'Unknown'
+			})
+		)
+
+		return plainToInstance(AuthResponseDto, {
+			token: tokens.accessToken,
+			userId: userId,
+			createdAt: session.createdAt
+		})
 	}
 }

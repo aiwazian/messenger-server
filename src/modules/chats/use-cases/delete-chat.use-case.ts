@@ -5,7 +5,7 @@ import { UserId } from '../../../common/types/user-id.type'
 import { ChatId } from '../../../common/types/chat-id.type'
 import { detectChatType } from '../../../common/utils/detect-chat-type.util'
 import { ChatType } from '../../../common/enums/chat-type.enum'
-import { SystemEventType } from '../../../../generated/prisma/enums'
+import { SystemEventType } from '../../../generated/prisma/enums'
 
 @Injectable()
 export class DeleteChatUseCase {

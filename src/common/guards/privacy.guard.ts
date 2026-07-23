@@ -2,7 +2,7 @@ import { CanActivate, ExecutionContext, Injectable, NotFoundException } from '@n
 import { PARAMS } from '../constants/param.constants'
 import { UserId } from '../types/user-id.type'
 import { PrismaService } from '../../providers/prisma/prisma.service'
-import { PrivacyRule } from '../../../generated/prisma/enums'
+import { PrivacyRule } from '../../generated/prisma/enums'
 
 @Injectable()
 export class PrivacyGuard implements CanActivate {

@@ -7,7 +7,7 @@ import {
 	MinLength,
 	ValidateIf
 } from 'class-validator'
-import { ChannelType } from '../../../../generated/prisma/client'
+import { ChannelType } from '../../../generated/prisma/client'
 import { Trim } from '../../../common/decorators/trim.decorator'
 
 export class CreateChannelDto {

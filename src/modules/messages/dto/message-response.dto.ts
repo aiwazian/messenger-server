@@ -1,6 +1,6 @@
 import { Exclude, Expose } from 'class-transformer'
 import { OmitNull } from '../../../common/decorators/omit-null.decorator'
-import { AttachmentType, MessageType } from '../../../../generated/prisma/enums'
+import { AttachmentType, MessageType } from '../../../generated/prisma/enums'
 
 @Exclude()
 export class MessageAttachmentDto {

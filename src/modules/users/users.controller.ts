@@ -31,6 +31,9 @@ import { InitUploadDto } from '../storage/dto/init-upload.dto'
 import { FileDownloadDto } from '../messages/dto/file-download.dto'
 import { FileType } from '../../common/enums/file-type.enum'
 import { SetProfileChannelDto } from './dto/set-profile-channel.dto'
+import { SetEmailDto } from './dto/set-email.dto'
+import { VerifyEmailDto } from './dto/verify-email.dto'
+import { EmailResponseDto } from './dto/email-response.dto'
 
 @Controller('users')
 export class UsersController {
@@ -193,5 +196,32 @@ export class UsersController {
 		@Param('chatId') chatId: string
 	): Promise<void> {
 		return this.usersService.cancelJoinRequest(userId, chatId)
+	}
+
+	@Get('me/email')
+	@HttpCode(HttpStatus.OK)
+	getEmail(@CurrentUserId() userId: UserId): Promise<EmailResponseDto | null> {
+		return this.usersService.getEmail(userId)
+	}
+
+	@Patch('me/email')
+	@HttpCode(HttpStatus.OK)
+	setEmail(@CurrentUserId() userId: UserId, @Body() dto: SetEmailDto): Promise<void> {
+		return this.usersService.setEmail(userId, dto.email)
+	}
+
+	@Post('me/email/verify')
+	@HttpCode(HttpStatus.OK)
+	verifyEmail(
+		@CurrentUserId() userId: UserId,
+		@Body() dto: VerifyEmailDto
+	): Promise<EmailResponseDto> {
+		return this.usersService.verifyEmail(userId, dto.code)
+	}
+
+	@Delete('me/email')
+	@HttpCode(HttpStatus.NO_CONTENT)
+	disableEmail(@CurrentUserId() userId: UserId): Promise<void> {
+		return this.usersService.disableEmail(userId)
 	}
 }

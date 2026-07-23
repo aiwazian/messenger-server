@@ -16,7 +16,7 @@ import { PrismaService } from '../../providers/prisma/prisma.service'
 import { SocketEvent, SocketEventType } from '../../common/socket/socket-events'
 import { UserId } from '../../common/types/user-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
-import { PrivacyRule } from '../../../generated/prisma/enums'
+import { PrivacyRule } from '../../generated/prisma/enums'
 import { ChatsService } from '../chats/chats.service'
 
 @WebSocketGateway()

@@ -1,5 +1,5 @@
 import { IsEnum, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator'
-import { GroupType } from '../../../../generated/prisma/enums'
+import { GroupType } from '../../../generated/prisma/enums'
 import { Trim } from '../../../common/decorators/trim.decorator'
 
 export class CreateGroupDto {

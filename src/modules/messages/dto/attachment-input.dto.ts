@@ -1,6 +1,6 @@
 import { Expose } from 'class-transformer'
 import { IsString, IsEnum } from 'class-validator'
-import { AttachmentType } from '../../../../generated/prisma/enums'
+import { AttachmentType } from '../../../generated/prisma/enums'
 
 export class AttachmentInputDto {
 	@Expose()

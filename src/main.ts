@@ -8,12 +8,7 @@ import helmet from 'helmet'
 
 async function bootstrap() {
 	const logger = new Logger('Bootstrap')
-	const app = await NestFactory.create(AppModule, {
-		logger:
-			process.env.NODE_ENV === 'production'
-				? ['error']
-				: ['debug', 'error', 'fatal', 'log', 'verbose', 'warn']
-	})
+	const app = await NestFactory.create(AppModule)
 	const configService = app.get(ConfigService)
 	const httpAdapter = app.get(HttpAdapterHost)
 

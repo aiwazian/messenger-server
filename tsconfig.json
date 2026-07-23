@@ -10,9 +10,16 @@
         "allowSyntheticDefaultImports": true,
         "target": "ES2021",
         "sourceMap": true,
+        "rootDir": "./src",
         "outDir": "./dist",
-        "incremental": true,
         "skipLibCheck": true,
         "strictPropertyInitialization": false,
-    }
+    },
+    "include": [
+        "src/**/*"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist"
+    ]
 }
