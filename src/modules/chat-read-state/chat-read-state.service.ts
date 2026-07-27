@@ -20,6 +20,11 @@ import { ChatReadStateDto } from './dto/chat-read-state.dto'
  * Каналы тоже считаются: бейдж нужен, но галочки «прочитано» автору не рассылаются
  * и MessageRead для них не пишется — иначе на канале с сотней тысяч подписчиков
  * таблица растёт на каждый просмотр.
+ *
+ * Важное правило про chatId в личных чатах: id пользователя совпадает с id его чата,
+ * поэтому один и тот же диалог у собеседников называется по-разному. Олег (id 1) пишет
+ * «в чат 2», а для Андрея (id 2) это чат 1. Все события наружу отправляются в системе
+ * координат получателя события, иначе непрочитанные и галочки уезжают в «Избранное».
  */
 @Injectable()
 export class ChatReadStateService {
@@ -54,20 +59,24 @@ export class ChatReadStateService {
 	 *
 	 * Счётчик инкрементится атомарно (increment), а не через чтение-запись:
 	 * два одновременных сообщения иначе дали бы +1 вместо +2.
+	 *
+	 * chatId приходит в системе координат отправителя, поэтому для личного чата он
+	 * пересчитывается в id автора сообщения — это и есть чат получателя.
 	 */
 	async onNewMessage(chatId: ChatId, messageId: bigint, recipientIds: UserId[]): Promise<void> {
 		if (recipientIds.length === 0) return
 
+		const targetChatId = await this.resolveRecipientChatId(chatId, messageId)
 		const now = Date.now()
 
 		await Promise.all(
 			recipientIds.map(async (userId) => {
 				try {
 					await this.prisma.chatReadState.upsert({
-						where: { userId_chatId: { userId, chatId } },
+						where: { userId_chatId: { userId, chatId: targetChatId } },
 						create: {
 							userId,
-							chatId,
+							chatId: targetChatId,
 							unreadCount: 1,
 							firstUnreadMessageId: messageId,
 							updatedAt: now
@@ -79,11 +88,11 @@ export class ChatReadStateService {
 					})
 
 					await this.prisma.chatReadState.updateMany({
-						where: { userId, chatId, firstUnreadMessageId: null },
+						where: { userId, chatId: targetChatId, firstUnreadMessageId: null },
 						data: { firstUnreadMessageId: messageId }
 					})
 
-					const state = await this.getState(userId, chatId)
+					const state = await this.getState(userId, targetChatId)
 					this.realtimeGateway.sendToUser(userId, SocketEvent.CHAT_UNREAD, state)
 				} catch {
 
@@ -222,6 +231,25 @@ export class ChatReadStateService {
 	}
 
 	/**
+	 * chatId получателя для нового сообщения.
+	 *
+	 * Личный чат: получатель видит диалог как чат с автором сообщения.
+	 * Группа и канал: chatId общий, пересчитывать нечего.
+	 */
+	private async resolveRecipientChatId(chatId: ChatId, messageId: bigint): Promise<ChatId> {
+		if (detectChatType(chatId) !== ChatType.PRIVATE) return chatId
+
+		const message = await this.prisma.message.findUnique({
+			where: { id: messageId },
+			select: { senderId: true }
+		})
+
+		if (!message) return chatId
+
+		return ChatId(message.senderId)
+	}
+
+	/**
 	 * Те же правила видимости, что в MessagesService.buildChatMessagesWhere.
 	 *
 	 * Дублируется осознанно: иначе модуль состояния прочтения зависит от MessagesService,
@@ -306,10 +334,16 @@ export class ChatReadStateService {
 		}
 
 		if (chatType === ChatType.PRIVATE) {
-			const author = UserId(chatId)
-			if (author !== userId) {
-				this.realtimeGateway.sendToUser(author, SocketEvent.CHAT_READ, payload)
-			}
+			// Автор берётся из самого сообщения: chatId здесь — координаты читателя,
+			// и при чтении собственного сообщения («Избранное») уведомлять некого.
+			const author = UserId(message.senderId)
+			if (author === userId) return
+
+			// Для автора этот диалог — чат с читателем, поэтому chatId переворачивается.
+			this.realtimeGateway.sendToUser(author, SocketEvent.CHAT_READ, {
+				...payload,
+				chatId: userId.toString()
+			})
 			return
 		}
 
