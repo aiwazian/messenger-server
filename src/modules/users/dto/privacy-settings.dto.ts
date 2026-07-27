@@ -21,6 +21,10 @@ export class PrivacySettingsDto {
 	@Expose()
 	profilePhoto: PrivacyRule
 
+	/** Кто может открыть профиль по заголовку пересланного сообщения. */
+	@Expose()
+	forwardedProfile: PrivacyRule
+
 	@Expose()
 	deleteAfterDays: number
 }

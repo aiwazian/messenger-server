@@ -65,6 +65,7 @@ model User {
   sessions     Session[]
   sentMessages Message[]
   messageReads MessageRead[]
+  chatReadStates ChatReadState[]
 
   photos UserPhoto[]
 
@@ -169,9 +170,13 @@ model Message {
   replyTo   Message?  @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
   replies   Message[] @relation("MessageReplies")
 
-  forwardedFromMessageId BigInt?
-  forwardedFromMessage   Message?  @relation("MessageForwards", fields: [forwardedFromMessageId], references: [id], onDelete: Cascade)
-  forwards               Message[] @relation("MessageForwards")
+  /// Чат цитируемого сообщения: ответить можно на сообщение из другого чата.
+  replyToChatId BigInt?
+
+  /// Источник пересылки: автор контента (userId) либо группа/канал.
+  /// Дата пересылки и id исходного сообщения не хранятся осознанно.
+  /// При пересылке уже пересланного источник наследуется: посредники не записываются.
+  forwardedFromChatId BigInt?
 
   readReceipts     MessageRead[]
   attachments      MessageAttachment[]
@@ -180,6 +185,10 @@ model Message {
   messageReactions MessageReaction[]
 
   @@index([chatId, sendTime])
+  // курсорная пагинация и окно вокруг сообщения идут по (chatId, id)
+  @@index([chatId, id])
+  @@index([replyToId])
+  @@index([forwardedFromChatId])
   @@index([senderId])
   @@index([chatId])
   @@index([chatId, messageType])
@@ -194,6 +203,32 @@ model SystemMessageEvent {
   message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@index([eventType])
+}
+
+/// Состояние прочтения чата для одного пользователя.
+///
+/// Считать непрочитанные каждый раз через COUNT по MessageRead дорого
+/// (список чатов запрашивается на каждом открытии главного экрана),
+/// поэтому счётчик и курсор денормализованы.
+model ChatReadState {
+  id     Int    @id @default(autoincrement())
+  userId BigInt
+  chatId BigInt
+
+  /// Максимальный id прочитанного сообщения: всё до него считается прочитанным.
+  lastReadMessageId BigInt?
+
+  /// На этом сообщении клиент открывает чат, если есть непрочитанное.
+  firstUnreadMessageId BigInt?
+
+  unreadCount Int    @default(0)
+  updatedAt   BigInt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, chatId])
+  @@index([userId])
+  @@index([chatId])
 }
 
 model MessageRead {
@@ -258,7 +293,9 @@ model File {
 model MessageAttachment {
   id        Int            @id @default(autoincrement())
   messageId BigInt
-  fileId    String         @unique
+  /// Без @unique: пересланная копия ссылается на тот же File, а не дублирует его.
+  /// Физическое удаление файла — только когда исчезла последняя ссылка.
+  fileId    String
   type      AttachmentType
   sortOrder Int            @default(0)
 
@@ -267,6 +304,7 @@ model MessageAttachment {
 
   @@unique([messageId, fileId])
   @@index([messageId])
+  @@index([fileId])
 }
 
 model Channel {
@@ -494,6 +532,9 @@ model PrivacySettings {
   dateOfBirth  PrivacyRule @default(EVERYBODY)
   invites      PrivacyRule @default(EVERYBODY)
   profilePhoto PrivacyRule @default(EVERYBODY)
+
+  /// Кто может открыть профиль по заголовку «Переслано от».
+  forwardedProfile PrivacyRule @default(EVERYBODY)
 
   deleteAfterDays Int @default(365)
 

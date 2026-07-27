@@ -10,6 +10,7 @@ export const SocketEvent = {
 	CHAT_OPEN: 'chat:open',
 	CHAT_CLOSE: 'chat:close',
 	CHAT_READ: 'chat:read',
+	CHAT_UNREAD: 'chat:unread',
 	CHAT_NEW: 'chat:new',
 	HISTORY_CLEAR: 'chat:history_clear',
 

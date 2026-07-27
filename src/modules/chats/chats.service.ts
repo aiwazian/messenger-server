@@ -17,6 +17,8 @@ import { EncryptionService } from '../encryption/encryption.service'
 import { RealtimeGateway } from '../realtime/realtime.gateway'
 import { SocketEvent } from '../../common/socket/socket-events'
 import { ChannelType, GroupType } from '../../generated/prisma/enums'
+import { ChatReadStateService } from '../chat-read-state/chat-read-state.service'
+import { ChatReadStateDto } from '../chat-read-state/dto/chat-read-state.dto'
 
 @Injectable()
 export class ChatsService {
@@ -24,8 +26,9 @@ export class ChatsService {
 		private readonly prisma: PrismaService,
 		private readonly encryption: EncryptionService,
 		@Inject(forwardRef(() => RealtimeGateway))
-		private readonly realtimeGateway: RealtimeGateway
-	) {}
+		private readonly realtimeGateway: RealtimeGateway,
+		private readonly chatReadState: ChatReadStateService
+	) { }
 
 	async getAll(userId: UserId): Promise<ChatResponseDto[]> {
 		const chats = await this.prisma.chat.findMany({
@@ -35,6 +38,8 @@ export class ChatsService {
 		if (chats.length === 0) {
 			return []
 		}
+
+		const readStates = await this.chatReadState.getStates(userId)
 
 		const resChats = await Promise.all(
 			chats.map(async (chat) => {
@@ -47,7 +52,8 @@ export class ChatsService {
 								id: chat.chatId,
 								name: user.firstName,
 								isPinned: chat.isPinned,
-								lastMessage: lastMessage
+								lastMessage: lastMessage,
+								...this.unreadFields(readStates, chat.chatId)
 							})
 						}
 					}
@@ -59,7 +65,8 @@ export class ChatsService {
 								id: chat.chatId,
 								name: channel.name,
 								isPinned: chat.isPinned,
-								lastMessage: lastMessage
+								lastMessage: lastMessage,
+								...this.unreadFields(readStates, chat.chatId)
 							})
 						}
 					}
@@ -71,7 +78,8 @@ export class ChatsService {
 								id: chat.chatId,
 								name: group.name,
 								isPinned: chat.isPinned,
-								lastMessage: lastMessage
+								lastMessage: lastMessage,
+								...this.unreadFields(readStates, chat.chatId)
 							})
 						}
 					}
@@ -151,11 +159,15 @@ export class ChatsService {
 
 		const lastMessage = await this.getLastMessage(userId, chatId)
 
+		const readState = await this.chatReadState.getState(userId, chatId)
+
 		return plainToInstance(ChatResponseDto, {
 			id: resolvedChatId.toString(),
 			name: title,
 			isPinned: chat.isPinned,
-			lastMessage
+			lastMessage,
+			unreadCount: readState.unreadCount,
+			firstUnreadMessageId: readState.firstUnreadMessageId
 		})
 	}
 
@@ -338,6 +350,19 @@ export class ChatsService {
 				return this.realtimeGateway.isUserOnline(UserId(chat.chatId))
 			})
 			.map((chat) => chat.chatId.toString())
+	}
+
+	/** Бейдж и точка открытия для одного чата из уже загруженной карты состояний. */
+	private unreadFields(
+		states: Map<string, ChatReadStateDto>,
+		chatId: bigint
+	): { unreadCount: number; firstUnreadMessageId?: string } {
+		const state = states.get(chatId.toString())
+
+		return {
+			unreadCount: state?.unreadCount ?? 0,
+			firstUnreadMessageId: state?.firstUnreadMessageId
+		}
 	}
 
 	private async getLastMessage(userId: UserId, chatId: ChatId): Promise<MessageResponseDto | null> {

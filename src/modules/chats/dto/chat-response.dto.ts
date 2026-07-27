@@ -16,4 +16,13 @@ export class ChatResponseDto {
 	@Expose()
 	@OmitNull()
 	lastMessage?: MessageResponseDto
+
+	/** Сколько сообщений пользователь не прочитал: бейдж справа в ChatCard. */
+	@Expose()
+	unreadCount: number
+
+	/** С какого сообщения открывать чат. */
+	@Expose()
+	@OmitNull()
+	firstUnreadMessageId?: string
 }

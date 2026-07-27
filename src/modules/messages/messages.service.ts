@@ -4,6 +4,7 @@ import { ChatsService } from '../chats/chats.service'
 import {
 	MessageAttachmentDto,
 	MessageReadInfoDto,
+	MessageReplyPreviewDto,
 	MessageResponseDto
 } from './dto/message-response.dto'
 import { PushService } from '../push/push.service'
@@ -24,6 +25,10 @@ import { detectChatType } from '../../common/utils/detect-chat-type.util'
 import { EncryptionService } from '../encryption/encryption.service'
 import { DeleteMessageDto } from './dto/delete-message.dto'
 import { EditMessageDto } from './dto/edit-message.dto'
+import { MESSAGE_INCLUDE, MessageWithRelations } from './message-include.const'
+import { ChatSourceMap, ChatSourceResolver } from './chat-source.resolver'
+import { ForwardSourceAccess } from '../../common/enums/forward-source-access.enum'
+import { ChatReadStateService } from '../chat-read-state/chat-read-state.service'
 
 @Injectable()
 export class MessagesService {
@@ -37,8 +42,10 @@ export class MessagesService {
 		private readonly pushService: PushService,
 		private readonly realtimeGateway: RealtimeGateway,
 		private readonly storageService: StorageService,
-		private readonly encryption: EncryptionService
-	) {}
+		private readonly encryption: EncryptionService,
+		private readonly chatSourceResolver: ChatSourceResolver,
+		private readonly chatReadState: ChatReadStateService
+	) { }
 
 	async initFileUpload(userId: UserId, chatId: ChatId, dto: FileInitDto) {
 		await this.chatsService.create(userId, chatId)
@@ -52,6 +59,19 @@ export class MessagesService {
 		excludeSocketId: string
 	): Promise<MessageResponseDto> {
 		await this.chatsService.create(userId, chatId)
+
+		let replyToId: bigint | null = null
+		if (dto.replyToId) {
+			const target = await this.prisma.message.findFirst({
+				where: {
+					AND: [this.buildChatMessagesWhere(userId, chatId), { id: BigInt(dto.replyToId) }]
+				},
+				select: { id: true }
+			})
+
+			if (!target) throw new NotFoundException('Reply target not found')
+			replyToId = target.id
+		}
 
 		const attachmentsToCreate = []
 
@@ -95,22 +115,21 @@ export class MessagesService {
 				senderId: userId,
 				messageType: MessageType.TEXT,
 				encryptionKeyVersion: this.encryption.currentVersion,
+				replyToId,
+				replyToChatId: replyToId ? chatId : null,
 				attachments: {
 					createMany: {
 						data: attachmentsToCreate
 					}
 				}
 			},
-			include: { attachments: { include: { file: true } } }
+			include: MESSAGE_INCLUDE
 		})
 
-		const messageInstance = plainToInstance(MessageResponseDto, {
-			...message,
-			attachments: message.attachments.map((f) =>
-				plainToInstance(MessageAttachmentDto, { ...f.file, fileId: f.fileId, type: f.type })
-			),
-			messageType: MessageType.TEXT
-		})
+		const sources = await this.resolveSources(userId, [message])
+		const chatType = detectChatType(chatId)
+		const messageInstance = this.mapMessageToDto(message, userId, chatType, sources)
+		messageInstance.text = dto.text
 
 		this.notifyRecipients(userId, chatId, messageInstance, excludeSocketId)
 
@@ -148,252 +167,214 @@ export class MessagesService {
 
 		const chatType = detectChatType(chatId)
 
-		let messageWhere: Prisma.MessageWhereInput
-
-		if (chatType === ChatType.PRIVATE) {
-			messageWhere = {
-				OR: [
-					{ senderId: userId, chatId: chatId },
-					{ senderId: chatId, chatId: userId }
-				],
-				deletedFor: {
-					none: {
-						userId: userId
-					}
-				}
-			}
-		} else {
-			messageWhere = {
-				chatId: chatId,
-				deletedFor: {
-					none: {
-						userId: userId
-					}
-				}
-			}
-		}
-
 		const messages = await this.prisma.message.findMany({
-			where: messageWhere,
-			include: {
-				readReceipts: {
-					select: {
-						userId: true,
-						readAt: true,
-						user: { select: { firstName: true, lastName: true } }
-					}
-				},
-				attachments: { include: { file: true } },
-				systemEvent: { select: { eventType: true } }
-			},
-			orderBy: { sendTime: 'desc' },
+			where: this.buildChatMessagesWhere(userId, chatId),
+			include: MESSAGE_INCLUDE,
+			orderBy: { id: 'desc' },
 			take: limit,
 			skip: offset
 		})
 
-		return messages.reverse().map((message) => {
-			let isRead: boolean | undefined
-			let readInfo: MessageReadInfoDto[] | undefined
+		const ordered = messages.reverse()
+		const sources = await this.resolveSources(userId, ordered)
 
-			if (chatType === ChatType.CHANNEL) {
-				isRead = undefined
-				readInfo = undefined
-			} else if (chatType === ChatType.PRIVATE) {
-				const myReceipt = message.readReceipts.find((r) => r.userId === userId)
-				const otherReceipt = message.readReceipts.find((r) => r.userId !== userId)
+		return ordered.map((message) => this.mapMessageToDto(message, userId, chatType, sources))
+	}
 
-				if (message.senderId === userId) {
-					isRead = !!otherReceipt
-				} else {
-					isRead = !!myReceipt
-				}
-				readInfo = undefined
-			} else if (chatType === ChatType.GROUP) {
-				const otherReceipts = message.readReceipts.filter((r) => r.userId !== message.senderId)
-				isRead = otherReceipts.length > 0
-				if (message.senderId === userId) {
-					readInfo = otherReceipts.map((r) =>
-						plainToInstance(MessageReadInfoDto, {
-							userId: r.userId,
-							firstName: r.user.firstName,
-							lastName: r.user.lastName,
-							readAt: r.readAt
-						})
-					)
-				} else {
-					readInfo = undefined
-				}
+	/**
+	 * Единый where для сообщений чата.
+	 *
+	 * В приватном чате сообщения лежат двумя «сторонами» (chatId и senderId меняются
+	 * местами), плюс всегда отсекаем скрытые лично для пользователя (deletedFor).
+	 * Критично для окна: границы hasMoreBefore/hasMoreAfter должны считаться по тем же
+	 * видимым сообщениям, что и сама выборка.
+	 */
+	buildChatMessagesWhere(userId: UserId, chatId: ChatId): Prisma.MessageWhereInput {
+		const chatType = detectChatType(chatId)
+
+		if (chatType === ChatType.PRIVATE) {
+			return {
+				OR: [
+					{ senderId: userId, chatId: chatId },
+					{ senderId: chatId, chatId: userId }
+				],
+				deletedFor: { none: { userId: userId } }
 			}
+		}
 
-			return plainToInstance(MessageResponseDto, {
-				...message,
-				text: message.text
-					? this.encryption.decrypt(message.text, this.encryption.currentVersion)
-					: null,
-				isRead,
-				readInfo,
-				systemEventType: message.systemEvent?.eventType,
-				attachments: message.attachments.map((f) =>
-					plainToInstance(MessageAttachmentDto, { ...f.file, fileId: f.fileId, type: f.type })
-				),
-				senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
-				messageType: message.messageType
+		return {
+			chatId: chatId,
+			deletedFor: { none: { userId: userId } }
+		}
+	}
+
+	/** Расшифровка текста именно той версией ключа, которой он был зашифрован. */
+	decryptText(text: string | null, version?: number | null): string | null {
+		if (!text) return null
+
+		try {
+			return this.encryption.decrypt(text, version ?? this.encryption.currentVersion)
+		} catch {
+			return null
+		}
+	}
+
+	/**
+	 * Названия и права доступа для чатов-источников (пересылка + ответы из других чатов).
+	 *
+	 * Один батч на страницу истории: иначе на 50 сообщений получили бы до 100 запросов.
+	 */
+	async resolveSources(userId: UserId, messages: MessageWithRelations[]): Promise<ChatSourceMap> {
+		const ids: Array<bigint | null> = []
+
+		for (const message of messages) {
+			ids.push(message.forwardedFromChatId)
+			if (message.replyTo) ids.push(message.replyTo.chatId)
+		}
+
+		return this.chatSourceResolver.resolve(userId, ids)
+	}
+
+	/** Единый маппер Message -> MessageResponseDto для всех способов загрузки истории. */
+	mapMessageToDto(
+		message: MessageWithRelations,
+		userId: UserId,
+		chatType: ChatType,
+		sources?: ChatSourceMap
+	): MessageResponseDto {
+		let isRead: boolean | undefined
+		let readInfo: MessageReadInfoDto[] | undefined
+
+		if (chatType === ChatType.CHANNEL) {
+			isRead = undefined
+			readInfo = undefined
+		} else if (chatType === ChatType.PRIVATE) {
+			const myReceipt = message.readReceipts.find((r) => r.userId === userId)
+			const otherReceipt = message.readReceipts.find((r) => r.userId !== userId)
+
+			if (message.senderId === userId) {
+				isRead = !!otherReceipt
+			} else {
+				isRead = !!myReceipt
+			}
+			readInfo = undefined
+		} else if (chatType === ChatType.GROUP) {
+			const otherReceipts = message.readReceipts.filter((r) => r.userId !== message.senderId)
+			isRead = otherReceipts.length > 0
+			if (message.senderId === userId) {
+				readInfo = otherReceipts.map((r) =>
+					plainToInstance(MessageReadInfoDto, {
+						userId: r.userId,
+						firstName: r.user.firstName,
+						lastName: r.user.lastName,
+						readAt: r.readAt
+					})
+				)
+			} else {
+				readInfo = undefined
+			}
+		}
+
+		const replyChatType = message.replyTo
+			? detectChatType(ChatId(message.replyTo.chatId))
+			: undefined
+
+		const replySource = message.replyTo
+			? sources?.get(message.replyTo.chatId.toString())
+			: undefined
+
+		const replySenderName = message.replyTo
+			? `${message.replyTo.sender.firstName ?? ''} ${message.replyTo.sender.lastName ?? ''}`.trim()
+			: ''
+
+		const replyTo = message.replyTo
+			? plainToInstance(MessageReplyPreviewDto, {
+				id: message.replyTo.id,
+				senderId:
+					replyChatType === ChatType.CHANNEL
+						? message.replyTo.chatId
+						: message.replyTo.senderId,
+				chatId: message.replyTo.chatId,
+				text: this.decryptText(message.replyTo.text, message.replyTo.encryptionKeyVersion),
+				messageType: message.replyTo.messageType,
+				senderName: replySenderName || undefined,
+				chatName:
+					replyChatType === ChatType.PRIVATE ? undefined : replySource?.name || undefined,
+				attachmentTypes:
+					message.replyTo.attachments.length > 0
+						? message.replyTo.attachments.map((a) => a.type)
+						: undefined
 			})
+			: undefined
+
+		const forwardSource = message.forwardedFromChatId
+			? (sources?.get(message.forwardedFromChatId.toString()) ?? {
+				name: '',
+				access: ForwardSourceAccess.UNAVAILABLE
+			})
+			: undefined
+
+		return plainToInstance(MessageResponseDto, {
+			...message,
+			text: this.decryptText(message.text, message.encryptionKeyVersion),
+			isRead,
+			readInfo,
+			systemEventType: message.systemEvent?.eventType,
+			attachments: message.attachments.map((f) =>
+				plainToInstance(MessageAttachmentDto, { ...f.file, fileId: f.fileId, type: f.type })
+			),
+			senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
+			messageType: message.messageType,
+			replyToId: message.replyToId,
+			replyToChatId: message.replyToChatId,
+			forwardedFromChatId: message.forwardedFromChatId,
+			forwardedFromName: forwardSource?.name || undefined,
+			forwardedFromAccess: forwardSource?.access,
+			replyTo
 		})
 	}
 
+	/**
+	 * Прочитано всё до messageId включительно.
+	 *
+	 * Раньше здесь в цикле делался upsert на каждое ранее отправленное сообщение
+	 * автора — на длинной истории это тысячи запросов на один просмотр.
+	 * Теперь всё сводится к курсору в ChatReadState.
+	 */
 	async markRead(userId: UserId, messageId: number): Promise<void> {
 		const message = await this.prisma.message.findUnique({
-			where: { id: messageId }
+			where: { id: messageId },
+			select: { chatId: true, senderId: true }
 		})
 
 		if (!message) throw new NotFoundException('Message not found')
 
-		const chatType = detectChatType(ChatId(message.chatId))
-		if (chatType === ChatType.CHANNEL) return
-
-		const now = Date.now()
-
-		const earlierMessages = await this.prisma.message.findMany({
-			where: {
-				chatId: message.chatId,
-				senderId: message.senderId,
-				sendTime: { lte: message.sendTime }
-			},
-			select: { id: true }
-		})
-
-		const existingReads = await this.prisma.messageRead.findMany({
-			where: {
-				userId,
-				messageId: { in: earlierMessages.map((m) => m.id) }
-			},
-			select: { messageId: true }
-		})
-
-		const existingSet = new Set(existingReads.map((r) => r.messageId))
-		const newReads = earlierMessages
-			.filter((m) => !existingSet.has(m.id))
-			.map((m) => ({ messageId: m.id, userId, readAt: now }))
-
-		if (newReads.length > 0) {
-			for (const read of newReads) {
-				try {
-					await this.prisma.messageRead.upsert({
-						where: {
-							messageId_userId: { messageId: read.messageId, userId: read.userId }
-						},
-						update: {},
-						create: read
-					})
-				} catch {
-					// ignore race condition duplicates
-				}
-			}
-		}
-
-		if (chatType === ChatType.PRIVATE) {
-			const senderId = UserId(message.senderId)
-			if (senderId !== userId) {
-				this.realtimeGateway.sendToUser(senderId, SocketEvent.CHAT_READ, {
-					chatId: message.chatId.toString(),
-					messageId: messageId.toString(),
-					userId: userId.toString(),
-					time: now.toString(),
-					senderId: message.senderId.toString(),
-					sendTime: message.sendTime.toString()
-				})
-			}
-		} else if (chatType === ChatType.GROUP) {
-			const members = await this.prisma.groupMember.findMany({
-				where: { groupId: message.chatId },
-				select: { userId: true }
-			})
-			const recipientIds = members.map((m) => UserId(m.userId)).filter((id) => id !== userId)
-			for (const recipientId of recipientIds) {
-				this.realtimeGateway.sendToUser(recipientId, SocketEvent.CHAT_READ, {
-					chatId: message.chatId.toString(),
-					messageId: messageId.toString(),
-					userId: userId.toString(),
-					time: now.toString(),
-					senderId: message.senderId.toString(),
-					sendTime: message.sendTime.toString()
-				})
-			}
-		}
+		await this.chatReadState.markReadUpTo(
+			userId,
+			this.resolveUserFacingChatId(userId, message),
+			BigInt(messageId)
+		)
 	}
 
 	async markAllRead(userId: UserId, chatId: ChatId): Promise<void> {
-		const chatType = detectChatType(chatId)
-		if (chatType === ChatType.CHANNEL) return
+		await this.chatReadState.markReadUpTo(userId, chatId)
+	}
 
-		let messageWhere: any
-		if (chatType === ChatType.PRIVATE) {
-			messageWhere = {
-				OR: [
-					{ senderId: userId, chatId: chatId },
-					{ senderId: chatId, chatId: userId }
-				]
-			}
-		} else {
-			messageWhere = { chatId }
+	/**
+	 * В личном чате Message.chatId — это получатель, а не «чат» в терминах UI.
+	 * Для читателя чатом является собеседник, то есть автор сообщения.
+	 */
+	private resolveUserFacingChatId(
+		userId: UserId,
+		message: { chatId: bigint; senderId: bigint }
+	): ChatId {
+		if (detectChatType(ChatId(message.chatId)) !== ChatType.PRIVATE) {
+			return ChatId(message.chatId)
 		}
 
-		const unread = await this.prisma.message.findMany({
-			where: {
-				...messageWhere,
-				readReceipts: { none: { userId } }
-			},
-			select: { id: true, senderId: true, sendTime: true }
-		})
-
-		if (unread.length === 0) return
-
-		const now = Date.now()
-		for (const m of unread) {
-			try {
-				await this.prisma.messageRead.upsert({
-					where: {
-						messageId_userId: { messageId: m.id, userId }
-					},
-					update: {},
-					create: { messageId: m.id, userId, readAt: now }
-				})
-			} catch {
-				// ignore race condition duplicates
-			}
-		}
-
-		if (chatType === ChatType.PRIVATE) {
-			const lastUnread = unread.reduce((latest, m) => (m.sendTime > latest.sendTime ? m : latest))
-
-			this.realtimeGateway.sendToUser(UserId(chatId), SocketEvent.CHAT_READ, {
-				chatId: chatId.toString(),
-				messageId: lastUnread.id.toString(),
-				userId: userId.toString(),
-				time: now.toString(),
-				senderId: lastUnread.senderId.toString(),
-				sendTime: lastUnread.sendTime.toString()
-			})
-		} else if (chatType === ChatType.GROUP) {
-			const members = await this.prisma.groupMember.findMany({
-				where: { groupId: chatId },
-				select: { userId: true }
-			})
-			const recipientIds = members.map((m) => UserId(m.userId)).filter((id) => id !== userId)
-			const lastUnread = unread.reduce((latest, m) => (m.sendTime > latest.sendTime ? m : latest))
-
-			for (const recipientId of recipientIds) {
-				this.realtimeGateway.sendToUser(recipientId, SocketEvent.CHAT_READ, {
-					chatId: chatId.toString(),
-					messageId: lastUnread.id.toString(),
-					userId: userId.toString(),
-					time: now.toString(),
-					senderId: lastUnread.senderId.toString(),
-					sendTime: lastUnread.sendTime.toString()
-				})
-			}
-		}
+		return BigInt(message.chatId) === BigInt(userId)
+			? ChatId(message.senderId)
+			: ChatId(message.chatId)
 	}
 
 	async deleteMessage(
@@ -411,13 +392,7 @@ export class MessagesService {
 			})
 
 			if (existingDelete) {
-				const attachments = await this.prisma.messageAttachment.findMany({
-					where: { messageId: messageId }
-				})
-				for (const attachment of attachments) {
-					await this.storageService.deleteFile(attachment.fileId)
-				}
-				await this.prisma.message.delete({ where: { id: messageId } })
+				await this.deleteMessageWithFiles(messageId)
 			} else {
 				await this.prisma.deletedMessage.create({
 					data: {
@@ -428,13 +403,7 @@ export class MessagesService {
 				})
 			}
 		} else {
-			const attachments = await this.prisma.messageAttachment.findMany({
-				where: { messageId: messageId }
-			})
-			for (const attachment of attachments) {
-				await this.storageService.deleteFile(attachment.fileId)
-			}
-			await this.prisma.message.delete({ where: { id: messageId } })
+			await this.deleteMessageWithFiles(messageId)
 		}
 
 		if (dto.deleteForRecipient) {
@@ -574,13 +543,11 @@ export class MessagesService {
 				select: { attachments: { select: { fileId: true } } }
 			})
 
-			for (const message of messages) {
-				for (const file of message.attachments) {
-					await this.storageService.deleteFile(file.fileId)
-				}
-			}
-
 			await this.prisma.message.deleteMany({ where: messageWhere })
+
+			await this.releaseFiles(
+				messages.flatMap((message) => message.attachments.map((f) => f.fileId))
+			)
 		}
 
 		const recipients = await this.getRecipients(userId, chatId, chatType)
@@ -621,6 +588,45 @@ export class MessagesService {
 				}
 			})
 		}
+
+		await this.chatReadState.recount(userId, chatId)
+
+		if (isPrivateChat && clearForRecipient && recipients[0]) {
+			await this.chatReadState.recount(recipients[0], ChatId(userId))
+		}
+	}
+
+	/**
+	 * Удаляет сообщение и освобождает его файлы.
+	 *
+	 * Пересланные копии ссылаются на те же File, поэтому безусловное удаление
+	 * ломало бы вложения в чужих чатах.
+	 */
+	private async deleteMessageWithFiles(messageId: number): Promise<void> {
+		const attachments = await this.prisma.messageAttachment.findMany({
+			where: { messageId },
+			select: { fileId: true }
+		})
+
+		await this.prisma.message.delete({ where: { id: messageId } })
+		await this.releaseFiles(attachments.map((a) => a.fileId))
+	}
+
+	/** Удаляет файлы, на которые не осталось ни одной ссылки. */
+	private async releaseFiles(fileIds: string[]): Promise<void> {
+		for (const fileId of Array.from(new Set(fileIds))) {
+			const [attachments, userPhotos, channelPhotos, groupPhotos, wallpapers] = await Promise.all([
+				this.prisma.messageAttachment.count({ where: { fileId } }),
+				this.prisma.userPhoto.count({ where: { fileId } }),
+				this.prisma.channelPhoto.count({ where: { fileId } }),
+				this.prisma.groupPhoto.count({ where: { fileId } }),
+				this.prisma.wallpaper.count({ where: { fileId } })
+			])
+
+			if (attachments + userPhotos + channelPhotos + groupPhotos + wallpapers === 0) {
+				await this.storageService.deleteFile(fileId)
+			}
+		}
 	}
 
 	async notifyRecipients(
@@ -632,6 +638,8 @@ export class MessagesService {
 		const chatType = detectChatType(chatId)
 		const recipients = await this.getRecipients(senderUserId, chatId, chatType)
 		const wsTargets = Array.from(new Set([...recipients, senderUserId]))
+
+		await this.chatReadState.onNewMessage(chatId, BigInt(message.id), recipients)
 
 		const online: UserId[] = []
 		const offline: UserId[] = []

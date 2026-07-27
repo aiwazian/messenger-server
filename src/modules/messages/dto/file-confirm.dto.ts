@@ -1,5 +1,5 @@
 import { Exclude, Expose, Type } from 'class-transformer'
-import { IsString, IsOptional, IsArray, ValidateNested } from 'class-validator'
+import { IsString, IsOptional, IsArray, IsNumberString, ValidateNested } from 'class-validator'
 import { AttachmentInputDto } from './attachment-input.dto'
 
 @Exclude()
@@ -14,4 +14,10 @@ export class FileConfirmDto {
 	@IsOptional()
 	@IsString()
 	text?: string
+
+	/** id сообщения, на которое отвечаем (ответ фото/видео/файлом). */
+	@Expose()
+	@IsOptional()
+	@IsNumberString()
+	replyToId?: string
 }
