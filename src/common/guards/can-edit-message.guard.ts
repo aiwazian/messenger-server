@@ -37,6 +37,14 @@ export class CanEditMessageGuard implements CanActivate {
 			throw new ForbiddenException('You can only edit your own messages')
 		}
 
+		/**
+		 * Пересланное сообщение — копия чужого текста, поэтому редактирование
+		 * запрещено на сервере, а не только скрыто в меню клиента.
+		 */
+		if (message.forwardedFromChatId !== null) {
+			throw new ForbiddenException('Cannot edit forwarded messages')
+		}
+
 		const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000
 		if (message.sendTime < twentyFourHoursAgo) {
 			throw new ForbiddenException('Cannot edit messages older than 24 hours')
