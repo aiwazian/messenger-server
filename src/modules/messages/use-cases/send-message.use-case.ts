@@ -7,7 +7,6 @@ import { PrismaService } from '../../../providers/prisma/prisma.service'
 import { EncryptionService } from '../../encryption/encryption.service'
 import { MessageType } from '../../../generated/prisma/enums'
 import { detectChatType } from '../../../common/utils/detect-chat-type.util'
-import { ChatType } from '../../../common/enums/chat-type.enum'
 import { ChatsService } from '../../chats/chats.service'
 import { MessagesService } from '../messages.service'
 import { MESSAGE_INCLUDE } from '../message-include.const'
@@ -63,7 +62,12 @@ export class SendMessageUseCase {
 			chatType,
 			sources
 		)
-		if (chatType === ChatType.PRIVATE) messageInstance.isRead = true
+
+		// isRead у только что созданного сообщения всегда false: раньше личные сообщения
+		// уходили получателю уже с пометкой «прочитано», поэтому его клиент не считал их
+		// непрочитанными и не отправлял http-отметку о прочтении — автор не видел вторую
+		// галочку до перезахода в чат.
+		messageInstance.isRead = false
 
 		this.messageService.notifyRecipients(senderId, chatId, messageInstance, excludeSocketId)
 
