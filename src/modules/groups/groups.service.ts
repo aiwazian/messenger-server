@@ -53,10 +53,65 @@ export class GroupsService {
 				name: dto.name,
 				bio: dto.bio,
 				username: dto.username,
-				groupType: dto.groupType
+				groupType: dto.groupType,
+				noCopy: dto.noCopy
 			}
 		})
+
+		if (dto.noCopy !== undefined && dto.noCopy !== existingGroup?.noCopy) {
+			await this.notifyNoCopyChanged(id, group.noCopy)
+		}
+
 		return plainToInstance(GroupResponseDto, group)
+	}
+
+	/**
+	 * Включает или выключает запрет копирования контента группы.
+	 *
+	 * Право вызова проверяется в GroupOwnerGuard на уровне контроллера.
+	 */
+	async setNoCopy(id: GroupId, noCopy: boolean): Promise<GroupResponseDto> {
+		const existingGroup = await this.prisma.group.findUnique({ where: { id } })
+		if (!existingGroup) throw new NotFoundException('Group not found')
+
+		if (existingGroup.noCopy === noCopy) {
+			return plainToInstance(GroupResponseDto, existingGroup)
+		}
+
+		const group = await this.prisma.group.update({
+			where: { id },
+			data: { noCopy }
+		})
+
+		await this.notifyNoCopyChanged(id, group.noCopy)
+
+		return plainToInstance(GroupResponseDto, group)
+	}
+
+	/**
+	 * Сообщает участникам и владельцу, что флаг запрета копирования изменён,
+	 * чтобы клиенты перестроили меню сообщений без перезахода в чат.
+	 */
+	private async notifyNoCopyChanged(groupId: GroupId, noCopy: boolean): Promise<void> {
+		const group = await this.prisma.group.findUnique({
+			where: { id: groupId },
+			select: { ownerId: true }
+		})
+
+		const members = await this.prisma.groupMember.findMany({
+			where: { groupId },
+			select: { userId: true }
+		})
+
+		const recipients = new Set<bigint>(members.map((m) => m.userId))
+		if (group) recipients.add(group.ownerId)
+
+		for (const recipient of recipients) {
+			this.realtimeGateway.sendToUser(UserId(recipient), SocketEvent.CHAT_UPDATED, {
+				chatId: groupId,
+				noCopy
+			})
+		}
 	}
 
 	async join(id: GroupId, userId: UserId): Promise<void> {
