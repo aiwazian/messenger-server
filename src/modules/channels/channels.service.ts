@@ -59,10 +59,65 @@ export class ChannelsService {
 				name: dto.name,
 				bio: dto.bio,
 				channelType,
-				username
+				username,
+				noCopy: dto.noCopy
 			}
 		})
+
+		if (dto.noCopy !== undefined && dto.noCopy !== exitingChannel.noCopy) {
+			await this.notifyNoCopyChanged(id, channel.noCopy)
+		}
+
 		return plainToInstance(ChannelResponseDto, channel)
+	}
+
+	/**
+	 * Включает или выключает запрет копирования контента канала.
+	 *
+	 * Право вызова проверяется в ChannelOwnerGuard на уровне контроллера.
+	 */
+	async setNoCopy(id: ChannelId, noCopy: boolean): Promise<ChannelResponseDto> {
+		const existingChannel = await this.prisma.channel.findUnique({ where: { id } })
+		if (!existingChannel) throw new NotFoundException('Channel not found')
+
+		if (existingChannel.noCopy === noCopy) {
+			return plainToInstance(ChannelResponseDto, existingChannel)
+		}
+
+		const channel = await this.prisma.channel.update({
+			where: { id },
+			data: { noCopy }
+		})
+
+		await this.notifyNoCopyChanged(id, channel.noCopy)
+
+		return plainToInstance(ChannelResponseDto, channel)
+	}
+
+	/**
+	 * Сообщает подписчикам и владельцу, что флаг запрета копирования изменён,
+	 * чтобы клиенты перестроили меню сообщений без перезахода в чат.
+	 */
+	private async notifyNoCopyChanged(channelId: ChannelId, noCopy: boolean): Promise<void> {
+		const channel = await this.prisma.channel.findUnique({
+			where: { id: channelId },
+			select: { ownerId: true }
+		})
+
+		const subscribers = await this.prisma.channelSubscriber.findMany({
+			where: { channelId },
+			select: { userId: true }
+		})
+
+		const recipients = new Set<bigint>(subscribers.map((s) => s.userId))
+		if (channel) recipients.add(channel.ownerId)
+
+		for (const recipient of recipients) {
+			this.realtimeGateway.sendToUser(UserId(recipient), SocketEvent.CHAT_UPDATED, {
+				chatId: channelId,
+				noCopy
+			})
+		}
 	}
 
 	async join(channelId: ChannelId, userId: UserId): Promise<void> {
