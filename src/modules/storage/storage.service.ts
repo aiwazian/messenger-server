@@ -142,7 +142,6 @@ export class StorageService {
 		const now = Date.now()
 		const oneDayAgo = now - 24 * 60 * 60 * 1000
 
-		// 1. Process cleanup tasks
 		const tasks = await this.prisma.fileCleanupTask.findMany({
 			where: {
 				nextRetry: { lte: now }
@@ -171,7 +170,6 @@ export class StorageService {
 			}
 		}
 
-		// 2. Cleanup expired PENDING files
 		const expiredPendingFiles = await this.prisma.file.findMany({
 			where: {
 				status: FileStatus.PENDING,

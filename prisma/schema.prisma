@@ -315,6 +315,10 @@ model Channel {
   channelType ChannelType @default(PRIVATE)
   username    String?     @unique
 
+  /// Запрет копирования: копирование текста, пересылка и сохранение медиа
+  /// недоступны всем участникам, включая владельца.
+  noCopy Boolean @default(false)
+
   owner User @relation("OwnedChannels", fields: [ownerId], references: [id], onDelete: Cascade)
 
   profileUsers User[] @relation("UserProfileChannel")
@@ -393,6 +397,10 @@ model Group {
   username  String?   @unique
   bio       String?
   groupType GroupType @default(PRIVATE)
+
+  /// Запрет копирования: копирование текста, пересылка и сохранение медиа
+  /// недоступны всем участникам, включая владельца.
+  noCopy Boolean @default(false)
 
   owner        User                    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   photos       GroupPhoto[]

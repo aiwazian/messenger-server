@@ -34,8 +34,6 @@ export class DeleteChatUseCase {
 
 		await this.messagesService.clearHistory(userId, chatId, deleteForRecipient)
 
-		// Also delete the HISTORY_CLEARED message that was just created if any,
-		// because the chat is being deleted.
 		if (!isPrivateChat || deleteForRecipient) {
 			await this.prisma.message.deleteMany({
 				where: {

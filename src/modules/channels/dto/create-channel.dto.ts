@@ -1,4 +1,5 @@
 import {
+	IsBoolean,
 	IsEnum,
 	IsOptional,
 	IsString,
@@ -36,4 +37,9 @@ export class CreateChannelDto {
 		message: 'Username can only contain letters, numbers and underscores'
 	})
 	username?: string
+
+	/** Запрет копирования контента канала. */
+	@IsOptional()
+	@IsBoolean()
+	noCopy?: boolean
 }

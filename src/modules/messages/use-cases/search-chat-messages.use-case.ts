@@ -6,10 +6,7 @@ import { ChatId } from '../../../common/types/chat-id.type'
 import { MessageType } from '../../../generated/prisma/enums'
 import { MessagesService } from '../messages.service'
 import { SearchMessagesDto } from '../dto/search-messages.dto'
-import {
-	MessageSearchHitDto,
-	MessageSearchResponseDto
-} from '../dto/message-search-response.dto'
+import { MessageSearchHitDto, MessageSearchResponseDto } from '../dto/message-search-response.dto'
 
 /** Сколько строк тянем из БД за один шаг сканирования. */
 const BATCH_SIZE = 500
@@ -31,7 +28,7 @@ export class SearchChatMessagesUseCase {
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly messagesService: MessagesService
-	) { }
+	) {}
 
 	async execute(
 		userId: UserId,

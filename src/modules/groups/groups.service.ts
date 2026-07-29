@@ -53,10 +53,65 @@ export class GroupsService {
 				name: dto.name,
 				bio: dto.bio,
 				username: dto.username,
-				groupType: dto.groupType
+				groupType: dto.groupType,
+				noCopy: dto.noCopy
 			}
 		})
+
+		if (dto.noCopy !== undefined && dto.noCopy !== existingGroup?.noCopy) {
+			await this.notifyNoCopyChanged(id, group.noCopy)
+		}
+
 		return plainToInstance(GroupResponseDto, group)
+	}
+
+	/**
+	 * Включает или выключает запрет копирования контента группы.
+	 *
+	 * Право вызова проверяется в GroupOwnerGuard на уровне контроллера.
+	 */
+	async setNoCopy(id: GroupId, noCopy: boolean): Promise<GroupResponseDto> {
+		const existingGroup = await this.prisma.group.findUnique({ where: { id } })
+		if (!existingGroup) throw new NotFoundException('Group not found')
+
+		if (existingGroup.noCopy === noCopy) {
+			return plainToInstance(GroupResponseDto, existingGroup)
+		}
+
+		const group = await this.prisma.group.update({
+			where: { id },
+			data: { noCopy }
+		})
+
+		await this.notifyNoCopyChanged(id, group.noCopy)
+
+		return plainToInstance(GroupResponseDto, group)
+	}
+
+	/**
+	 * Сообщает участникам и владельцу, что флаг запрета копирования изменён,
+	 * чтобы клиенты перестроили меню сообщений без перезахода в чат.
+	 */
+	private async notifyNoCopyChanged(groupId: GroupId, noCopy: boolean): Promise<void> {
+		const group = await this.prisma.group.findUnique({
+			where: { id: groupId },
+			select: { ownerId: true }
+		})
+
+		const members = await this.prisma.groupMember.findMany({
+			where: { groupId },
+			select: { userId: true }
+		})
+
+		const recipients = new Set<bigint>(members.map((m) => m.userId))
+		if (group) recipients.add(group.ownerId)
+
+		for (const recipient of recipients) {
+			this.realtimeGateway.sendToUser(UserId(recipient), SocketEvent.CHAT_UPDATED, {
+				chatId: groupId,
+				noCopy
+			})
+		}
 	}
 
 	async join(id: GroupId, userId: UserId): Promise<void> {
@@ -213,7 +268,6 @@ export class GroupsService {
 	}
 
 	async getAvailableUsersForInvite(id: GroupId, ownerId: UserId): Promise<UserResponseDto[]> {
-		// 1. Get all chatIds where ownerId has chats with other users (1-on-1 chats)
 		const chats = await this.prisma.chat.findMany({
 			where: { userId: ownerId },
 			select: { chatId: true }
@@ -222,18 +276,12 @@ export class GroupsService {
 
 		if (chatIds.length === 0) return []
 
-		// 2. Get existing member userIds in this group
 		const existingMembers = await this.prisma.groupMember.findMany({
 			where: { groupId: id },
 			select: { userId: true }
 		})
 		const existingMemberIds = new Set(existingMembers.map((m) => m.userId.toString()))
 
-		// 3. Get users who:
-		//    - Have a chat with the owner (chatId matches their userId)
-		//    - Have privacySettings.invites === EVERYONE (everyone can invite)
-		//    - Are not already in the group
-		//    - Are not the owner themselves
 		const availableUsers = await this.prisma.user.findMany({
 			where: {
 				id: { in: chatIds },
@@ -245,7 +293,6 @@ export class GroupsService {
 			include: { privacySettings: true }
 		})
 
-		// 4. Filter out existing members in JS (simpler than complex NOT query)
 		const filtered = availableUsers.filter((u) => !existingMemberIds.has(u.id.toString()))
 
 		return plainToInstance(UserResponseDto, filtered)
@@ -254,7 +301,6 @@ export class GroupsService {
 	async addMembers(id: GroupId, dto: AddMembersDto, ownerId: UserId): Promise<void> {
 		const userIdBigInts = dto.userIds.map((uid) => BigInt(uid))
 
-		// Check if users are banned
 		const bannedUsers = await this.prisma.groupBlackList.findMany({
 			where: {
 				groupId: id,

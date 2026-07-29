@@ -25,6 +25,7 @@ import { ParseUserIdPipe } from '../../common/pipes/parse-user-id.pipe'
 import { ParseIntPipe } from '@nestjs/common'
 import { CreateInviteLinkDto } from '../../common/dtos/create-invite-link.dto'
 import { UpdateInviteLinkDto } from '../../common/dtos/update-invite-link.dto'
+import { SetNoCopyDto } from '../../common/dtos/set-no-copy.dto'
 import { CreateChannelUseCase } from './use-cases/create-channel.use-case'
 import { FileInitDto } from '../messages/dto/file-init.dto'
 import { StorageService } from '../storage/storage.service'
@@ -62,6 +63,20 @@ export class ChannelsController {
 		@Query('search') search?: string
 	) {
 		return this.channelsService.getSubscribers(id, parseInt(skip), parseInt(take), search)
+	}
+
+	/**
+	 * Включить или выключить запрет копирования.
+	 *
+	 * Доступно только владельцу канала: ChannelOwnerGuard.
+	 */
+	@Patch(`:${PARAMS.CHANNEL_ID}/no-copy`)
+	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	setNoCopy(
+		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
+		@Body() dto: SetNoCopyDto
+	) {
+		return this.channelsService.setNoCopy(id, dto.noCopy)
 	}
 
 	@Patch(`:${PARAMS.CHANNEL_ID}`)

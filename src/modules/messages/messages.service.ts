@@ -45,7 +45,7 @@ export class MessagesService {
 		private readonly encryption: EncryptionService,
 		private readonly chatSourceResolver: ChatSourceResolver,
 		private readonly chatReadState: ChatReadStateService
-	) { }
+	) {}
 
 	async initFileUpload(userId: UserId, chatId: ChatId, dto: FileInitDto) {
 		await this.chatsService.create(userId, chatId)
@@ -289,29 +289,26 @@ export class MessagesService {
 
 		const replyTo = message.replyTo
 			? plainToInstance(MessageReplyPreviewDto, {
-				id: message.replyTo.id,
-				senderId:
-					replyChatType === ChatType.CHANNEL
-						? message.replyTo.chatId
-						: message.replyTo.senderId,
-				chatId: message.replyTo.chatId,
-				text: this.decryptText(message.replyTo.text, message.replyTo.encryptionKeyVersion),
-				messageType: message.replyTo.messageType,
-				senderName: replySenderName || undefined,
-				chatName:
-					replyChatType === ChatType.PRIVATE ? undefined : replySource?.name || undefined,
-				attachmentTypes:
-					message.replyTo.attachments.length > 0
-						? message.replyTo.attachments.map((a) => a.type)
-						: undefined
-			})
+					id: message.replyTo.id,
+					senderId:
+						replyChatType === ChatType.CHANNEL ? message.replyTo.chatId : message.replyTo.senderId,
+					chatId: message.replyTo.chatId,
+					text: this.decryptText(message.replyTo.text, message.replyTo.encryptionKeyVersion),
+					messageType: message.replyTo.messageType,
+					senderName: replySenderName || undefined,
+					chatName: replyChatType === ChatType.PRIVATE ? undefined : replySource?.name || undefined,
+					attachmentTypes:
+						message.replyTo.attachments.length > 0
+							? message.replyTo.attachments.map((a) => a.type)
+							: undefined
+				})
 			: undefined
 
 		const forwardSource = message.forwardedFromChatId
 			? (sources?.get(message.forwardedFromChatId.toString()) ?? {
-				name: '',
-				access: ForwardSourceAccess.UNAVAILABLE
-			})
+					name: '',
+					access: ForwardSourceAccess.UNAVAILABLE
+				})
 			: undefined
 
 		return plainToInstance(MessageResponseDto, {

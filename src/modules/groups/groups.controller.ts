@@ -27,6 +27,7 @@ import { ParseUserIdPipe } from '../../common/pipes/parse-user-id.pipe'
 import { ParseIntPipe } from '@nestjs/common'
 import { CreateInviteLinkDto } from '../../common/dtos/create-invite-link.dto'
 import { UpdateInviteLinkDto } from '../../common/dtos/update-invite-link.dto'
+import { SetNoCopyDto } from '../../common/dtos/set-no-copy.dto'
 import { CreateGroupUseCase } from './use-cases/create-group.use-case'
 import { FileInitDto } from '../messages/dto/file-init.dto'
 import { StorageService } from '../storage/storage.service'
@@ -80,6 +81,17 @@ export class GroupsController {
 		@CurrentUserId() ownerId: UserId
 	) {
 		return this.groupsService.addMembers(id, dto, ownerId)
+	}
+
+	/**
+	 * Включить или выключить запрет копирования.
+	 *
+	 * Доступно только владельцу группы: GroupOwnerGuard.
+	 */
+	@Patch(`:${PARAMS.GROUP_ID}/no-copy`)
+	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
+	setNoCopy(@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId, @Body() dto: SetNoCopyDto) {
+		return this.groupsService.setNoCopy(id, dto.noCopy)
 	}
 
 	@Patch(`:${PARAMS.GROUP_ID}`)

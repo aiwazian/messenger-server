@@ -1,4 +1,12 @@
-import { IsEnum, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator'
+import {
+	IsBoolean,
+	IsEnum,
+	IsOptional,
+	IsString,
+	Matches,
+	MaxLength,
+	MinLength
+} from 'class-validator'
 import { GroupType } from '../../../generated/prisma/enums'
 import { Trim } from '../../../common/decorators/trim.decorator'
 
@@ -28,4 +36,9 @@ export class CreateGroupDto {
 	@IsOptional()
 	@IsEnum(GroupType)
 	groupType?: GroupType
+
+	/** Запрет копирования контента группы. */
+	@IsOptional()
+	@IsBoolean()
+	noCopy?: boolean
 }
