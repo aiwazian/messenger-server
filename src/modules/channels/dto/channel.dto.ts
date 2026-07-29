@@ -39,6 +39,10 @@ export class ChannelResponseDto {
 	@Expose()
 	isOwner?: boolean
 
+	/** Запрет копирования контента канала. */
+	@Expose()
+	noCopy: boolean
+
 	@Expose()
 	@OmitNull()
 	avatars?: { fileId: string }[]
