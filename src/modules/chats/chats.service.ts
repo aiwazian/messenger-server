@@ -28,7 +28,7 @@ export class ChatsService {
 		@Inject(forwardRef(() => RealtimeGateway))
 		private readonly realtimeGateway: RealtimeGateway,
 		private readonly chatReadState: ChatReadStateService
-	) { }
+	) {}
 
 	async getAll(userId: UserId): Promise<ChatResponseDto[]> {
 		const chats = await this.prisma.chat.findMany({

@@ -33,7 +33,7 @@ export class ForwardMessageUseCase {
 		private readonly chatsService: ChatsService,
 		private readonly messagesService: MessagesService,
 		private readonly chatSourceResolver: ChatSourceResolver
-	) { }
+	) {}
 
 	async execute(
 		userId: UserId,
@@ -63,7 +63,14 @@ export class ForwardMessageUseCase {
 		for (const targetChatId of targetIds) {
 			await this.assertCanSend(userId, targetChatId)
 			results.push(
-				await this.copyToChat(userId, targetChatId, source, originChatId, plainText, excludeSocketId)
+				await this.copyToChat(
+					userId,
+					targetChatId,
+					source,
+					originChatId,
+					plainText,
+					excludeSocketId
+				)
 			)
 		}
 

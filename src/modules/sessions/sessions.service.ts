@@ -110,8 +110,6 @@ export class SessionsService {
 		})
 
 		if (excludeToken) {
-			// Kick only others? Or excludeToken is the current one?
-			// Usually deleteAll means logout from other devices.
 			const userSockets = await (this.realtimeGateway.server as any).fetchSockets()
 			for (const s of userSockets) {
 				if (s.data.userId === userId && s.data.token !== excludeToken) {

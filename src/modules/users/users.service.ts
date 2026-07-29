@@ -84,7 +84,6 @@ export class UsersService {
 				try {
 					const userId = UserId(user.id)
 
-					// 1. Find all files associated with messages from this user
 					const files = await this.prisma.file.findMany({
 						where: {
 							attachments: {
@@ -97,15 +96,12 @@ export class UsersService {
 						}
 					})
 
-					// 2. Schedule files for deletion
 					for (const file of files) {
 						await this.storageService.deleteFile(file.id)
 					}
 
-					// 3. Logout from all sessions and kick from websocket
 					await this.sessionsService.deleteAll(userId)
 
-					// 4. Delete user. Prisma cascade will handle the rest
 					await this.prisma.user.delete({ where: { id: userId } })
 				} catch (error: any) {
 					this.logger.error(`Failed to delete inactive user ${user.id}: ${error.message}`)
@@ -118,7 +114,6 @@ export class UsersService {
 		const user = await this.prisma.user.findUnique({ where: { id: userId } })
 		if (!user) throw new NotFoundException('User not found')
 
-		// 1. Find all files associated with messages from this user
 		const files = await this.prisma.file.findMany({
 			where: {
 				attachments: {
@@ -131,15 +126,12 @@ export class UsersService {
 			}
 		})
 
-		// 2. Schedule files for deletion
 		for (const file of files) {
 			await this.storageService.deleteFile(file.id)
 		}
 
-		// 3. Logout from all sessions and kick from websocket
 		await this.sessionsService.deleteAll(userId)
 
-		// 4. Delete user. Prisma cascade will handle the rest
 		await this.prisma.user.delete({ where: { id: userId } })
 	}
 

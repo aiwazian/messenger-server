@@ -29,7 +29,7 @@ type RawId = bigint | number | string | null | undefined
  */
 @Injectable()
 export class ChatSourceResolver {
-	constructor(private readonly prisma: PrismaService) { }
+	constructor(private readonly prisma: PrismaService) {}
 
 	async resolve(viewerId: UserId, rawIds: RawId[]): Promise<ChatSourceMap> {
 		const map: ChatSourceMap = new Map()
@@ -84,11 +84,7 @@ export class ChatSourceResolver {
 		return map.get(rawId.toString())
 	}
 
-	private async resolveUsers(
-		viewerId: UserId,
-		ids: bigint[],
-		map: ChatSourceMap
-	): Promise<void> {
+	private async resolveUsers(viewerId: UserId, ids: bigint[], map: ChatSourceMap): Promise<void> {
 		if (ids.length === 0) return
 
 		const users = await this.prisma.user.findMany({
@@ -113,11 +109,7 @@ export class ChatSourceResolver {
 		}
 	}
 
-	private async resolveGroups(
-		viewerId: UserId,
-		ids: bigint[],
-		map: ChatSourceMap
-	): Promise<void> {
+	private async resolveGroups(viewerId: UserId, ids: bigint[], map: ChatSourceMap): Promise<void> {
 		if (ids.length === 0) return
 
 		const [groups, memberships] = await Promise.all([

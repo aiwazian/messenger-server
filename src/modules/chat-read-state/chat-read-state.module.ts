@@ -11,4 +11,4 @@ import { PrismaService } from '../../providers/prisma/prisma.service'
 	providers: [ChatReadStateService],
 	exports: [ChatReadStateService]
 })
-export class ChatReadStateModule { }
+export class ChatReadStateModule {}

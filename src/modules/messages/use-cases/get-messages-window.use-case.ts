@@ -26,7 +26,7 @@ export class GetMessagesWindowUseCase {
 		private readonly prisma: PrismaService,
 		private readonly messagesService: MessagesService,
 		private readonly chatReadState: ChatReadStateService
-	) { }
+	) {}
 
 	async execute(
 		userId: UserId,

@@ -32,7 +32,7 @@ export class ChatReadStateService {
 		private readonly prisma: PrismaService,
 		@Inject(forwardRef(() => RealtimeGateway))
 		private readonly realtimeGateway: RealtimeGateway
-	) { }
+	) {}
 
 	/** Состояния сразу по всем чатам пользователя: список чатов грузится одним запросом. */
 	async getStates(userId: UserId): Promise<Map<string, ChatReadStateDto>> {
@@ -94,9 +94,7 @@ export class ChatReadStateService {
 
 					const state = await this.getState(userId, targetChatId)
 					this.realtimeGateway.sendToUser(userId, SocketEvent.CHAT_UNREAD, state)
-				} catch {
-
-				}
+				} catch {}
 			})
 		)
 	}
@@ -220,9 +218,7 @@ export class ChatReadStateService {
 
 	/** Удаление чата или выход из канала: счётчик больше не нужен. */
 	async reset(userId: UserId, chatId: ChatId): Promise<void> {
-		await this.prisma.chatReadState
-			.deleteMany({ where: { userId, chatId } })
-			.catch(() => undefined)
+		await this.prisma.chatReadState.deleteMany({ where: { userId, chatId } }).catch(() => undefined)
 
 		this.realtimeGateway.sendToUser(userId, SocketEvent.CHAT_UNREAD, {
 			chatId: chatId.toString(),
@@ -334,12 +330,9 @@ export class ChatReadStateService {
 		}
 
 		if (chatType === ChatType.PRIVATE) {
-			// Автор берётся из самого сообщения: chatId здесь — координаты читателя,
-			// и при чтении собственного сообщения («Избранное») уведомлять некого.
 			const author = UserId(message.senderId)
 			if (author === userId) return
 
-			// Для автора этот диалог — чат с читателем, поэтому chatId переворачивается.
 			this.realtimeGateway.sendToUser(author, SocketEvent.CHAT_READ, {
 				...payload,
 				chatId: userId.toString()
