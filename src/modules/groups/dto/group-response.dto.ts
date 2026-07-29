@@ -36,6 +36,10 @@ export class GroupResponseDto {
 	@Expose()
 	isOwner?: boolean
 
+	/** Запрет копирования контента группы. */
+	@Expose()
+	noCopy: boolean
+
 	@Expose()
 	@OmitNull()
 	avatars?: { fileId: string }[]
