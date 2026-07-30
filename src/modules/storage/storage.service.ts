@@ -188,9 +188,7 @@ export class StorageService {
 				)
 				await this.prisma.file.delete({ where: { id: file.id } })
 			} catch (e) {
-				console.error(
-					`Cleanup failed for expired pending file ${file.path}: ${(e as Error).message}`
-				)
+
 			}
 		}
 	}
