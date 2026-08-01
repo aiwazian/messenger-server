@@ -50,7 +50,8 @@ export class ChatReadStateService {
 
 		return plainToInstance(ChatReadStateDto, {
 			chatId: chatId.toString(),
-			unreadCount: 0
+			unreadCount: 0,
+			isManuallyUnread: false
 		})
 	}
 
@@ -62,6 +63,9 @@ export class ChatReadStateService {
 	 *
 	 * chatId приходит в системе координат отправителя, поэтому для личного чата он
 	 * пересчитывается в id автора сообщения — это и есть чат получателя.
+	 *
+	 * Ручная пометка «непрочитанно» снимается: теперь есть настоящие непрочитанные
+	 * и бейдж должен показывать число, а не пустоту.
 	 */
 	async onNewMessage(chatId: ChatId, messageId: bigint, recipientIds: UserId[]): Promise<void> {
 		if (recipientIds.length === 0) return
@@ -79,10 +83,12 @@ export class ChatReadStateService {
 							chatId: targetChatId,
 							unreadCount: 1,
 							firstUnreadMessageId: messageId,
+							isManuallyUnread: false,
 							updatedAt: now
 						},
 						update: {
 							unreadCount: { increment: 1 },
+							isManuallyUnread: false,
 							updatedAt: now
 						}
 					})
@@ -104,17 +110,29 @@ export class ChatReadStateService {
 	 *
 	 * Без upToMessageId — весь чат (кнопка «вниз» / прыжок к концу истории).
 	 * Курсор только растёт: сообщения приходят из разных мест UI и могут прийти не по порядку.
+	 *
+	 * excludeSocketId — сокет, с которого пришёл запрос: эта сессия уже обновила UI
+	 * локально, событие ей не нужно — оно уходит только остальным сессиям пользователя.
 	 */
 	async markReadUpTo(
 		userId: UserId,
 		chatId: ChatId,
-		upToMessageId?: bigint
+		upToMessageId?: bigint,
+		excludeSocketId?: string
 	): Promise<ChatReadStateDto> {
 		const chatType = detectChatType(chatId)
 		const visibleWhere = this.visibleMessagesWhere(userId, chatId)
 
 		const boundary = upToMessageId ?? (await this.lastMessageId(visibleWhere))
-		if (boundary === null) return this.getState(userId, chatId)
+
+		// В чате нет ни одного сообщения, но ручная пометка «непрочитанно» могла стоять:
+		// состояние всё равно надо разослать, иначе бейдж на других устройствах не погаснет.
+		if (boundary === null) {
+			const state = await this.getState(userId, chatId)
+			this.realtimeGateway.sendToUser(userId, SocketEvent.CHAT_UNREAD, state, excludeSocketId)
+
+			return state
+		}
 
 		const existing = await this.prisma.chatReadState.findUnique({
 			where: { userId_chatId: { userId, chatId } }
@@ -150,25 +168,97 @@ export class ChatReadStateService {
 				lastReadMessageId: cursor,
 				firstUnreadMessageId: firstUnread?.id ?? null,
 				unreadCount,
+				isManuallyUnread: false,
 				updatedAt: now
 			},
 			update: {
 				lastReadMessageId: cursor,
 				firstUnreadMessageId: firstUnread?.id ?? null,
 				unreadCount,
+				isManuallyUnread: false,
 				updatedAt: now
 			}
 		})
 
 		const state = this.toDto(row)
 
-		this.realtimeGateway.sendToUser(userId, SocketEvent.CHAT_UNREAD, state)
+		this.realtimeGateway.sendToUser(userId, SocketEvent.CHAT_UNREAD, state, excludeSocketId)
 
 		if (chatType !== ChatType.CHANNEL && cursor > previousCursor) {
 			await this.notifyRead(userId, chatId, chatType, cursor)
 		}
 
 		return state
+	}
+
+	/**
+	 * Пометить пачку чатов прочитанными — меню выделения на главном экране.
+	 *
+	 * Идёт через markReadUpTo, а не отдельным updateMany: нужны и MessageRead,
+	 * и chat:read собеседникам — для них это обычное прочтение.
+	 *
+	 * Последовательно, а не Promise.all: каждый чат — это пачка записей в MessageRead,
+	 * и параллельный запуск на десятке выделенных чатов забивает пул соединений.
+	 */
+	async markChatsRead(
+		userId: UserId,
+		chatIds: ChatId[],
+		excludeSocketId?: string
+	): Promise<ChatReadStateDto[]> {
+		const states: ChatReadStateDto[] = []
+
+		for (const chatId of chatIds) {
+			await this.prisma.chatReadState.updateMany({
+				where: { userId, chatId, isManuallyUnread: true },
+				data: { isManuallyUnread: false, updatedAt: Date.now() }
+			})
+
+			states.push(await this.markReadUpTo(userId, chatId, undefined, excludeSocketId))
+		}
+
+		return states
+	}
+
+	/**
+	 * Пометить пачку чатов непрочитанными.
+	 *
+	 * Собеседникам ничего не отправляется и MessageRead не трогается: это личная
+	 * пометка «вернуться позже», а не отмена уже отосланных галочек. Отозвать у автора
+	 * уже показанное «прочитано» всё равно нельзя.
+	 *
+	 * Счётчик не трогается: если реальные непрочитанные есть — бейдж покажет их число,
+	 * если нет — клиент нарисует пустой бейдж по флагу.
+	 */
+	async markChatsUnread(
+		userId: UserId,
+		chatIds: ChatId[],
+		excludeSocketId?: string
+	): Promise<ChatReadStateDto[]> {
+		const now = Date.now()
+		const states: ChatReadStateDto[] = []
+
+		for (const chatId of chatIds) {
+			const row = await this.prisma.chatReadState.upsert({
+				where: { userId_chatId: { userId, chatId } },
+				create: {
+					userId,
+					chatId,
+					unreadCount: 0,
+					isManuallyUnread: true,
+					updatedAt: now
+				},
+				update: {
+					isManuallyUnread: true,
+					updatedAt: now
+				}
+			})
+
+			const state = this.toDto(row)
+			this.realtimeGateway.sendToUser(userId, SocketEvent.CHAT_UNREAD, state, excludeSocketId)
+			states.push(state)
+		}
+
+		return states
 	}
 
 	/** Пересчёт по факту: после удаления сообщений или очистки истории счётчик может врать. */
@@ -222,7 +312,8 @@ export class ChatReadStateService {
 
 		this.realtimeGateway.sendToUser(userId, SocketEvent.CHAT_UNREAD, {
 			chatId: chatId.toString(),
-			unreadCount: 0
+			unreadCount: 0,
+			isManuallyUnread: false
 		})
 	}
 
@@ -359,12 +450,14 @@ export class ChatReadStateService {
 		unreadCount: number
 		lastReadMessageId: bigint | null
 		firstUnreadMessageId: bigint | null
+		isManuallyUnread?: boolean
 	}): ChatReadStateDto {
 		return plainToInstance(ChatReadStateDto, {
 			chatId: row.chatId.toString(),
 			unreadCount: row.unreadCount,
 			lastReadMessageId: row.lastReadMessageId?.toString() ?? null,
-			firstUnreadMessageId: row.firstUnreadMessageId?.toString() ?? null
+			firstUnreadMessageId: row.firstUnreadMessageId?.toString() ?? null,
+			isManuallyUnread: row.isManuallyUnread ?? false
 		})
 	}
 }
