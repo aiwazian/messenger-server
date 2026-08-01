@@ -25,4 +25,8 @@ export class ChatResponseDto {
 	@Expose()
 	@OmitNull()
 	firstUnreadMessageId?: string
+
+	/** Чат помечен непрочитанным вручную: бейдж рисуется пустым. */
+	@Expose()
+	isManuallyUnread: boolean
 }

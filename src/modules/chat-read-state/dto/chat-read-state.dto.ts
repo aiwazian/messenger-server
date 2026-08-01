@@ -18,4 +18,12 @@ export class ChatReadStateDto {
 	@Expose()
 	@OmitNull()
 	firstUnreadMessageId?: string
+
+	/**
+	 * Пользователь пометил чат непрочитанным вручную.
+	 *
+	 * unreadCount при этом обычно 0: клиент рисует пустой бейдж вместо числа.
+	 */
+	@Expose()
+	isManuallyUnread: boolean
 }

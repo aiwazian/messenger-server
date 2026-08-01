@@ -222,6 +222,12 @@ model ChatReadState {
   firstUnreadMessageId BigInt?
 
   unreadCount Int    @default(0)
+
+  /// Пользователь сам пометил чат непрочитанным через меню списка чатов.
+  /// Непрочитанных сообщений при этом может не быть вовсе: клиент рисует
+  /// пустой бейдж. Сбрасывается при прочтении и при новом сообщении.
+  isManuallyUnread Boolean @default(false)
+
   updatedAt   BigInt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
