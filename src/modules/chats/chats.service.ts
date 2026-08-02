@@ -167,7 +167,8 @@ export class ChatsService {
 			isPinned: chat.isPinned,
 			lastMessage,
 			unreadCount: readState.unreadCount,
-			firstUnreadMessageId: readState.firstUnreadMessageId
+			firstUnreadMessageId: readState.firstUnreadMessageId,
+			isManuallyUnread: readState.isManuallyUnread
 		})
 	}
 
@@ -356,12 +357,13 @@ export class ChatsService {
 	private unreadFields(
 		states: Map<string, ChatReadStateDto>,
 		chatId: bigint
-	): { unreadCount: number; firstUnreadMessageId?: string } {
+	): { unreadCount: number; firstUnreadMessageId?: string; isManuallyUnread: boolean } {
 		const state = states.get(chatId.toString())
 
 		return {
 			unreadCount: state?.unreadCount ?? 0,
-			firstUnreadMessageId: state?.firstUnreadMessageId
+			firstUnreadMessageId: state?.firstUnreadMessageId,
+			isManuallyUnread: state?.isManuallyUnread ?? false
 		}
 	}
 

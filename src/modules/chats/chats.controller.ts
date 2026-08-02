@@ -8,7 +8,8 @@ import {
 	HttpStatus,
 	ParseIntPipe,
 	Post,
-	Body
+	Body,
+	Headers
 } from '@nestjs/common'
 import { ChatsService } from './chats.service'
 import { InviteLinksService } from '../invites/invite-links.service'
@@ -19,13 +20,16 @@ import { ChatId } from '../../common/types/chat-id.type'
 import { InviteLinkOwnerGuard } from '../../common/guards/invite-link-owner.guard'
 import { DeleteChatDto } from './dto/delete-chat.dto'
 import { DeleteChatUseCase } from './use-cases/delete-chat.use-case'
+import { ChatReadStateService } from '../chat-read-state/chat-read-state.service'
+import { MarkChatsDto } from '../chat-read-state/dto/mark-chats.dto'
 
 @Controller('chats')
 export class ChatsController {
 	constructor(
 		private readonly chatsService: ChatsService,
 		private readonly inviteLinksService: InviteLinksService,
-		private readonly deleteChatUseCase: DeleteChatUseCase
+		private readonly deleteChatUseCase: DeleteChatUseCase,
+		private readonly chatReadStateService: ChatReadStateService
 	) {}
 
 	@Get()
@@ -84,5 +88,34 @@ export class ChatsController {
 	unpinChats(@CurrentUserId() userId: UserId, @Body() body: { chatIds: string[] }) {
 		const chatIds = body.chatIds.map((id) => ChatId(id))
 		return this.chatsService.unpinChats(userId, chatIds)
+	}
+
+	/**
+	 * Прочитать выделенные чаты целиком.
+	 *
+	 * Клиент присылает только действительно непрочитанные чаты, но повторный
+	 * вызов безопасен: курсор только растёт, а MessageRead пишется skipDuplicates.
+	 */
+	@Post('read')
+	@HttpCode(HttpStatus.NO_CONTENT)
+	async markChatsRead(
+		@CurrentUserId() userId: UserId,
+		@Body() dto: MarkChatsDto,
+		@Headers('x-socket-id') socketId?: string
+	) {
+		const chatIds = dto.chatIds.map((id) => ChatId(id))
+		await this.chatReadStateService.markChatsRead(userId, chatIds, socketId)
+	}
+
+	/** Пометить выделенные чаты непрочитанными. Собеседникам событие не шлётся. */
+	@Post('unread')
+	@HttpCode(HttpStatus.NO_CONTENT)
+	async markChatsUnread(
+		@CurrentUserId() userId: UserId,
+		@Body() dto: MarkChatsDto,
+		@Headers('x-socket-id') socketId?: string
+	) {
+		const chatIds = dto.chatIds.map((id) => ChatId(id))
+		await this.chatReadStateService.markChatsUnread(userId, chatIds, socketId)
 	}
 }
