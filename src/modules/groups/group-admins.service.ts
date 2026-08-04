@@ -1,8 +1,15 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import {
+	BadRequestException,
+	ForbiddenException,
+	Injectable,
+	NotFoundException
+} from '@nestjs/common'
+import { plainToInstance } from 'class-transformer'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { GroupId } from '../../common/types/group-id.type'
 import { UserId } from '../../common/types/user-id.type'
 import { AdminPermission } from '../../common/decorators/admin-permission.decorator'
+import { UserResponseDto } from '../users/dto/user-response.dto'
 import {
 	GroupAdminResponseDto,
 	GroupMemberTagDto,
@@ -37,9 +44,34 @@ export class GroupAdminsService {
 			username: admin.user.username ?? undefined,
 			canManageInviteLinks: admin.canManageInviteLinks,
 			canEditProfile: admin.canEditProfile,
+			canManageAdmins: admin.canManageAdmins,
 			tag: admin.tag ?? undefined,
 			grantedAt: admin.grantedAt.toString()
 		}))
+	}
+
+	/**
+	 * Участники, которых можно назначить администраторами.
+	 *
+	 * Владелец в список не попадает: у него и так все права.
+	 */
+	async listCandidates(groupId: GroupId): Promise<UserResponseDto[]> {
+		const group = await this.prisma.group.findUnique({
+			where: { id: groupId },
+			select: { ownerId: true }
+		})
+		if (!group) throw new NotFoundException('Group not found')
+
+		const members = await this.prisma.groupMember.findMany({
+			where: { groupId, NOT: { userId: group.ownerId } },
+			include: { user: true },
+			orderBy: { user: { firstName: 'asc' } }
+		})
+
+		return plainToInstance(
+			UserResponseDto,
+			members.map((member) => member.user)
+		)
 	}
 
 	/**
@@ -63,6 +95,9 @@ export class GroupAdminsService {
 	 * Назначает администратора или переписывает его права и тег.
 	 *
 	 * Права выдаются только участнику группы: владельцу они не нужны.
+	 * Администратор с правом canManageAdmins не может менять себя, трогать
+	 * других управляющих администраторов и выдавать право на управление
+	 * администраторами: это остаётся за владельцем.
 	 */
 	async upsert(
 		groupId: GroupId,
@@ -92,7 +127,16 @@ export class GroupAdminsService {
 		const permissions = {
 			canManageInviteLinks: dto.canManageInviteLinks ?? false,
 			canEditProfile: dto.canEditProfile ?? false,
+			canManageAdmins: dto.canManageAdmins ?? false,
 			tag: tag ? tag : null
+		}
+
+		if (group.ownerId !== grantedBy) {
+			await this.assertCanManageTarget(groupId, grantedBy, targetUserId)
+
+			if (permissions.canManageAdmins) {
+				throw new ForbiddenException('Only the owner can grant admin management')
+			}
 		}
 
 		const admin = await this.prisma.groupAdminPermission.upsert({
@@ -117,13 +161,24 @@ export class GroupAdminsService {
 			username: admin.user.username ?? undefined,
 			canManageInviteLinks: admin.canManageInviteLinks,
 			canEditProfile: admin.canEditProfile,
+			canManageAdmins: admin.canManageAdmins,
 			tag: admin.tag ?? undefined,
 			grantedAt: admin.grantedAt.toString()
 		}
 	}
 
 	/** Снимает администратора: права и тег удаляются вместе со строкой. */
-	async remove(groupId: GroupId, targetUserId: UserId): Promise<void> {
+	async remove(groupId: GroupId, targetUserId: UserId, removedBy: UserId): Promise<void> {
+		const group = await this.prisma.group.findUnique({
+			where: { id: groupId },
+			select: { ownerId: true }
+		})
+		if (!group) throw new NotFoundException('Group not found')
+
+		if (group.ownerId !== removedBy) {
+			await this.assertCanManageTarget(groupId, removedBy, targetUserId)
+		}
+
 		await this.prisma.groupAdminPermission
 			.delete({ where: { groupId_userId: { groupId, userId: targetUserId } } })
 			.catch(() => {})
@@ -142,7 +197,8 @@ export class GroupAdminsService {
 				isOwner: true,
 				isAdmin: true,
 				canManageInviteLinks: true,
-				canEditProfile: true
+				canEditProfile: true,
+				canManageAdmins: true
 			}
 		}
 
@@ -155,6 +211,7 @@ export class GroupAdminsService {
 			isAdmin: admin != null,
 			canManageInviteLinks: admin?.canManageInviteLinks ?? false,
 			canEditProfile: admin?.canEditProfile ?? false,
+			canManageAdmins: admin?.canManageAdmins ?? false,
 			tag: admin?.tag ?? undefined
 		}
 	}
@@ -183,5 +240,30 @@ export class GroupAdminsService {
 		if (!permission) return true
 
 		return admin[permission] === true
+	}
+
+	/**
+	 * Проверяет, что администратор вправе менять выбранного пользователя.
+	 *
+	 * Себя администратор не трогает, чтобы не снять себе права, и не может
+	 * менять другого администратора с правом на управление администраторами.
+	 */
+	private async assertCanManageTarget(
+		groupId: GroupId,
+		actorId: UserId,
+		targetUserId: UserId
+	): Promise<void> {
+		if (actorId === targetUserId) {
+			throw new ForbiddenException('You cannot change your own permissions')
+		}
+
+		const target = await this.prisma.groupAdminPermission.findUnique({
+			where: { groupId_userId: { groupId, userId: targetUserId } },
+			select: { canManageAdmins: true }
+		})
+
+		if (target?.canManageAdmins) {
+			throw new ForbiddenException('Only the owner can change this administrator')
+		}
 	}
 }
