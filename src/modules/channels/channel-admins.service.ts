@@ -50,7 +50,8 @@ export class ChannelAdminsService {
 	/**
 	 * Подписчики, которых можно назначить администраторами.
 	 *
-	 * Владелец в список не попадает: у него и так все права.
+	 * Владелец и уже назначенные администраторы в список не попадают: у первого
+	 * и так все права, у остальных права меняют через их карточку.
 	 */
 	async listCandidates(channelId: ChannelId): Promise<UserResponseDto[]> {
 		const channel = await this.prisma.channel.findUnique({
@@ -59,8 +60,15 @@ export class ChannelAdminsService {
 		})
 		if (!channel) throw new NotFoundException('Channel not found')
 
+		const admins = await this.prisma.channelAdminPermission.findMany({
+			where: { channelId },
+			select: { userId: true }
+		})
+
+		const excludedUserIds = [channel.ownerId, ...admins.map((admin) => admin.userId)]
+
 		const subscribers = await this.prisma.channelSubscriber.findMany({
-			where: { channelId, NOT: { userId: channel.ownerId } },
+			where: { channelId, NOT: { userId: { in: excludedUserIds } } },
 			include: { user: true },
 			orderBy: { user: { firstName: 'asc' } }
 		})
@@ -69,6 +77,11 @@ export class ChannelAdminsService {
 			UserResponseDto,
 			subscribers.map((subscriber) => subscriber.user)
 		)
+	}
+
+	/** Сколько сейчас администраторов в канале. */
+	async count(channelId: ChannelId): Promise<number> {
+		return this.prisma.channelAdminPermission.count({ where: { channelId } })
 	}
 
 	/**

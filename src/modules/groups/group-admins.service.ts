@@ -53,7 +53,8 @@ export class GroupAdminsService {
 	/**
 	 * Участники, которых можно назначить администраторами.
 	 *
-	 * Владелец в список не попадает: у него и так все права.
+	 * Владелец и уже назначенные администраторы в список не попадают: у первого
+	 * и так все права, у остальных права меняют через их карточку.
 	 */
 	async listCandidates(groupId: GroupId): Promise<UserResponseDto[]> {
 		const group = await this.prisma.group.findUnique({
@@ -62,8 +63,15 @@ export class GroupAdminsService {
 		})
 		if (!group) throw new NotFoundException('Group not found')
 
+		const admins = await this.prisma.groupAdminPermission.findMany({
+			where: { groupId },
+			select: { userId: true }
+		})
+
+		const excludedUserIds = [group.ownerId, ...admins.map((admin) => admin.userId)]
+
 		const members = await this.prisma.groupMember.findMany({
-			where: { groupId, NOT: { userId: group.ownerId } },
+			where: { groupId, NOT: { userId: { in: excludedUserIds } } },
 			include: { user: true },
 			orderBy: { user: { firstName: 'asc' } }
 		})
@@ -72,6 +80,11 @@ export class GroupAdminsService {
 			UserResponseDto,
 			members.map((member) => member.user)
 		)
+	}
+
+	/** Сколько сейчас администраторов в группе. */
+	async count(groupId: GroupId): Promise<number> {
+		return this.prisma.groupAdminPermission.count({ where: { groupId } })
 	}
 
 	/**
