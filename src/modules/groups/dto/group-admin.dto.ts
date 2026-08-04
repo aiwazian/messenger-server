@@ -17,6 +17,15 @@ export class UpsertGroupAdminDto {
 	@IsBoolean()
 	canEditProfile?: boolean
 
+	/**
+	 * Управление администраторами: назначение, снятие и изменение их прав.
+	 *
+	 * Выдать это право может только владелец группы.
+	 */
+	@IsOptional()
+	@IsBoolean()
+	canManageAdmins?: boolean
+
 	/** Тег участника: подпись рядом с именем отправителя в сообщениях группы. */
 	@IsOptional()
 	@IsString()
@@ -32,6 +41,7 @@ export class GroupAdminResponseDto {
 	username?: string
 	canManageInviteLinks: boolean
 	canEditProfile: boolean
+	canManageAdmins: boolean
 	tag?: string
 	grantedAt: string
 }
@@ -42,6 +52,7 @@ export class MyGroupPermissionsDto {
 	isAdmin: boolean
 	canManageInviteLinks: boolean
 	canEditProfile: boolean
+	canManageAdmins: boolean
 	tag?: string
 }
 

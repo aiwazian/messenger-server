@@ -15,6 +15,15 @@ export class UpsertChannelAdminDto {
 	@IsOptional()
 	@IsBoolean()
 	canEditProfile?: boolean
+
+	/**
+	 * Управление администраторами: назначение, снятие и изменение их прав.
+	 *
+	 * Выдать это право может только владелец канала.
+	 */
+	@IsOptional()
+	@IsBoolean()
+	canManageAdmins?: boolean
 }
 
 /** Администратор канала и его права. */
@@ -25,6 +34,7 @@ export class ChannelAdminResponseDto {
 	username?: string
 	canManageInviteLinks: boolean
 	canEditProfile: boolean
+	canManageAdmins: boolean
 	grantedAt: string
 }
 
@@ -34,4 +44,5 @@ export class MyChannelPermissionsDto {
 	isAdmin: boolean
 	canManageInviteLinks: boolean
 	canEditProfile: boolean
+	canManageAdmins: boolean
 }
