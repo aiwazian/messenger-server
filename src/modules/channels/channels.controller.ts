@@ -85,9 +85,26 @@ export class ChannelsController {
 		return this.channelAdminsService.getMyPermissions(id, userId)
 	}
 
-	/** Список администраторов канала: только владелец. */
+	/**
+	 * Кого можно назначить администратором канала.
+	 *
+	 * Владелец в список не попадает: у него и так все права.
+	 */
+	@Get(`:${PARAMS.CHANNEL_ID}/admins/candidates`)
+	@UseGuards(ChannelExistsGuard, ChannelAdminGuard)
+	@RequireAdminPermission('canManageAdmins')
+	getAdminCandidates(@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId) {
+		return this.channelAdminsService.listCandidates(id)
+	}
+
+	/**
+	 * Список администраторов канала.
+	 *
+	 * Доступно владельцу и администраторам с правом canManageAdmins.
+	 */
 	@Get(`:${PARAMS.CHANNEL_ID}/admins`)
-	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	@UseGuards(ChannelExistsGuard, ChannelAdminGuard)
+	@RequireAdminPermission('canManageAdmins')
 	getAdmins(@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId) {
 		return this.channelAdminsService.list(id)
 	}
@@ -95,28 +112,32 @@ export class ChannelsController {
 	/**
 	 * Назначить администратора или перезаписать его права.
 	 *
-	 * Назначать администраторов может только владелец канала.
+	 * Доступно владельцу и администраторам с правом canManageAdmins:
+	 * само право на управление администраторами выдаёт только владелец.
 	 */
 	@Put(`:${PARAMS.CHANNEL_ID}/admins/:userId`)
-	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	@UseGuards(ChannelExistsGuard, ChannelAdminGuard)
+	@RequireAdminPermission('canManageAdmins')
 	upsertAdmin(
 		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
 		@Param('userId', ParseUserIdPipe) targetUserId: UserId,
-		@CurrentUserId() ownerId: UserId,
+		@CurrentUserId() currentUserId: UserId,
 		@Body() dto: UpsertChannelAdminDto
 	) {
-		return this.channelAdminsService.upsert(id, targetUserId, ownerId, dto)
+		return this.channelAdminsService.upsert(id, targetUserId, currentUserId, dto)
 	}
 
 	/** Снять администратора канала. */
 	@HttpCode(HttpStatus.NO_CONTENT)
 	@Delete(`:${PARAMS.CHANNEL_ID}/admins/:userId`)
-	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	@UseGuards(ChannelExistsGuard, ChannelAdminGuard)
+	@RequireAdminPermission('canManageAdmins')
 	removeAdmin(
 		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
-		@Param('userId', ParseUserIdPipe) targetUserId: UserId
+		@Param('userId', ParseUserIdPipe) targetUserId: UserId,
+		@CurrentUserId() currentUserId: UserId
 	) {
-		return this.channelAdminsService.remove(id, targetUserId)
+		return this.channelAdminsService.remove(id, targetUserId, currentUserId)
 	}
 
 	/**

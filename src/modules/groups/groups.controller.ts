@@ -95,9 +95,26 @@ export class GroupsController {
 		return this.groupAdminsService.getMyPermissions(id, userId)
 	}
 
-	/** Список администраторов группы: только владелец. */
+	/**
+	 * Кого можно назначить администратором группы.
+	 *
+	 * Владелец в список не попадает: у него и так все права.
+	 */
+	@Get(`:${PARAMS.GROUP_ID}/admins/candidates`)
+	@UseGuards(GroupExistsGuard, GroupAdminGuard)
+	@RequireAdminPermission('canManageAdmins')
+	getAdminCandidates(@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId) {
+		return this.groupAdminsService.listCandidates(id)
+	}
+
+	/**
+	 * Список администраторов группы.
+	 *
+	 * Доступно владельцу и администраторам с правом canManageAdmins.
+	 */
 	@Get(`:${PARAMS.GROUP_ID}/admins`)
-	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
+	@UseGuards(GroupExistsGuard, GroupAdminGuard)
+	@RequireAdminPermission('canManageAdmins')
 	getAdmins(@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId) {
 		return this.groupAdminsService.list(id)
 	}
@@ -105,28 +122,32 @@ export class GroupsController {
 	/**
 	 * Назначить администратора или перезаписать его права и тег.
 	 *
-	 * Назначать администраторов может только владелец группы.
+	 * Доступно владельцу и администраторам с правом canManageAdmins:
+	 * само право на управление администраторами выдаёт только владелец.
 	 */
 	@Put(`:${PARAMS.GROUP_ID}/admins/:userId`)
-	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
+	@UseGuards(GroupExistsGuard, GroupAdminGuard)
+	@RequireAdminPermission('canManageAdmins')
 	upsertAdmin(
 		@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId,
 		@Param('userId', ParseUserIdPipe) targetUserId: UserId,
-		@CurrentUserId() ownerId: UserId,
+		@CurrentUserId() currentUserId: UserId,
 		@Body() dto: UpsertGroupAdminDto
 	) {
-		return this.groupAdminsService.upsert(id, targetUserId, ownerId, dto)
+		return this.groupAdminsService.upsert(id, targetUserId, currentUserId, dto)
 	}
 
 	/** Снять администратора группы вместе с его тегом. */
 	@HttpCode(HttpStatus.NO_CONTENT)
 	@Delete(`:${PARAMS.GROUP_ID}/admins/:userId`)
-	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
+	@UseGuards(GroupExistsGuard, GroupAdminGuard)
+	@RequireAdminPermission('canManageAdmins')
 	removeAdmin(
 		@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId,
-		@Param('userId', ParseUserIdPipe) targetUserId: UserId
+		@Param('userId', ParseUserIdPipe) targetUserId: UserId,
+		@CurrentUserId() currentUserId: UserId
 	) {
-		return this.groupAdminsService.remove(id, targetUserId)
+		return this.groupAdminsService.remove(id, targetUserId, currentUserId)
 	}
 
 	@Get(`:${PARAMS.GROUP_ID}/available-users`)
