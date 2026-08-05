@@ -8,6 +8,7 @@ import {
 	Param,
 	Patch,
 	Post,
+	Put,
 	Query,
 	UseGuards
 } from '@nestjs/common'
@@ -21,6 +22,8 @@ import { PARAMS } from '../../common/constants/param.constants'
 import { ParseChannelIdPipe } from '../../common/pipes/parse-channel-id.pipe'
 import { ChannelId } from '../../common/types/channel-id.type'
 import { ChannelOwnerGuard } from '../../common/guards/channel-owner.guard'
+import { ChannelAdminGuard } from '../../common/guards/channel-admin.guard'
+import { RequireAdminPermission } from '../../common/decorators/admin-permission.decorator'
 import { ParseUserIdPipe } from '../../common/pipes/parse-user-id.pipe'
 import { ParseIntPipe } from '@nestjs/common'
 import { CreateInviteLinkDto } from '../../common/dtos/create-invite-link.dto'
@@ -31,13 +34,16 @@ import { FileInitDto } from '../messages/dto/file-init.dto'
 import { StorageService } from '../storage/storage.service'
 import { FileDownloadDto } from '../messages/dto/file-download.dto'
 import { FileType } from '../../common/enums/file-type.enum'
+import { ChannelAdminsService } from './channel-admins.service'
+import { UpsertChannelAdminDto } from './dto/channel-admin.dto'
 
 @Controller('channels')
 export class ChannelsController {
 	constructor(
 		private readonly channelsService: ChannelsService,
 		private readonly createChannelUseCase: CreateChannelUseCase,
-		private readonly storageService: StorageService
+		private readonly storageService: StorageService,
+		private readonly channelAdminsService: ChannelAdminsService
 	) {}
 
 	@Post()
@@ -66,6 +72,75 @@ export class ChannelsController {
 	}
 
 	/**
+	 * Права текущего пользователя в канале.
+	 *
+	 * Клиент решает по ним, показывать ли кнопки редактирования и ссылок.
+	 */
+	@Get(`:${PARAMS.CHANNEL_ID}/admins/me`)
+	@UseGuards(ChannelExistsGuard)
+	getMyPermissions(
+		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
+		@CurrentUserId() userId: UserId
+	) {
+		return this.channelAdminsService.getMyPermissions(id, userId)
+	}
+
+	/**
+	 * Кого можно назначить администратором канала.
+	 *
+	 * Владелец в список не попадает: у него и так все права.
+	 */
+	@Get(`:${PARAMS.CHANNEL_ID}/admins/candidates`)
+	@UseGuards(ChannelExistsGuard, ChannelAdminGuard)
+	@RequireAdminPermission('canManageAdmins')
+	getAdminCandidates(@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId) {
+		return this.channelAdminsService.listCandidates(id)
+	}
+
+	/**
+	 * Список администраторов канала.
+	 *
+	 * Доступно владельцу и администраторам с правом canManageAdmins.
+	 */
+	@Get(`:${PARAMS.CHANNEL_ID}/admins`)
+	@UseGuards(ChannelExistsGuard, ChannelAdminGuard)
+	@RequireAdminPermission('canManageAdmins')
+	getAdmins(@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId) {
+		return this.channelAdminsService.list(id)
+	}
+
+	/**
+	 * Назначить администратора или перезаписать его права.
+	 *
+	 * Доступно владельцу и администраторам с правом canManageAdmins:
+	 * само право на управление администраторами выдаёт только владелец.
+	 */
+	@Put(`:${PARAMS.CHANNEL_ID}/admins/:userId`)
+	@UseGuards(ChannelExistsGuard, ChannelAdminGuard)
+	@RequireAdminPermission('canManageAdmins')
+	upsertAdmin(
+		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
+		@Param('userId', ParseUserIdPipe) targetUserId: UserId,
+		@CurrentUserId() currentUserId: UserId,
+		@Body() dto: UpsertChannelAdminDto
+	) {
+		return this.channelAdminsService.upsert(id, targetUserId, currentUserId, dto)
+	}
+
+	/** Снять администратора канала. */
+	@HttpCode(HttpStatus.NO_CONTENT)
+	@Delete(`:${PARAMS.CHANNEL_ID}/admins/:userId`)
+	@UseGuards(ChannelExistsGuard, ChannelAdminGuard)
+	@RequireAdminPermission('canManageAdmins')
+	removeAdmin(
+		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
+		@Param('userId', ParseUserIdPipe) targetUserId: UserId,
+		@CurrentUserId() currentUserId: UserId
+	) {
+		return this.channelAdminsService.remove(id, targetUserId, currentUserId)
+	}
+
+	/**
 	 * Включить или выключить запрет копирования.
 	 *
 	 * Доступно только владельцу канала: ChannelOwnerGuard.
@@ -79,8 +154,14 @@ export class ChannelsController {
 		return this.channelsService.setNoCopy(id, dto.noCopy)
 	}
 
+	/**
+	 * Изменение профиля канала: название и описание.
+	 *
+	 * Доступно владельцу и администраторам с правом canEditProfile.
+	 */
 	@Patch(`:${PARAMS.CHANNEL_ID}`)
-	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	@UseGuards(ChannelExistsGuard, ChannelAdminGuard)
+	@RequireAdminPermission('canEditProfile')
 	updateChannel(
 		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
 		@Body() dto: UpdateChannelDto
@@ -192,14 +273,21 @@ export class ChannelsController {
 		return this.channelsService.rejectJoinRequest(id, targetUserId)
 	}
 
+	/**
+	 * Пригласительные ссылки канала.
+	 *
+	 * Доступно владельцу и администраторам с правом canManageInviteLinks.
+	 */
 	@Get(`:${PARAMS.CHANNEL_ID}/invite-links`)
-	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	@UseGuards(ChannelExistsGuard, ChannelAdminGuard)
+	@RequireAdminPermission('canManageInviteLinks')
 	getInviteLinks(@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId) {
 		return this.channelsService.getChannelInviteLinks(id)
 	}
 
 	@Post(`:${PARAMS.CHANNEL_ID}/invite-links`)
-	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	@UseGuards(ChannelExistsGuard, ChannelAdminGuard)
+	@RequireAdminPermission('canManageInviteLinks')
 	createInviteLink(
 		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
 		@CurrentUserId() userId: UserId,
@@ -209,7 +297,8 @@ export class ChannelsController {
 	}
 
 	@Patch(`:${PARAMS.CHANNEL_ID}/invite-links/:linkId`)
-	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	@UseGuards(ChannelExistsGuard, ChannelAdminGuard)
+	@RequireAdminPermission('canManageInviteLinks')
 	updateInviteLink(
 		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
 		@Param('linkId', ParseIntPipe) linkId: number,
@@ -220,7 +309,8 @@ export class ChannelsController {
 
 	@HttpCode(HttpStatus.NO_CONTENT)
 	@Delete(`:${PARAMS.CHANNEL_ID}/invite-links/:linkId`)
-	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	@UseGuards(ChannelExistsGuard, ChannelAdminGuard)
+	@RequireAdminPermission('canManageInviteLinks')
 	deleteInviteLink(
 		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
 		@Param('linkId', ParseIntPipe) linkId: number
@@ -229,13 +319,15 @@ export class ChannelsController {
 	}
 
 	@Post(`:${PARAMS.CHANNEL_ID}/avatar/init`)
-	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	@UseGuards(ChannelExistsGuard, ChannelAdminGuard)
+	@RequireAdminPermission('canEditProfile')
 	initFileUpload(@Body() dto: FileInitDto) {
 		return this.storageService.initUpload(dto.name, dto.size, FileType.CHANNEL_AVATAR)
 	}
 
 	@Post(`:${PARAMS.CHANNEL_ID}/avatar/confirm/:fileId`)
-	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	@UseGuards(ChannelExistsGuard, ChannelAdminGuard)
+	@RequireAdminPermission('canEditProfile')
 	confirmFileUpload(
 		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
 		@Param('fileId') fileId: string
@@ -244,7 +336,8 @@ export class ChannelsController {
 	}
 
 	@Delete(`:${PARAMS.CHANNEL_ID}/avatars/:fileId`)
-	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	@UseGuards(ChannelExistsGuard, ChannelAdminGuard)
+	@RequireAdminPermission('canEditProfile')
 	@HttpCode(HttpStatus.NO_CONTENT)
 	deleteAvatar(
 		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,

@@ -9,16 +9,19 @@ import { EncryptionService } from '../encryption/encryption.service'
 import { InviteLinksService } from '../invites/invite-links.service'
 import { CreateGroupUseCase } from './use-cases/create-group.use-case'
 import { StorageService } from '../storage/storage.service'
+import { GroupAdminsService } from './group-admins.service'
 
 @Module({
 	imports: [JwtAuthModule, SessionsModule, SearchModule, ChatsModule],
 	controllers: [GroupsController],
 	providers: [
 		GroupsService,
+		GroupAdminsService,
 		EncryptionService,
 		InviteLinksService,
 		CreateGroupUseCase,
 		StorageService
-	]
+	],
+	exports: [GroupAdminsService]
 })
 export class GroupsModule {}

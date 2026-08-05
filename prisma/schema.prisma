@@ -72,12 +72,12 @@ model User {
   ownedGroups      Group[]
   groupMemberships GroupMember[]
   groupBlackLists  GroupBlackList[]
-  groupPermissions GroupMemberPermission[]
+  groupAdminPermissions GroupAdminPermission[]
 
-  ownedChannels        Channel[]                 @relation("OwnedChannels")
+  ownedChannels        Channel[]                @relation("OwnedChannels")
   channelSubscriptions ChannelSubscriber[]
   channelBlackLists    ChannelBlackList[]
-  channelPermissions   ChannelMemberPermission[]
+  channelAdminPermissions ChannelAdminPermission[]
 
   privacySettings          PrivacySettings?
   scheduledAccountDeletion ScheduledAccountDeletion?
@@ -332,7 +332,7 @@ model Channel {
   photos       ChannelPhoto[]
   subscribers  ChannelSubscriber[]
   blockedUsers ChannelBlackList[]
-  permissions  ChannelMemberPermission[]
+  adminPermissions ChannelAdminPermission[]
   inviteLinks  ChannelInviteLink[]
   joinRequests ChannelJoinRequest[]
 }
@@ -373,17 +373,23 @@ model ChannelBlackList {
   @@unique([userId, channelId])
 }
 
-model ChannelMemberPermission {
+/// Права администратора канала.
+///
+/// Строка существует только для администраторов: владелец каналом управляет
+/// без записи в этой таблице и всегда имеет все права.
+model ChannelAdminPermission {
   id        Int    @id @default(autoincrement())
   channelId BigInt
   userId    BigInt
 
-  canPostMessages Boolean @default(false)
-  canSendMedia    Boolean @default(false)
-  canPinMessages  Boolean @default(false)
-  canInviteUsers  Boolean @default(false)
-  canDeleteUsers  Boolean @default(false)
-  canEditInfo     Boolean @default(false)
+  /// Пригласительные ссылки: создание и удаление ссылок канала.
+  canManageInviteLinks Boolean @default(false)
+
+  /// Изменение профиля канала: название, описание и фотографии профиля.
+  canEditProfile Boolean @default(false)
+
+  /// Управление администраторами: назначение, снятие и изменение прав других
+  /// администраторов канала. Права выше своих выдать нельзя.
   canManageAdmins Boolean @default(false)
 
   grantedBy BigInt?
@@ -408,11 +414,11 @@ model Group {
   /// недоступны всем участникам, включая владельца.
   noCopy Boolean @default(false)
 
-  owner        User                    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner        User                   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   photos       GroupPhoto[]
   members      GroupMember[]
   blocked      GroupBlackList[]
-  permissions  GroupMemberPermission[]
+  adminPermissions GroupAdminPermission[]
   inviteLinks  GroupInviteLink[]
   joinRequests GroupJoinRequest[]
 }
@@ -453,18 +459,28 @@ model GroupBlackList {
   @@unique([userId, groupId])
 }
 
-model GroupMemberPermission {
+/// Права администратора группы.
+///
+/// Строка существует только для администраторов: владелец группой управляет
+/// без записи в этой таблице и всегда имеет все права.
+model GroupAdminPermission {
   id      Int    @id @default(autoincrement())
   groupId BigInt
   userId  BigInt
 
-  canPostMessages Boolean @default(true)
-  canSendMedia    Boolean @default(true)
-  canPinMessages  Boolean @default(false)
-  canInviteUsers  Boolean @default(true)
-  canDeleteUsers  Boolean @default(false)
-  canEditInfo     Boolean @default(false)
+  /// Пригласительные ссылки: создание и удаление ссылок группы.
+  canManageInviteLinks Boolean @default(false)
+
+  /// Изменение профиля группы: название, описание и фотографии профиля.
+  canEditProfile Boolean @default(false)
+
+  /// Управление администраторами: назначение, снятие и изменение прав других
+  /// администраторов группы. Права выше своих выдать нельзя.
   canManageAdmins Boolean @default(false)
+
+  /// Тег участника: подпись рядом с именем отправителя в сообщениях группы.
+  /// Доступен только в группах, в каналах тега нет.
+  tag String?
 
   grantedBy BigInt?
   grantedAt BigInt

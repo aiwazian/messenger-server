@@ -8,6 +8,7 @@ import {
 	Param,
 	Patch,
 	Post,
+	Put,
 	Query,
 	UseGuards
 } from '@nestjs/common'
@@ -23,6 +24,8 @@ import { ParseGroupIdPipe } from '../../common/pipes/parse-group-id.pipe'
 import { GroupId } from '../../common/types/group-id.type'
 import { CanReadChatGuard } from '../../common/guards/can-read-chat.guard'
 import { GroupOwnerGuard } from '../../common/guards/group-owner.guard'
+import { GroupAdminGuard } from '../../common/guards/group-admin.guard'
+import { RequireAdminPermission } from '../../common/decorators/admin-permission.decorator'
 import { ParseUserIdPipe } from '../../common/pipes/parse-user-id.pipe'
 import { ParseIntPipe } from '@nestjs/common'
 import { CreateInviteLinkDto } from '../../common/dtos/create-invite-link.dto'
@@ -33,13 +36,16 @@ import { FileInitDto } from '../messages/dto/file-init.dto'
 import { StorageService } from '../storage/storage.service'
 import { FileDownloadDto } from '../messages/dto/file-download.dto'
 import { FileType } from '../../common/enums/file-type.enum'
+import { GroupAdminsService } from './group-admins.service'
+import { UpsertGroupAdminDto } from './dto/group-admin.dto'
 
 @Controller('groups')
 export class GroupsController {
 	constructor(
 		private readonly groupsService: GroupsService,
 		private readonly createGroupUseCase: CreateGroupUseCase,
-		private readonly storageService: StorageService
+		private readonly storageService: StorageService,
+		private readonly groupAdminsService: GroupAdminsService
 	) {}
 
 	@Post()
@@ -62,6 +68,86 @@ export class GroupsController {
 		@Query('search') search?: string
 	) {
 		return this.groupsService.getMembers(id, Number(skip) || 0, Number(take) || 100, search)
+	}
+
+	/**
+	 * Теги участников группы.
+	 *
+	 * Нужны любому участнику: тег рисуется рядом с именем отправителя в сообщениях.
+	 */
+	@Get(`:${PARAMS.GROUP_ID}/member-tags`)
+	@UseGuards(GroupExistsGuard, CanReadChatGuard)
+	getMemberTags(@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId) {
+		return this.groupAdminsService.getTags(id)
+	}
+
+	/**
+	 * Права текущего пользователя в группе.
+	 *
+	 * Клиент решает по ним, показывать ли кнопки редактирования и ссылок.
+	 */
+	@Get(`:${PARAMS.GROUP_ID}/admins/me`)
+	@UseGuards(GroupExistsGuard)
+	getMyPermissions(
+		@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId,
+		@CurrentUserId() userId: UserId
+	) {
+		return this.groupAdminsService.getMyPermissions(id, userId)
+	}
+
+	/**
+	 * Кого можно назначить администратором группы.
+	 *
+	 * Владелец в список не попадает: у него и так все права.
+	 */
+	@Get(`:${PARAMS.GROUP_ID}/admins/candidates`)
+	@UseGuards(GroupExistsGuard, GroupAdminGuard)
+	@RequireAdminPermission('canManageAdmins')
+	getAdminCandidates(@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId) {
+		return this.groupAdminsService.listCandidates(id)
+	}
+
+	/**
+	 * Список администраторов группы.
+	 *
+	 * Доступно владельцу и администраторам с правом canManageAdmins.
+	 */
+	@Get(`:${PARAMS.GROUP_ID}/admins`)
+	@UseGuards(GroupExistsGuard, GroupAdminGuard)
+	@RequireAdminPermission('canManageAdmins')
+	getAdmins(@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId) {
+		return this.groupAdminsService.list(id)
+	}
+
+	/**
+	 * Назначить администратора или перезаписать его права и тег.
+	 *
+	 * Доступно владельцу и администраторам с правом canManageAdmins:
+	 * само право на управление администраторами выдаёт только владелец.
+	 */
+	@Put(`:${PARAMS.GROUP_ID}/admins/:userId`)
+	@UseGuards(GroupExistsGuard, GroupAdminGuard)
+	@RequireAdminPermission('canManageAdmins')
+	upsertAdmin(
+		@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId,
+		@Param('userId', ParseUserIdPipe) targetUserId: UserId,
+		@CurrentUserId() currentUserId: UserId,
+		@Body() dto: UpsertGroupAdminDto
+	) {
+		return this.groupAdminsService.upsert(id, targetUserId, currentUserId, dto)
+	}
+
+	/** Снять администратора группы вместе с его тегом. */
+	@HttpCode(HttpStatus.NO_CONTENT)
+	@Delete(`:${PARAMS.GROUP_ID}/admins/:userId`)
+	@UseGuards(GroupExistsGuard, GroupAdminGuard)
+	@RequireAdminPermission('canManageAdmins')
+	removeAdmin(
+		@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId,
+		@Param('userId', ParseUserIdPipe) targetUserId: UserId,
+		@CurrentUserId() currentUserId: UserId
+	) {
+		return this.groupAdminsService.remove(id, targetUserId, currentUserId)
 	}
 
 	@Get(`:${PARAMS.GROUP_ID}/available-users`)
@@ -94,8 +180,14 @@ export class GroupsController {
 		return this.groupsService.setNoCopy(id, dto.noCopy)
 	}
 
+	/**
+	 * Изменение профиля группы: название и описание.
+	 *
+	 * Доступно владельцу и администраторам с правом canEditProfile.
+	 */
 	@Patch(`:${PARAMS.GROUP_ID}`)
-	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
+	@UseGuards(GroupExistsGuard, GroupAdminGuard)
+	@RequireAdminPermission('canEditProfile')
 	update(@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId, @Body() dto: UpdateGroupDto) {
 		return this.groupsService.update(id, dto)
 	}
@@ -188,14 +280,21 @@ export class GroupsController {
 		return this.groupsService.unban(id, targetUserId)
 	}
 
+	/**
+	 * Пригласительные ссылки группы.
+	 *
+	 * Доступно владельцу и администраторам с правом canManageInviteLinks.
+	 */
 	@Get(`:${PARAMS.GROUP_ID}/invite-links`)
-	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
+	@UseGuards(GroupExistsGuard, GroupAdminGuard)
+	@RequireAdminPermission('canManageInviteLinks')
 	getInviteLinks(@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId) {
 		return this.groupsService.getGroupInviteLinks(id)
 	}
 
 	@Post(`:${PARAMS.GROUP_ID}/invite-links`)
-	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
+	@UseGuards(GroupExistsGuard, GroupAdminGuard)
+	@RequireAdminPermission('canManageInviteLinks')
 	createInviteLink(
 		@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId,
 		@CurrentUserId() userId: UserId,
@@ -205,7 +304,8 @@ export class GroupsController {
 	}
 
 	@Patch(`:${PARAMS.GROUP_ID}/invite-links/:linkId`)
-	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
+	@UseGuards(GroupExistsGuard, GroupAdminGuard)
+	@RequireAdminPermission('canManageInviteLinks')
 	updateInviteLink(
 		@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId,
 		@Param('linkId', ParseIntPipe) linkId: number,
@@ -216,7 +316,8 @@ export class GroupsController {
 
 	@HttpCode(HttpStatus.NO_CONTENT)
 	@Delete(`:${PARAMS.GROUP_ID}/invite-links/:linkId`)
-	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
+	@UseGuards(GroupExistsGuard, GroupAdminGuard)
+	@RequireAdminPermission('canManageInviteLinks')
 	deleteInviteLink(
 		@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId,
 		@Param('linkId', ParseIntPipe) linkId: number
@@ -225,13 +326,15 @@ export class GroupsController {
 	}
 
 	@Post(`:${PARAMS.GROUP_ID}/avatar/init`)
-	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
+	@UseGuards(GroupExistsGuard, GroupAdminGuard)
+	@RequireAdminPermission('canEditProfile')
 	initFileUpload(@Body() dto: FileInitDto) {
 		return this.storageService.initUpload(dto.name, dto.size, FileType.GROUP_AVATAR)
 	}
 
 	@Post(`:${PARAMS.GROUP_ID}/avatar/confirm/:fileId`)
-	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
+	@UseGuards(GroupExistsGuard, GroupAdminGuard)
+	@RequireAdminPermission('canEditProfile')
 	confirmFileUpload(
 		@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId,
 		@Param('fileId') fileId: string
@@ -240,7 +343,8 @@ export class GroupsController {
 	}
 
 	@Delete(`:${PARAMS.GROUP_ID}/avatars/:fileId`)
-	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
+	@UseGuards(GroupExistsGuard, GroupAdminGuard)
+	@RequireAdminPermission('canEditProfile')
 	@HttpCode(HttpStatus.NO_CONTENT)
 	deleteAvatar(
 		@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId,
