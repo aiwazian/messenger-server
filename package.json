@@ -11,16 +11,11 @@
         "start:dev": "nest start --watch",
         "start:debug": "nest start --debug --watch",
         "start:prod": "node dist/main",
-        "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
-        "test": "jest",
-        "test:watch": "jest --watch",
-        "test:cov": "jest --coverage",
-        "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-        "test:e2e": "jest --config ./test/jest-e2e.json"
+        "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix"
     },
     "dependencies": {
-        "@aws-sdk/client-s3": "^3.1090.0",
-        "@aws-sdk/s3-request-presigner": "^3.1090.0",
+        "@aws-sdk/client-s3": "^3.1103.0",
+        "@aws-sdk/s3-request-presigner": "^3.1103.0",
         "@nestjs/common": "^11.1.28",
         "@nestjs/config": "^4.0.4",
         "@nestjs/core": "^11.1.28",
@@ -40,12 +35,12 @@
         "ejs": "^6.0.1",
         "file-type": "^22.0.1",
         "helmet": "^8.3.0",
-        "nodemailer": "^9.0.3",
-        "openai": "^7.3.0",
+        "nodemailer": "^9.0.4",
+        "openai": "^7.4.0",
         "reflect-metadata": "^0.2.2",
         "rxjs": "^7.8.2",
         "socket.io": "^4.8.3",
-        "ws": "^8.21.1"
+        "ws": "^8.21.2"
     },
     "devDependencies": {
         "@eslint/js": "^10.0.1",
@@ -58,29 +53,10 @@
         "eslint-config-prettier": "^10.1.8",
         "eslint-plugin-prettier": "^5.5.6",
         "globals": "^17.9.0",
-        "jest": "^30.4.2",
         "prettier": "^3.9.6",
         "prisma": "^7.9.1",
-        "ts-jest": "^29.4.12",
         "ts-node": "^10.9.2",
         "typescript": "^6.0.3",
-        "typescript-eslint": "^8.64.0"
-    },
-    "jest": {
-        "moduleFileExtensions": [
-            "js",
-            "json",
-            "ts"
-        ],
-        "rootDir": "src",
-        "testRegex": ".*\\.spec\\.ts$",
-        "transform": {
-            "^.+\\.(t|j)s$": "ts-jest"
-        },
-        "collectCoverageFrom": [
-            "**/*.(t|j)s"
-        ],
-        "coverageDirectory": "../coverage",
-        "testEnvironment": "node"
+        "typescript-eslint": "^8.66.0"
     }
 }
