@@ -9,12 +9,13 @@ import {
 	MinLength
 } from 'class-validator'
 import { ChatFolderCategory } from '../../../generated/prisma/enums'
+import { MAX_FOLDER_NAME_LENGTH } from './chat-folder.constants'
 
 export class UpdateChatFolderDto {
 	@IsOptional()
 	@IsString()
 	@MinLength(1)
-	@MaxLength(64)
+	@MaxLength(MAX_FOLDER_NAME_LENGTH)
 	name?: string
 
 	/// Полная замена состава папки: приходит итоговый список, а не дельта.

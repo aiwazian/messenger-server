@@ -9,11 +9,12 @@ import {
 	MinLength
 } from 'class-validator'
 import { ChatFolderCategory } from '../../../generated/prisma/enums'
+import { MAX_FOLDER_NAME_LENGTH } from './chat-folder.constants'
 
 export class CreateChatFolderDto {
 	@IsString()
 	@MinLength(1)
-	@MaxLength(64)
+	@MaxLength(MAX_FOLDER_NAME_LENGTH)
 	name: string
 
 	@IsOptional()
