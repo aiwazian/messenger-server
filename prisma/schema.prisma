@@ -183,6 +183,11 @@ model ChatFolderChat {
   folderId Int
   chatId   BigInt
 
+  /// Чат входит в состав папки поимённо. false означает, что строка заведена
+  /// только ради закрепления чата, который попал в папку через категорию:
+  /// при удалении категории такой чат из папки исчезает.
+  isIncluded Boolean @default(true)
+
   isPinned  Boolean @default(false)
   sortOrder Int     @default(0)
 
