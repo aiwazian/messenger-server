@@ -6,6 +6,11 @@ export class ChatFolderChatResponseDto {
 	@Expose()
 	chatId: string
 
+	/// Чат входит в состав папки поимённо. false означает, что строка заведена
+	/// только ради закрепления чата, попавшего в папку через категорию.
+	@Expose()
+	isIncluded: boolean
+
 	/// Закрепление внутри папки: в разных папках у одного чата оно своё.
 	@Expose()
 	isPinned: boolean
@@ -30,7 +35,7 @@ export class ChatFolderResponseDto {
 	@Expose()
 	categories: ChatFolderCategory[]
 
-	/// Чаты, добавленные в папку поимённо.
+	/// Чаты, добавленные в папку поимённо, и чаты с собственным закреплением.
 	@Expose()
 	@Type(() => ChatFolderChatResponseDto)
 	chats: ChatFolderChatResponseDto[]

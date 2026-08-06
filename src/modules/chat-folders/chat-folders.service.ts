@@ -15,7 +15,7 @@ type ChatFolderWithRelations = {
 	name: string
 	sortOrder: number
 	categories: Array<{ category: ChatFolderCategory }>
-	chats: Array<{ chatId: bigint; isPinned: boolean; sortOrder: number }>
+	chats: Array<{ chatId: bigint; isIncluded: boolean; isPinned: boolean; sortOrder: number }>
 }
 
 @Injectable()
@@ -55,7 +55,11 @@ export class ChatFoldersService {
 					create: categories.map((category) => ({ category }))
 				},
 				chats: {
-					create: chatIds.map((chatId, index) => ({ chatId, sortOrder: index }))
+					create: chatIds.map((chatId, index) => ({
+						chatId,
+						isIncluded: true,
+						sortOrder: index
+					}))
 				}
 			},
 			include: {
@@ -96,23 +100,43 @@ export class ChatFoldersService {
 			}
 
 			if (chatIds) {
-				const pinnedChats = await tx.chatFolderChat.findMany({
-					where: { folderId, isPinned: true },
-					select: { chatId: true }
+				const existingChats = await tx.chatFolderChat.findMany({
+					where: { folderId },
+					select: { chatId: true, isPinned: true }
 				})
-				const pinnedIds = new Set(pinnedChats.map((chat) => chat.chatId.toString()))
+
+				const pinnedIds = new Set(
+					existingChats.filter((chat) => chat.isPinned).map((chat) => chat.chatId.toString())
+				)
+
+				const includedIds = new Set(chatIds.map((chatId) => chatId.toString()))
 
 				await tx.chatFolderChat.deleteMany({ where: { folderId } })
 
-				if (chatIds.length > 0) {
-					await tx.chatFolderChat.createMany({
-						data: chatIds.map((chatId, index) => ({
-							folderId,
-							chatId,
-							sortOrder: index,
-							isPinned: pinnedIds.has(chatId.toString())
-						}))
-					})
+				const includedRows = chatIds.map((chatId, index) => ({
+					folderId,
+					chatId,
+					isIncluded: true,
+					sortOrder: index,
+					isPinned: pinnedIds.has(chatId.toString())
+				}))
+
+				/// Закрепление чата, попавшего в папку через категорию, переживает
+				/// пересохранение состава: в список поимённых чатов он не входит.
+				const pinnedOnlyRows = existingChats
+					.filter((chat) => chat.isPinned && !includedIds.has(chat.chatId.toString()))
+					.map((chat, index) => ({
+						folderId,
+						chatId: chat.chatId,
+						isIncluded: false,
+						sortOrder: chatIds.length + index,
+						isPinned: true
+					}))
+
+				const rows = [...includedRows, ...pinnedOnlyRows]
+
+				if (rows.length > 0) {
+					await tx.chatFolderChat.createMany({ data: rows })
 				}
 			}
 		})
@@ -126,6 +150,9 @@ export class ChatFoldersService {
 		await this.prisma.chatFolder.delete({ where: { id: folderId } })
 	}
 
+	/// Закрепление принадлежит папке, а не чату: чат, попавший в папку через
+	/// категорию, своей строки не имеет, поэтому она заводится на лету и в
+	/// состав папки чат при этом не добавляется.
 	async setChatsPinned(
 		userId: UserId,
 		folderId: number,
@@ -134,16 +161,35 @@ export class ChatFoldersService {
 	): Promise<void> {
 		await this.assertFolderOwner(userId, folderId)
 
-		const chatIds = Array.from(new Set(dto.chatIds)).map((chatId) => ChatId(chatId))
+		const chatIds = await this.filterOwnedChatIds(userId, dto.chatIds)
 
 		if (chatIds.length === 0) {
 			return
 		}
 
-		await this.prisma.chatFolderChat.updateMany({
-			where: { folderId, chatId: { in: chatIds } },
-			data: { isPinned }
+		const lastChat = await this.prisma.chatFolderChat.findFirst({
+			where: { folderId },
+			orderBy: { sortOrder: 'desc' },
+			select: { sortOrder: true }
 		})
+
+		let nextSortOrder = (lastChat?.sortOrder ?? -1) + 1
+
+		await this.prisma.$transaction(
+			chatIds.map((chatId) =>
+				this.prisma.chatFolderChat.upsert({
+					where: { folderId_chatId: { folderId, chatId } },
+					update: { isPinned },
+					create: {
+						folderId,
+						chatId,
+						isIncluded: false,
+						isPinned,
+						sortOrder: nextSortOrder++
+					}
+				})
+			)
+		)
 	}
 
 	/// Порядок вкладок задаётся списком id: позиция в массиве становится sortOrder.
@@ -235,6 +281,7 @@ export class ChatFoldersService {
 			categories: folder.categories.map((filter) => filter.category),
 			chats: folder.chats.map((chat) => ({
 				chatId: chat.chatId.toString(),
+				isIncluded: chat.isIncluded,
 				isPinned: chat.isPinned,
 				sortOrder: chat.sortOrder
 			}))
