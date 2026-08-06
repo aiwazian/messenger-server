@@ -1,0 +1,12 @@
+*.log
+*.db
+*.sqlite
+*.env
+*.git
+*.tsbuildinfo
+
+dist/
+node_modules/
+build/
+config/
+generated/
