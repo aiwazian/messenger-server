@@ -9,6 +9,7 @@ import { SessionsModule } from './modules/sessions/sessions.module'
 import { RealtimeModule } from './modules/realtime/realtime.module'
 import { GroupsModule } from './modules/groups/groups.module'
 import { ChatsModule } from './modules/chats/chats.module'
+import { ChatFoldersModule } from './modules/chat-folders/chat-folders.module'
 import { MessagesModule } from './modules/messages/messages.module'
 import { PrismaModule } from './providers/prisma/prisma.module'
 import { SearchModule } from './modules/search/search.module'
@@ -39,6 +40,7 @@ import { ChatReadStateModule } from './modules/chat-read-state/chat-read-state.m
 		RealtimeModule,
 		GroupsModule,
 		ChatsModule,
+		ChatFoldersModule,
 		MessagesModule,
 		SearchModule,
 		PushModule,

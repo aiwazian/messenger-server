@@ -47,6 +47,16 @@ enum AttachmentType {
   FILE
 }
 
+/// Динамическая категория чатов внутри папки.
+///
+/// Категория хранится вместо перечисления конкретных чатов: новый чат
+/// подходящего типа попадает в папку сам, без пересохранения папки.
+enum ChatFolderCategory {
+  PRIVATE_CHATS
+  CHANNELS
+  GROUPS
+}
+
 model User {
   id          BigInt  @id
   firstName   String
@@ -66,6 +76,7 @@ model User {
   sentMessages Message[]
   messageReads MessageRead[]
   chatReadStates ChatReadState[]
+  chatFolders  ChatFolder[]
 
   photos UserPhoto[]
 
@@ -138,6 +149,68 @@ model Chat {
 
   @@index([userId])
   @@index([chatId])
+}
+
+/// Пользовательская папка чатов.
+///
+/// Папка «Все чаты» не хранится: клиент рисует её сам первой вкладкой,
+/// поэтому в базе лежат только созданные пользователем папки.
+model ChatFolder {
+  id     Int    @id @default(autoincrement())
+  userId BigInt
+  name   String
+
+  /// Позиция вкладки на главном экране. Задел под ручную сортировку папок:
+  /// пока проставляется по порядку создания.
+  sortOrder Int @default(0)
+
+  createdAt BigInt
+
+  user       User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chats      ChatFolderChat[]
+  categories ChatFolderCategoryFilter[]
+
+  @@index([userId, sortOrder])
+  @@index([userId])
+}
+
+/// Чат, добавленный в папку поимённо.
+///
+/// Закрепление живёт здесь, а не в Chat: один и тот же чат может быть
+/// закреплён в одной папке и не закреплён в другой.
+model ChatFolderChat {
+  id       Int    @id @default(autoincrement())
+  folderId Int
+  chatId   BigInt
+
+  /// Чат входит в состав папки поимённо. false означает, что строка заведена
+  /// только ради закрепления чата, который попал в папку через категорию:
+  /// при удалении категории такой чат из папки исчезает.
+  isIncluded Boolean @default(true)
+
+  isPinned  Boolean @default(false)
+  sortOrder Int     @default(0)
+
+  folder ChatFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+
+  @@unique([folderId, chatId])
+  @@index([folderId])
+  @@index([chatId])
+}
+
+/// Категория, включённая в папку целиком.
+///
+/// Хранится отдельной строкой, а не массивом в ChatFolder: так категория
+/// индексируется и не требует чтения всей папки при проверке.
+model ChatFolderCategoryFilter {
+  id       Int                @id @default(autoincrement())
+  folderId Int
+  category ChatFolderCategory
+
+  folder ChatFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+
+  @@unique([folderId, category])
+  @@index([folderId])
 }
 
 model EncryptionKey {
