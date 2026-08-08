@@ -14,8 +14,8 @@
         "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix"
     },
     "dependencies": {
-        "@aws-sdk/client-s3": "^3.1103.0",
-        "@aws-sdk/s3-request-presigner": "^3.1103.0",
+        "@aws-sdk/client-s3": "^3.1106.0",
+        "@aws-sdk/s3-request-presigner": "^3.1106.0",
         "@nestjs/common": "^11.1.28",
         "@nestjs/config": "^4.0.4",
         "@nestjs/core": "^11.1.28",
@@ -34,22 +34,23 @@
         "dotenv": "^17.4.2",
         "ejs": "^6.0.1",
         "file-type": "^22.0.1",
+        "firebase-admin": "^14.2.0",
         "helmet": "^8.3.0",
-        "nodemailer": "^9.0.4",
+        "nodemailer": "^9.0.5",
         "openai": "^7.4.0",
         "reflect-metadata": "^0.2.2",
         "rxjs": "^7.8.2",
         "socket.io": "^4.8.3",
-        "ws": "^8.21.2"
+        "ws": "^8.21.3"
     },
     "devDependencies": {
         "@eslint/js": "^10.0.1",
         "@nestjs/cli": "^11.0.24",
         "@types/bcrypt": "^6.0.0",
         "@types/ejs": "^3.1.5",
-        "@types/node": "^26.1.2",
+        "@types/node": "^26.2.0",
         "@types/nodemailer": "^8.0.1",
-        "eslint": "^10.8.0",
+        "eslint": "^10.8.1",
         "eslint-config-prettier": "^10.1.8",
         "eslint-plugin-prettier": "^5.5.6",
         "globals": "^17.9.0",
