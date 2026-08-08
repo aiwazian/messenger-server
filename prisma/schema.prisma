@@ -116,10 +116,18 @@ model UserPhoto {
 }
 
 model Session {
-  id          Int     @id @default(autoincrement())
-  userId      BigInt
-  token       String  @unique
-  fcmToken    String?
+  id     Int    @id @default(autoincrement())
+  userId BigInt
+  token  String @unique
+
+  /// Firebase Installation ID устройства: адресат пуша в новом API FCM.
+  /// Присылают клиенты, которые умеют register() и onRegistered.
+  installationId String?
+
+  /// Устаревший registration token. Нужен только сессиям старых клиентов,
+  /// не знающих про FID: как только приходит installationId, обнуляется.
+  fcmToken String?
+
   deviceModel String
   osVersion   String
   osName      String
@@ -130,6 +138,7 @@ model Session {
 
   @@unique([userId, token])
   @@index([userId])
+  @@index([installationId])
 }
 
 model Chat {
