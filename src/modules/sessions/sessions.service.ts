@@ -76,9 +76,11 @@ export class SessionsService {
 	 * Привязывает Firebase Installation ID к сессии: в новом API FCM адресатом
 	 * уведомления является именно он.
 	 *
-	 * FID один на устройство, поэтому у двух аккаунтов на одном телефоне он совпадёт.
-	 * Отбирать его у других сессий нельзя: неактивный аккаунт перестал бы
-	 * получать уведомления. Дублирование в рамках одного аккаунта снимает PushService.
+	 * FID один на устройство, а уведомления должен получать только активный аккаунт,
+	 * поэтому FID живёт ровно в одной сессии: при переключении аккаунта клиент
+	 * присылает его заново, и у остальных сессий того же устройства он снимается.
+	 * Оба запроса идут одной транзакцией, иначе между ними возможно состояние,
+	 * в котором устройство не получает уведомлений вовсе.
 	 */
 	async updateInstallationId(token: string, installationId: string): Promise<void> {
 		const session = await this.prisma.session.findUnique({
@@ -89,10 +91,16 @@ export class SessionsService {
 			throw new NotFoundException(`Session not found`)
 		}
 
-		await this.prisma.session.update({
-			where: { token },
-			data: { installationId }
-		})
+		await this.prisma.$transaction([
+			this.prisma.session.updateMany({
+				where: { installationId, NOT: { token } },
+				data: { installationId: null }
+			}),
+			this.prisma.session.update({
+				where: { token },
+				data: { installationId }
+			})
+		])
 	}
 
 	async deleteByToken(token: string): Promise<void> {
