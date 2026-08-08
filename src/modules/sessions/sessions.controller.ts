@@ -16,6 +16,7 @@ import { PARAMS } from '../../common/constants/param.constants'
 import { SessionOwnerGuard } from '../../common/guards/session-owner.guard'
 import { SessionAgeGuard } from '../../common/guards/session-age.guard'
 import { UpdateFcmTokenDto } from './dto/update-fcm-token.dto'
+import { UpdateInstallationIdDto } from './dto/update-installation-id.dto'
 
 @Controller('sessions')
 export class SessionsController {
@@ -26,6 +27,15 @@ export class SessionsController {
 		return this.sessionsService.getAll(userId, token)
 	}
 
+	@Patch('installation-id')
+	updateInstallationId(@CurrentUserToken() token: string, @Body() dto: UpdateInstallationIdDto) {
+		return this.sessionsService.updateInstallationId(token, dto.installationId)
+	}
+
+	/**
+	 * Устаревший эндпоинт для клиентов, которые ещё присылают registration token.
+	 * Убрать после того, как версии до 1.19.0 перестанут ходить в API.
+	 */
 	@Patch('fcm-token')
 	updateFcmToken(@CurrentUserToken() token: string, @Body() dto: UpdateFcmTokenDto) {
 		return this.sessionsService.updateFcmToken(token, dto.fcmToken)
