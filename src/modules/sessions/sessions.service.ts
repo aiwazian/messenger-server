@@ -49,7 +49,6 @@ export class SessionsService {
 			data: {
 				userId: dto.userId,
 				token: dto.token,
-				fcmToken: dto.fcmToken,
 				deviceModel: dto.deviceModel,
 				osName: dto.osName,
 				osVersion: dto.osVersion,
@@ -73,7 +72,17 @@ export class SessionsService {
 		await this.realtimeGateway.kickUserByToken(token)
 	}
 
-	async updateFcmToken(token: string, fcmToken: string): Promise<void> {
+	/**
+	 * Привязывает Firebase Installation ID к сессии: в новом API FCM адресатом
+	 * уведомления является именно он.
+	 *
+	 * FID один на устройство, а уведомления должен получать только активный аккаунт,
+	 * поэтому FID живёт ровно в одной сессии: при переключении аккаунта клиент
+	 * присылает его заново, и у остальных сессий того же устройства он снимается.
+	 * Оба запроса идут одной транзакцией, иначе между ними возможно состояние,
+	 * в котором устройство не получает уведомлений вовсе.
+	 */
+	async updateInstallationId(token: string, installationId: string): Promise<void> {
 		const session = await this.prisma.session.findUnique({
 			where: { token }
 		})
@@ -82,10 +91,16 @@ export class SessionsService {
 			throw new NotFoundException(`Session not found`)
 		}
 
-		await this.prisma.session.update({
-			where: { token },
-			data: { fcmToken }
-		})
+		await this.prisma.$transaction([
+			this.prisma.session.updateMany({
+				where: { installationId, NOT: { token } },
+				data: { installationId: null }
+			}),
+			this.prisma.session.update({
+				where: { token },
+				data: { installationId }
+			})
+		])
 	}
 
 	async deleteByToken(token: string): Promise<void> {
