@@ -49,7 +49,6 @@ export class SessionsService {
 			data: {
 				userId: dto.userId,
 				token: dto.token,
-				fcmToken: dto.fcmToken,
 				deviceModel: dto.deviceModel,
 				osName: dto.osName,
 				osVersion: dto.osVersion,
@@ -75,12 +74,11 @@ export class SessionsService {
 
 	/**
 	 * Привязывает Firebase Installation ID к сессии: в новом API FCM адресатом
-	 * уведомления является именно он, а не registration token.
+	 * уведомления является именно он.
 	 *
-	 * Тот же FID мог остаться привязанным к старой сессии этого же устройства
-	 * (повторный вход, смена аккаунта), поэтому старые ссылки на него снимаем:
-	 * иначе одно уведомление уйдёт на устройство дважды или не тому аккаунту.
-	 * Устаревший fcmToken этой сессии после перехода на FID больше не нужен.
+	 * FID один на устройство, поэтому у двух аккаунтов на одном телефоне он совпадёт.
+	 * Отбирать его у других сессий нельзя: неактивный аккаунт перестал бы
+	 * получать уведомления. Дублирование в рамках одного аккаунта снимает PushService.
 	 */
 	async updateInstallationId(token: string, installationId: string): Promise<void> {
 		const session = await this.prisma.session.findUnique({
@@ -91,30 +89,9 @@ export class SessionsService {
 			throw new NotFoundException(`Session not found`)
 		}
 
-		await this.prisma.$transaction([
-			this.prisma.session.updateMany({
-				where: { installationId, NOT: { token } },
-				data: { installationId: null }
-			}),
-			this.prisma.session.update({
-				where: { token },
-				data: { installationId, fcmToken: null }
-			})
-		])
-	}
-
-	async updateFcmToken(token: string, fcmToken: string): Promise<void> {
-		const session = await this.prisma.session.findUnique({
-			where: { token }
-		})
-
-		if (!session) {
-			throw new NotFoundException(`Session not found`)
-		}
-
 		await this.prisma.session.update({
 			where: { token },
-			data: { fcmToken }
+			data: { installationId }
 		})
 	}
 

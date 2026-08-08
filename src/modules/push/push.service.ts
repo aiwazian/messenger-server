@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { App, cert, deleteApp, initializeApp } from 'firebase-admin/app'
-import { BatchResponse, getMessaging, Messaging } from 'firebase-admin/messaging'
+import { getMessaging, Messaging } from 'firebase-admin/messaging'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
 import { PushNotificationPayload } from './push.types'
@@ -9,13 +9,11 @@ import { PushNotificationPayload } from './push.types'
 const FCM_BATCH_SIZE = 500
 
 /**
- * Коды, после которых адресата нужно убрать из базы: установка удалена
- * или больше не зарегистрирована. Первый код — аналог второго для FID.
+ * Коды, после которых установку нужно убрать из базы: приложение удалено
+ * или его данные очищены, и этот FID больше никому не принадлежит.
  */
-const STALE_RECIPIENT_ERROR_CODES = [
+const STALE_INSTALLATION_ID_ERROR_CODES = [
 	'messaging/installation-id-not-registered',
-	'messaging/registration-token-not-registered',
-	'messaging/invalid-registration-token',
 	'messaging/invalid-argument'
 ]
 
@@ -64,68 +62,44 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 			where: {
 				userId: { in: userIds }
 			},
-			select: { installationId: true, fcmToken: true }
+			select: { installationId: true }
 		})
 
-		const installationIds = this.unique(sessions.map((s) => s.installationId))
-
-		// registration token берём только у сессий без FID: если у сессии есть оба
-		// значения, отправка по двум адресам даст два уведомления на одном устройстве.
-		const legacyTokens = this.unique(
-			sessions.filter((s) => s.installationId === null).map((s) => s.fcmToken)
+		// Сессий на одном устройстве может быть несколько, а FID у них один:
+		// без Set одно уведомление пришло бы на телефон несколько раз.
+		const installationIds = Array.from(
+			new Set(sessions.map((s) => s.installationId).filter((id): id is string => id !== null))
 		)
 
-		if (installationIds.length === 0 && legacyTokens.length === 0) return
+		if (installationIds.length === 0) return
 
-		const data = {
-			title: payload.title,
-			body: payload.body,
-			chatId: payload.chatId
-		}
+		const staleInstallationIds: string[] = []
 
-		const staleInstallationIds = await this.sendBatched(installationIds, (batch) =>
-			messaging.sendEachForMulticast({
-				fids: batch,
-				android: { priority: 'high' },
-				data: data
-			})
-		)
-
-		const staleTokens = await this.sendBatched(legacyTokens, (batch) =>
-			messaging.sendEachForMulticast({
-				tokens: batch,
-				android: { priority: 'high' },
-				data: data
-			})
-		)
-
-		await this.clearStaleRecipients(staleInstallationIds, staleTokens)
-	}
-
-	/** Отправляет пачками и возвращает адресатов, которых FCM больше не знает. */
-	private async sendBatched(
-		recipients: string[],
-		send: (batch: string[]) => Promise<BatchResponse>
-	): Promise<string[]> {
-		const stale: string[] = []
-
-		for (let offset = 0; offset < recipients.length; offset += FCM_BATCH_SIZE) {
-			const batch = recipients.slice(offset, offset + FCM_BATCH_SIZE)
+		for (let offset = 0; offset < installationIds.length; offset += FCM_BATCH_SIZE) {
+			const batch = installationIds.slice(offset, offset + FCM_BATCH_SIZE)
 
 			try {
-				const response = await send(batch)
+				const response = await messaging.sendEachForMulticast({
+					fids: batch,
+					android: { priority: 'high' },
+					data: {
+						title: payload.title,
+						body: payload.body,
+						chatId: payload.chatId
+					}
+				})
 
 				response.responses.forEach((result, index) => {
 					if (result.success) return
 
-					const recipient = batch[index]
+					const installationId = batch[index]
 					const code = result.error?.code ?? 'unknown'
 
-					if (STALE_RECIPIENT_ERROR_CODES.includes(code)) {
-						stale.push(recipient)
+					if (STALE_INSTALLATION_ID_ERROR_CODES.includes(code)) {
+						staleInstallationIds.push(installationId)
 					}
 
-					this.logger.warn(`Failed to send push notification to ${recipient}: ${code}`)
+					this.logger.warn(`Failed to send push notification: ${code}`)
 				})
 
 				this.logger.debug(
@@ -136,33 +110,19 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 			}
 		}
 
-		return stale
+		await this.clearStaleInstallationIds(staleInstallationIds)
 	}
 
-	private async clearStaleRecipients(
-		installationIds: string[],
-		tokens: string[]
-	): Promise<void> {
+	private async clearStaleInstallationIds(installationIds: string[]): Promise<void> {
+		if (installationIds.length === 0) return
+
 		try {
-			if (installationIds.length > 0) {
-				await this.prisma.session.updateMany({
-					where: { installationId: { in: installationIds } },
-					data: { installationId: null }
-				})
-			}
-
-			if (tokens.length > 0) {
-				await this.prisma.session.updateMany({
-					where: { fcmToken: { in: tokens } },
-					data: { fcmToken: null }
-				})
-			}
+			await this.prisma.session.updateMany({
+				where: { installationId: { in: installationIds } },
+				data: { installationId: null }
+			})
 		} catch (e) {
-			this.logger.error('Error clearing stale push recipients', e)
+			this.logger.error('Error clearing stale installation ids', e)
 		}
-	}
-
-	private unique(values: (string | null)[]): string[] {
-		return Array.from(new Set(values.filter((v): v is string => v !== null)))
 	}
 }
