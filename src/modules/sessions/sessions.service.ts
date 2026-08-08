@@ -77,7 +77,7 @@ export class SessionsService {
 	 * уведомления является именно он.
 	 *
 	 * FID один на устройство, а уведомления должен получать только активный аккаунт,
-	 * поэтому FID живёт ровно в одной сессии: при переключении аккаунта клиент
+	 * поэтому FIDживёт ровно в одной сессии: при переключении аккаунта клиент
 	 * присылает его заново, и у остальных сессий того же устройства он снимается.
 	 * Оба запроса идут одной транзакцией, иначе между ними возможно состояние,
 	 * в котором устройство не получает уведомлений вовсе.
@@ -125,13 +125,7 @@ export class SessionsService {
 		})
 
 		if (excludeToken) {
-			const userSockets = await (this.realtimeGateway.server as any).fetchSockets()
-			for (const s of userSockets) {
-				if (s.data.userId === userId && s.data.token !== excludeToken) {
-					s.emit('auth:error')
-					s.disconnect(true)
-				}
-			}
+			await this.realtimeGateway.kickUserExceptToken(userId, excludeToken)
 		} else {
 			this.realtimeGateway.kickUser(userId)
 		}

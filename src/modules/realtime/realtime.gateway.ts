@@ -163,9 +163,17 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		}
 	}
 
+	/*
+	 * Об отключённой сессии клиент должен узнать сразу, а не по ответу 401 на
+	 * следующем запросе: на устройстве может быть другой аккаунт, и приложение
+	 * переключается на него, не показывая экран авторизации.
+	 *
+	 * Событий два: auth:error слушают старые сборки, Unauthorized — актуальные.
+	 */
 	kickUser(userId: UserId): void {
 		const room = `user:${userId.toString()}`
 		this.server.to(room).emit(SocketEvent.AUTH_ERROR)
+		this.server.to(room).emit(SocketEvent.UNAUTHORIZED)
 		this.server.in(room).disconnectSockets(true)
 		this.logger.log(`Kicked user ${userId.toString()} (all sessions)`)
 	}
@@ -175,10 +183,32 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		for (const socket of sockets) {
 			if (socket.data.token === token) {
 				socket.emit(SocketEvent.AUTH_ERROR)
+				socket.emit(SocketEvent.UNAUTHORIZED)
 				socket.disconnect(true)
 				this.logger.log(`Kicked session with token ${token.substring(0, 10)}...`)
 			}
 		}
+	}
+
+	/**
+	 * Отключает все сессии пользователя, кроме текущей: так работает завершение
+	 * остальных сеансов из настроек, где сам инициатор должен остаться в аккаунте.
+	 */
+	async kickUserExceptToken(userId: UserId, excludeToken: string): Promise<void> {
+		const room = `user:${userId.toString()}`
+		const sockets = await this.server.in(room).fetchSockets()
+
+		for (const socket of sockets) {
+			if (socket.data.token === excludeToken) {
+				continue
+			}
+
+			socket.emit(SocketEvent.AUTH_ERROR)
+			socket.emit(SocketEvent.UNAUTHORIZED)
+			socket.disconnect(true)
+		}
+
+		this.logger.log(`Kicked other sessions of user ${userId.toString()}`)
 	}
 
 	sendToUser(userId: UserId, event: SocketEventType, message: any, excludeId?: string): void {
