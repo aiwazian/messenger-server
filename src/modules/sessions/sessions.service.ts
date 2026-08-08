@@ -73,6 +73,36 @@ export class SessionsService {
 		await this.realtimeGateway.kickUserByToken(token)
 	}
 
+	/**
+	 * Привязывает Firebase Installation ID к сессии: в новом API FCM адресатом
+	 * уведомления является именно он, а не registration token.
+	 *
+	 * Тот же FID мог остаться привязанным к старой сессии этого же устройства
+	 * (повторный вход, смена аккаунта), поэтому старые ссылки на него снимаем:
+	 * иначе одно уведомление уйдёт на устройство дважды или не тому аккаунту.
+	 * Устаревший fcmToken этой сессии после перехода на FID больше не нужен.
+	 */
+	async updateInstallationId(token: string, installationId: string): Promise<void> {
+		const session = await this.prisma.session.findUnique({
+			where: { token }
+		})
+
+		if (!session) {
+			throw new NotFoundException(`Session not found`)
+		}
+
+		await this.prisma.$transaction([
+			this.prisma.session.updateMany({
+				where: { installationId, NOT: { token } },
+				data: { installationId: null }
+			}),
+			this.prisma.session.update({
+				where: { token },
+				data: { installationId, fcmToken: null }
+			})
+		])
+	}
+
 	async updateFcmToken(token: string, fcmToken: string): Promise<void> {
 		const session = await this.prisma.session.findUnique({
 			where: { token }
