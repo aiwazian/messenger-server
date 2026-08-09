@@ -13,7 +13,6 @@ import { AuthResponseDto } from './dto/auth-response.dto'
 import { plainToInstance } from 'class-transformer'
 import { LoginAvailableDto } from './dto/check-login.dto'
 import { PrismaService } from '../../providers/prisma/prisma.service'
-import { JwtAuthService } from '../security/jwt.service'
 import { hashPassword, verifyPassword } from '../../common/utils/password.util'
 import { UserId } from '../../common/types/user-id.type'
 import { generateUserId } from '../../common/utils/id-generator.util'
@@ -29,7 +28,6 @@ export class AuthService {
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly sessionService: SessionsService,
-		private readonly jwtAuth: JwtAuthService,
 		private readonly emailVerificationStore: EmailVerificationStore,
 		private readonly mailService: MailService
 	) {}
@@ -61,12 +59,9 @@ export class AuthService {
 
 		const userId = UserId(user.id)
 
-		const tokens = this.jwtAuth.generateTokenPair(userId)
-
-		const session = await this.sessionService.create(
+		const { session, token } = await this.sessionService.create(
 			plainToInstance(CreateSessionDto, {
 				userId: userId,
-				token: tokens.accessToken,
 				deviceModel: dto.deviceModel,
 				osVersion: dto.osVersion,
 				osName: dto.osName
@@ -74,7 +69,7 @@ export class AuthService {
 		)
 
 		return plainToInstance(AuthResponseDto, {
-			token: tokens.accessToken,
+			token: token,
 			userId: userId,
 			createdAt: session.createdAt
 		})
@@ -104,12 +99,9 @@ export class AuthService {
 				}
 			})
 
-			const tokens = this.jwtAuth.generateTokenPair(UserId(user.id))
-
-			const session = await this.sessionService.create(
+			const { session, token } = await this.sessionService.create(
 				plainToInstance(CreateSessionDto, {
 					userId: user.id,
-					token: tokens.accessToken,
 					deviceModel: dto.deviceModel,
 					osVersion: dto.osVersion,
 					osName: dto.osName
@@ -117,7 +109,7 @@ export class AuthService {
 			)
 
 			return plainToInstance(AuthResponseDto, {
-				token: tokens.accessToken,
+				token: token,
 				userId: userId,
 				createdAt: session.createdAt
 			})
@@ -184,20 +176,25 @@ export class AuthService {
 		})
 
 		const userId = UserId(user.id)
-		const tokens = this.jwtAuth.generateTokenPair(userId)
 
-		const session = await this.sessionService.create(
+		/*
+		 * Смена пароля завершает все прежние сессии: токен бессрочный, поэтому
+		 * тот, из-за кого пароль пришлось сбрасывать, иначе остался бы в аккаунте
+		 * со своим токеном.
+		 */
+		await this.sessionService.deleteAll(userId)
+
+		const { session, token } = await this.sessionService.create(
 			plainToInstance(CreateSessionDto, {
 				userId: userId,
-				token: tokens.accessToken,
-				deviceModel: 'Password Reset',
-				osVersion: '1.0',
-				osName: 'Unknown'
+				deviceModel: dto.deviceModel ?? 'Unknown',
+				osVersion: dto.osVersion ?? 'Unknown',
+				osName: dto.osName ?? 'Unknown'
 			})
 		)
 
 		return plainToInstance(AuthResponseDto, {
-			token: tokens.accessToken,
+			token: token,
 			userId: userId,
 			createdAt: session.createdAt
 		})

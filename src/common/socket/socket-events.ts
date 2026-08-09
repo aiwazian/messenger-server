@@ -16,7 +16,6 @@ export const SocketEvent = {
 
 	USER_ONLINE: 'user:online',
 	USER_OFFLINE: 'user:offline',
-	AUTH_ERROR: 'auth:error',
 	UNAUTHORIZED: 'Unauthorized',
 
 	CHAT_REMOVED: 'chat:removed',

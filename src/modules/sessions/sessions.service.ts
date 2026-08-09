@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException, Inject, forwardRef } from '@nestjs/common'
+import { Injectable, Logger, NotFoundException, Inject, forwardRef } from '@nestjs/common'
+import { Cron, CronExpression } from '@nestjs/schedule'
 import { CreateSessionDto } from './dto/create-session.dto'
 import { plainToInstance } from 'class-transformer'
 import { SessionResponseDto } from './dto/session-response.dto'
@@ -6,9 +7,25 @@ import { RealtimeGateway } from '../realtime/realtime.gateway'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
 import { SessionId } from '../../common/types/session-id.type'
+import {
+	generateSessionToken,
+	hashSessionToken,
+	isSessionTokenFormat
+} from '../../common/utils/token.util'
+
+/**
+ * Через столько дней без активности сессия удаляется.
+ *
+ * Бессрочный токен сам не истекает, поэтому забытая сессия иначе остаётся
+ * рабочей навсегда, а таблица растёт без предела. Год отсчитывается от
+ * последнего подключения, поэтому живых пользователей это не касается.
+ */
+const SESSION_INACTIVITY_LIMIT_DAYS = 365
 
 @Injectable()
 export class SessionsService {
+	private readonly logger = new Logger(SessionsService.name)
+
 	constructor(
 		private readonly prisma: PrismaService,
 		@Inject(forwardRef(() => RealtimeGateway))
@@ -16,46 +33,67 @@ export class SessionsService {
 	) {}
 
 	async getAll(userId: UserId, currentToken?: string): Promise<SessionResponseDto[]> {
+		const currentTokenHash = currentToken ? hashSessionToken(currentToken) : undefined
+
 		const sessions = await this.prisma.session.findMany({
 			where: {
 				userId: userId
 			}
 		})
+
 		return sessions.map((session) => {
 			const dto = plainToInstance(SessionResponseDto, session)
-			if (currentToken && session.token === currentToken) {
+			if (currentTokenHash && session.tokenHash === currentTokenHash) {
 				dto.isCurrent = true
 			}
 			return dto
 		})
 	}
 
-	async findByToken(token: string): Promise<SessionResponseDto> {
-		const session = await this.prisma.session.findFirst({
-			where: { token: token }
+	/**
+	 * Проверка токена целиком: совпал хэш с живой сессией — токен действителен.
+	 *
+	 * Формат проверяется до запроса, чтобы мусор и токены прежнего формата не
+	 * доходили до базы.
+	 */
+	async findByToken(token: string): Promise<SessionResponseDto | null> {
+		if (!isSessionTokenFormat(token)) {
+			return null
+		}
+
+		const session = await this.prisma.session.findUnique({
+			where: { tokenHash: hashSessionToken(token) }
 		})
+
+		if (!session) {
+			return null
+		}
+
 		return plainToInstance(SessionResponseDto, session)
 	}
 
-	async findByTokenAndUserId(token: string, id: UserId): Promise<SessionResponseDto> {
-		const session = await this.prisma.session.findFirst({
-			where: { token: token, userId: id }
-		})
-		return plainToInstance(SessionResponseDto, session)
-	}
+	/**
+	 * Создаёт сессию и возвращает токен вместе с ней.
+	 *
+	 * Токен генерируется здесь и в открытом виде существует ровно один раз — в
+	 * ответе на вход. В базу уходит только хэш, поэтому показать пользователю
+	 * токен ещё раз невозможно.
+	 */
+	async create(dto: CreateSessionDto): Promise<{ session: SessionResponseDto; token: string }> {
+		const token = generateSessionToken()
 
-	async create(dto: CreateSessionDto): Promise<SessionResponseDto> {
 		const session = await this.prisma.session.create({
 			data: {
 				userId: dto.userId,
-				token: dto.token,
+				tokenHash: hashSessionToken(token),
 				deviceModel: dto.deviceModel,
 				osName: dto.osName,
 				osVersion: dto.osVersion,
 				createdAt: Date.now()
 			}
 		})
-		return plainToInstance(SessionResponseDto, session)
+
+		return { session: plainToInstance(SessionResponseDto, session), token: token }
 	}
 
 	async deleteById(id: number): Promise<void> {
@@ -67,9 +105,8 @@ export class SessionsService {
 			throw new NotFoundException(`Session not found`)
 		}
 
-		const token = session.token
 		await this.prisma.session.delete({ where: { id: id } })
-		await this.realtimeGateway.kickUserByToken(token)
+		await this.realtimeGateway.kickSession(session.id)
 	}
 
 	/**
@@ -83,9 +120,7 @@ export class SessionsService {
 	 * в котором устройство не получает уведомлений вовсе.
 	 */
 	async updateInstallationId(token: string, installationId: string): Promise<void> {
-		const session = await this.prisma.session.findUnique({
-			where: { token }
-		})
+		const session = await this.findByToken(token)
 
 		if (!session) {
 			throw new NotFoundException(`Session not found`)
@@ -93,45 +128,39 @@ export class SessionsService {
 
 		await this.prisma.$transaction([
 			this.prisma.session.updateMany({
-				where: { installationId, NOT: { token } },
+				where: { installationId, NOT: { id: session.id } },
 				data: { installationId: null }
 			}),
 			this.prisma.session.update({
-				where: { token },
+				where: { id: session.id },
 				data: { installationId }
 			})
 		])
 	}
 
 	async deleteByToken(token: string): Promise<void> {
-		const session = await this.prisma.session.findUnique({
-			where: { token }
-		})
+		const session = await this.findByToken(token)
 
 		if (!session) {
 			throw new NotFoundException(`Session not found`)
 		}
 
-		await this.prisma.session.delete({ where: { token } })
-		await this.realtimeGateway.kickUserByToken(token)
+		await this.prisma.session.delete({ where: { id: session.id } })
+		await this.realtimeGateway.kickSession(session.id)
 	}
 
 	async deleteAll(userId: UserId, excludeToken?: string): Promise<void> {
+		const current = excludeToken ? await this.findByToken(excludeToken) : null
+
 		await this.prisma.session.deleteMany({
 			where: {
 				userId: userId,
-				NOT: excludeToken ? { token: excludeToken } : undefined
+				NOT: current ? { id: current.id } : undefined
 			}
 		})
 
-		if (excludeToken) {
-			const userSockets = await (this.realtimeGateway.server as any).fetchSockets()
-			for (const s of userSockets) {
-				if (s.data.userId === userId && s.data.token !== excludeToken) {
-					s.emit('auth:error')
-					s.disconnect(true)
-				}
-			}
+		if (current) {
+			await this.realtimeGateway.kickUserExceptSession(userId, current.id)
 		} else {
 			this.realtimeGateway.kickUser(userId)
 		}
@@ -143,5 +172,26 @@ export class SessionsService {
 		})
 
 		return count > 0
+	}
+
+	/**
+	 * Убирает сессии, которых давно не видно.
+	 *
+	 * lastSeen обновляется на каждом подключении сокета; у сессий, ни разу не
+	 * подключавшихся, вместо него берётся дата создания.
+	 */
+	@Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+	async deleteInactiveSessions() {
+		const cutoff = BigInt(Date.now() - SESSION_INACTIVITY_LIMIT_DAYS * 24 * 60 * 60 * 1000)
+
+		const { count } = await this.prisma.session.deleteMany({
+			where: {
+				OR: [{ lastSeen: { lt: cutoff } }, { lastSeen: null, createdAt: { lt: cutoff } }]
+			}
+		})
+
+		if (count > 0) {
+			this.logger.log(`Deleted ${count} inactive sessions`)
+		}
 	}
 }

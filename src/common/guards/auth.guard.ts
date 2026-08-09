@@ -1,16 +1,14 @@
 import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common'
-import { TokenPayload } from '../types/token-payload.type'
 import { Reflector } from '@nestjs/core'
-import { JwtAuthService } from '../../modules/security/jwt.service'
 import { SessionsService } from '../../modules/sessions/sessions.service'
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator'
+import { UserId } from '../types/user-id.type'
 
 @Injectable()
 export class AuthGuard implements CanActivate {
 	constructor(
 		private readonly reflector: Reflector,
-		private readonly sessionService: SessionsService,
-		private readonly jwtService: JwtAuthService
+		private readonly sessionService: SessionsService
 	) {}
 
 	async canActivate(context: ExecutionContext) {
@@ -37,19 +35,17 @@ export class AuthGuard implements CanActivate {
 			}
 		}
 
-		let payload: TokenPayload
-		try {
-			payload = this.jwtService.verifyToken(token)
-		} catch (err) {
-			throw new UnauthorizedException('Invalid or expired token')
-		}
-
-		const session = await this.sessionService.findByTokenAndUserId(token, payload.userId)
+		/*
+		 * Токен ничего не доказывает сам по себе: единственный источник истины —
+		 * таблица сессий. Удалённая на сервере сессия сразу даёт 401, отдельной
+		 * проверки срока действия нет — у токена его нет.
+		 */
+		const session = await this.sessionService.findByToken(token)
 		if (!session) {
 			throw new UnauthorizedException('Invalid token')
 		}
 
-		request.user = { id: payload.userId, token: token, session: session }
+		request.user = { id: UserId(session.userId), token: token, session: session }
 
 		return true
 	}

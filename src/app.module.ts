@@ -19,7 +19,6 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
 import { APP_GUARD } from '@nestjs/core'
 import { ScheduleModule } from '@nestjs/schedule'
 import { AuthGuard } from './common/guards/auth.guard'
-import { JwtAuthModule } from './modules/security/jwt.module'
 import { ChatReadStateModule } from './modules/chat-read-state/chat-read-state.module'
 
 @Module({
@@ -45,7 +44,6 @@ import { ChatReadStateModule } from './modules/chat-read-state/chat-read-state.m
 		SearchModule,
 		PushModule,
 		StorageModule,
-		JwtAuthModule,
 		ChatReadStateModule
 	],
 	controllers: [AppController],

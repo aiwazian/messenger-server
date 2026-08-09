@@ -118,7 +118,13 @@ model UserPhoto {
 model Session {
   id     Int    @id @default(autoincrement())
   userId BigInt
-  token  String @unique
+
+  /// SHA-256 токена сессии в hex: сам токен на сервере не хранится.
+  ///
+  /// Токен бессрочный и лежит на устройстве, поэтому доступ к базе не должен
+  /// давать возможность войти в аккаунт: восстановить токен из хэша нельзя.
+  /// Совпадение хэша и есть проверка подлинности, отдельной подписи нет.
+  tokenHash String @unique
 
   /// Firebase Installation ID устройства: адресат пуша в новом API FCM.
   ///
@@ -135,7 +141,6 @@ model Session {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, token])
   @@index([userId])
   @@index([installationId])
 }
