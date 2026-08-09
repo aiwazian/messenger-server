@@ -52,8 +52,13 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 					return next(new Error('Unauthorized'))
 				}
 
+				/*
+				 * Дальше сокет живёт с идентификатором сессии, а не с токеном: он
+				 * нужен только для этой проверки, и хранить секрет в памяти сокета
+				 * незачем.
+				 */
 				socket.data.userId = session.userId
-				socket.data.token = token
+				socket.data.sessionId = session.id
 				next()
 			} catch (error: any) {
 				this.logger.error(`Auth error in socket middleware: ${error.message}`)
@@ -66,13 +71,13 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 	async handleConnection(client: Socket, ...args: any[]) {
 		try {
 			const userIdRaw = client.data.userId
-			const token = client.data.token as string | undefined
+			const sessionId = client.data.sessionId as number | undefined
 			if (!userIdRaw) return
 
-			if (token) {
+			if (sessionId) {
 				try {
 					await this.prisma.session.update({
-						where: { token },
+						where: { id: sessionId },
 						data: { lastSeen: BigInt(Date.now()) }
 					})
 				} catch (error: any) {
@@ -135,13 +140,13 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 	async handleDisconnect(client: Socket) {
 		this.logger.debug(`Client disconnected: ${client.id}`)
 		const userId = client.data.userId as UserId | undefined
-		const token = client.data.token as string | undefined
+		const sessionId = client.data.sessionId as number | undefined
 		if (!userId) return
 
-		if (token) {
+		if (sessionId) {
 			try {
 				await this.prisma.session.update({
-					where: { token },
+					where: { id: sessionId },
 					data: { lastSeen: BigInt(Date.now()) }
 				})
 			} catch (error: any) {
@@ -175,13 +180,13 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		this.logger.log(`Kicked user ${userId.toString()} (all sessions)`)
 	}
 
-	async kickUserByToken(token: string): Promise<void> {
+	async kickSession(sessionId: number): Promise<void> {
 		const sockets = await this.server.fetchSockets()
 		for (const socket of sockets) {
-			if (socket.data.token === token) {
+			if (socket.data.sessionId === sessionId) {
 				socket.emit(SocketEvent.UNAUTHORIZED)
 				socket.disconnect(true)
-				this.logger.log(`Kicked session with token ${token.substring(0, 10)}...`)
+				this.logger.log(`Kicked session ${sessionId}`)
 			}
 		}
 	}
@@ -190,12 +195,12 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 	 * Отключает все сессии пользователя, кроме текущей: так работает завершение
 	 * остальных сеансов из настроек, где сам инициатор должен остаться в аккаунте.
 	 */
-	async kickUserExceptToken(userId: UserId, excludeToken: string): Promise<void> {
+	async kickUserExceptSession(userId: UserId, excludeSessionId: number): Promise<void> {
 		const room = `user:${userId.toString()}`
 		const sockets = await this.server.in(room).fetchSockets()
 
 		for (const socket of sockets) {
-			if (socket.data.token === excludeToken) {
+			if (socket.data.sessionId === excludeSessionId) {
 				continue
 			}
 
