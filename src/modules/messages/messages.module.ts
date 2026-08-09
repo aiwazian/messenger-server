@@ -1,7 +1,6 @@
 import { forwardRef, Module } from '@nestjs/common'
 import { MessagesService } from './messages.service'
 import { MessagesController } from './messages.controller'
-import { JwtAuthModule } from '../security/jwt.module'
 import { SessionsModule } from '../sessions/sessions.module'
 import { PushModule } from '../push/push.module'
 import { ChatsModule } from '../chats/chats.module'
@@ -16,7 +15,6 @@ import { EncryptionModule } from '../encryption/encryption.module'
 
 @Module({
 	imports: [
-		JwtAuthModule,
 		forwardRef(() => SessionsModule),
 		PushModule,
 		forwardRef(() => ChatsModule),
