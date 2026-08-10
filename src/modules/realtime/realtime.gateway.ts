@@ -19,7 +19,10 @@ import { ChatId } from '../../common/types/chat-id.type'
 import { PrivacyRule } from '../../generated/prisma/enums'
 import { ChatsService } from '../chats/chats.service'
 
-@WebSocketGateway()
+@WebSocketGateway({
+	maxHttpBufferSize: 1e6,
+	pingTimeout: 30000,
+})
 export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
 	private readonly logger = new Logger(RealtimeGateway.name)
 	private readonly onlineUsers = new Set<string>()
@@ -33,7 +36,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		@Inject(forwardRef(() => ChatsService))
 		private readonly chatsService: ChatsService,
 		private readonly prisma: PrismaService
-	) {}
+	) { }
 
 	afterInit(server: Server) {
 		server.use(async (socket, next) => {
