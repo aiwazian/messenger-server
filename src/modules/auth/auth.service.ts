@@ -141,7 +141,7 @@ export class AuthService {
 			throw new BadRequestException('User has no email')
 		}
 
-		const code = this.emailVerificationStore.generateCode(user.id, user.email)
+		const code = await this.emailVerificationStore.generateCode(user.id, user.email)
 		await this.mailService.sendPasswordResetEmail(user.email, code)
 	}
 
@@ -154,7 +154,7 @@ export class AuthService {
 			throw new NotFoundException('User not found')
 		}
 
-		const result = this.emailVerificationStore.validate(user.id, dto.code)
+		const result = await this.emailVerificationStore.validate(user.id, dto.code)
 
 		return { valid: result.valid }
 	}
@@ -168,7 +168,7 @@ export class AuthService {
 			throw new NotFoundException('User not found')
 		}
 
-		const result = this.emailVerificationStore.consume(user.id, dto.code)
+		const result = await this.emailVerificationStore.consume(user.id, dto.code)
 		if (!result.valid) {
 			throw new UnauthorizedException('Invalid or expired code')
 		}

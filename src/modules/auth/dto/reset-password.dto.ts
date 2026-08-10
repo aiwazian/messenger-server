@@ -1,5 +1,19 @@
-import { IsNotEmpty, IsOptional, IsString, Length, MinLength } from 'class-validator'
+import {
+	IsNotEmpty,
+	IsOptional,
+	IsString,
+	Length,
+	Matches,
+	MaxLength,
+	MinLength
+} from 'class-validator'
 import { Trim } from '../../../common/decorators/trim.decorator'
+import {
+	PASSWORD_MAX_LENGTH,
+	PASSWORD_MIN_LENGTH,
+	PASSWORD_REGEX,
+	PASSWORD_REGEX_MESSAGE
+} from '../../../common/constants/password.constants'
 
 export class ResetPasswordDto {
 	@IsString()
@@ -17,7 +31,11 @@ export class ResetPasswordDto {
 	@IsString()
 	@Trim()
 	@IsNotEmpty()
-	@MinLength(5)
+	@MinLength(PASSWORD_MIN_LENGTH)
+	@MaxLength(PASSWORD_MAX_LENGTH)
+	@Matches(PASSWORD_REGEX, {
+		message: PASSWORD_REGEX_MESSAGE
+	})
 	newPassword: string
 
 	/*

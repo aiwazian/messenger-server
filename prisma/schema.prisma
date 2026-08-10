@@ -66,7 +66,11 @@ model User {
   login       String  @unique
   password    String
   dateOfBirth BigInt?
-  email       String?
+
+  /// Почта используется для восстановления доступа, поэтому она уникальна:
+  /// иначе один адрес позволил бы сбрасывать пароль сразу нескольким аккаунтам.
+  /// В Postgres уникальный индекс не мешает нескольким NULL: почта необязательна.
+  email       String? @unique
 
   profileChannelId BigInt?
   profileChannel   Channel? @relation("UserProfileChannel", fields: [profileChannelId], references: [id], onDelete: SetNull)
