@@ -5,17 +5,19 @@ import { ConfigService } from '@nestjs/config'
 import { BigIntInterceptor } from './common/interceptors/big-int.interceptor'
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter'
 import helmet from 'helmet'
+import { NestExpressApplication } from '@nestjs/platform-express'
 
 async function bootstrap() {
 	const logger = new Logger('Bootstrap')
 	const isProd = process.env.NODE_ENV === 'production'
-	const app = await NestFactory.create(AppModule, {
+	const app = await NestFactory.create<NestExpressApplication>(AppModule, {
 		logger: isProd ? ['error', 'warn'] : ['error', 'warn', 'log', 'debug', 'verbose']
 	})
 	const configService = app.get(ConfigService)
 	const httpAdapter = app.get(HttpAdapterHost)
 
 	app.use(helmet())
+	app.set('trust proxy', 'loopback, uniquelocal')
 	app.setGlobalPrefix('api')
 	app.useGlobalInterceptors(new BigIntInterceptor())
 	app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)))
