@@ -131,9 +131,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
 		const prev = client.data.activeChatId as ChatId | undefined
 		if (prev && prev !== chatId) {
-			client.leave(`chat:${prev.toString()}`)
+			await client.leave(`chat:${prev.toString()}`)
 		}
-		client.join(`chat:${chatId.toString()}`)
+		await client.join(`chat:${chatId.toString()}`)
 		client.data.activeChatId = chatId
 	}
 

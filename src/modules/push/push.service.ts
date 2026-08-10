@@ -96,9 +96,7 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 						this.logger.warn(`Failed to send push notification: ${code}`)
 					})
 
-					this.logger.debug(
-						`Sent ${response.successCount} of ${batch.length} push notifications`
-					)
+					this.logger.debug(`Sent ${response.successCount} of ${batch.length} push notifications`)
 				} catch (e) {
 					this.logger.error('Error sending push notifications', e)
 				}

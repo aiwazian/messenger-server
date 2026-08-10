@@ -212,10 +212,4 @@ export class MessagesController {
 	) {
 		return this.messagesService.clearHistory(userId, chatId, dto.clearForRecipient)
 	}
-
-	@Post('voice')
-	sendVoiceMessage() {}
-
-	@Post('reaction')
-	sendReaction() {}
 }

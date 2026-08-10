@@ -2,6 +2,7 @@ import {
 	BadRequestException,
 	ConflictException,
 	Injectable,
+	InternalServerErrorException,
 	NotFoundException,
 	UnauthorizedException
 } from '@nestjs/common'
@@ -116,7 +117,11 @@ export class AuthService {
 		} catch (error) {
 			if (error instanceof Prisma.PrismaClientKnownRequestError) {
 				if (error.code === 'P2002') {
-					throw new ConflictException('User with this login already exists')
+					const target = (error.meta?.target as string[]) ?? []
+					if (target.includes('login')) {
+						throw new ConflictException('Login already exists')
+					}
+					throw new InternalServerErrorException('ID collision, retry')
 				}
 			}
 			throw error

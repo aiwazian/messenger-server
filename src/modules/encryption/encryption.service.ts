@@ -54,6 +54,6 @@ export class EncryptionService {
 		})
 		decipher.setAuthTag(authTag)
 
-		return decipher.update(data) + decipher.final('utf8')
+		return decipher.update(data, undefined, 'utf8') + decipher.final('utf8')
 	}
 }

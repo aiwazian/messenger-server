@@ -174,10 +174,7 @@ export class ChannelAdminsService {
 	}
 
 	/** Права текущего пользователя: нужны клиенту, чтобы решить, что показывать. */
-	async getMyPermissions(
-		channelId: ChannelId,
-		userId: UserId
-	): Promise<MyChannelPermissionsDto> {
+	async getMyPermissions(channelId: ChannelId, userId: UserId): Promise<MyChannelPermissionsDto> {
 		const channel = await this.prisma.channel.findUnique({
 			where: { id: channelId },
 			select: { ownerId: true }

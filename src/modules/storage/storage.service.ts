@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import {
 	PutObjectCommand,
 	GetObjectCommand,
@@ -78,6 +78,7 @@ export class StorageService {
 		const file = await this.prisma.file.findUnique({ where: { id: fileId } })
 		if (!file) throw new NotFoundException('File not found')
 
+		let realMime = 'application/octet-stream'
 		try {
 			const getCmd = new GetObjectCommand({
 				Bucket: this.bucketName,
@@ -90,10 +91,12 @@ export class StorageService {
 			for await (const chunk of response.Body as AsyncIterable<Buffer>) {
 				chunks.push(chunk)
 			}
-			const headerBuffer = Buffer.concat(chunks)
 
+			const headerBuffer = Buffer.concat(chunks)
 			const detected = await fileTypeFromBuffer(headerBuffer)
-			const realMime = detected ? detected.mime : 'application/octet-stream'
+			if (detected) {
+				realMime = detected.mime
+			}
 
 			if (realMime !== file.mimeType) {
 				await this.s3Client.send(
@@ -113,7 +116,8 @@ export class StorageService {
 		const updated = await this.prisma.file.update({
 			where: { id: fileId },
 			data: {
-				status: FileStatus.UPLOADED
+				status: FileStatus.UPLOADED,
+				mimeType: realMime
 			}
 		})
 
@@ -187,9 +191,7 @@ export class StorageService {
 					})
 				)
 				await this.prisma.file.delete({ where: { id: file.id } })
-			} catch (e) {
-
-			}
+			} catch (e) {}
 		}
 	}
 
@@ -198,7 +200,7 @@ export class StorageService {
 		if (!file) throw new NotFoundException('File not found')
 
 		if (file.status !== FileStatus.UPLOADED) {
-			throw new Error('File upload not completed')
+			throw new ConflictException('File upload not completed')
 		}
 
 		const command = new GetObjectCommand({

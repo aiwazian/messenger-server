@@ -268,7 +268,14 @@ export class UsersService {
 
 		const settings = await this.prisma.privacySettings.update({
 			where: { userId },
-			data: dto
+			data: {
+				lastSeen: dto.lastSeen,
+				messages: dto.messages,
+				bio: dto.bio,
+				dateOfBirth: dto.dateOfBirth,
+				invites: dto.invites,
+				profilePhoto: dto.profilePhoto
+			}
 		})
 
 		if (dto.lastSeen !== undefined && dto.lastSeen !== oldSettings?.lastSeen) {

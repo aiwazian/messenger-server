@@ -3,10 +3,7 @@ import { Reflector } from '@nestjs/core'
 import { PARAMS } from '../constants/param.constants'
 import { ChannelId } from '../types/channel-id.type'
 import { UserId } from '../types/user-id.type'
-import {
-	ADMIN_PERMISSION_KEY,
-	AdminPermission
-} from '../decorators/admin-permission.decorator'
+import { ADMIN_PERMISSION_KEY, AdminPermission } from '../decorators/admin-permission.decorator'
 import { ChannelAdminsService } from '../../modules/channels/channel-admins.service'
 
 /**

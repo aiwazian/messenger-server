@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common'
+import { Controller, Get, Param, Query } from '@nestjs/common'
 import { SearchService } from './search.service'
 import { SearchQueryDto } from './dto/search-query.dto'
 import { CurrentUserId } from '../../common/decorators/user-id.decorator'
