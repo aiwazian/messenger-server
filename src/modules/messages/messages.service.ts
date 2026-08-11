@@ -47,9 +47,19 @@ export class MessagesService {
 		private readonly chatReadState: ChatReadStateService
 	) {}
 
+	/**
+	 * Инициализация загрузки вложения.
+	 *
+	 * Категорию здесь задаёт клиент: в чат можно отправить и картинку, и видео,
+	 * и произвольный документ. Соответствие заявленного и фактического типа
+	 * проверяет хранилище: сначала политикой S3, потом по сигнатуре файла.
+	 */
 	async initFileUpload(userId: UserId, chatId: ChatId, dto: FileInitDto) {
 		await this.chatsService.create(userId, chatId)
-		return this.storageService.initUpload(dto.name, dto.size, FileType.CHAT_ATTACHMENT)
+		return this.storageService.initUpload({
+			...dto,
+			directory: FileType.CHAT_ATTACHMENT
+		})
 	}
 
 	async confirmFileUpload(
@@ -609,20 +619,15 @@ export class MessagesService {
 		await this.releaseFiles(attachments.map((a) => a.fileId))
 	}
 
-	/** Удаляет файлы, на которые не осталось ни одной ссылки. */
+	/**
+	 * Удаляет файлы, на которые не осталось ни одной ссылки.
+	 *
+	 * Сам подсчёт ссылок живёт в хранилище: раньше та же пятёрка count() была
+	 * скопирована в двух местах, и новая связь с File легко терялась в одном из них.
+	 */
 	private async releaseFiles(fileIds: string[]): Promise<void> {
 		for (const fileId of Array.from(new Set(fileIds))) {
-			const [attachments, userPhotos, channelPhotos, groupPhotos, wallpapers] = await Promise.all([
-				this.prisma.messageAttachment.count({ where: { fileId } }),
-				this.prisma.userPhoto.count({ where: { fileId } }),
-				this.prisma.channelPhoto.count({ where: { fileId } }),
-				this.prisma.groupPhoto.count({ where: { fileId } }),
-				this.prisma.wallpaper.count({ where: { fileId } })
-			])
-
-			if (attachments + userPhotos + channelPhotos + groupPhotos + wallpapers === 0) {
-				await this.storageService.deleteFile(fileId)
-			}
+			await this.storageService.releaseFile(fileId)
 		}
 	}
 
