@@ -1,5 +1,14 @@
 import { Exclude, Expose } from 'class-transformer'
-import { IsEnum, IsInt, IsMimeType, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator'
+import {
+	IsEnum,
+	IsInt,
+	IsMimeType,
+	IsOptional,
+	IsString,
+	Max,
+	MaxLength,
+	Min
+} from 'class-validator'
 import { UploadCategory } from '../../../common/enums/upload-category.enum'
 import {
 	MAX_UPLOAD_SIZE_BYTES,

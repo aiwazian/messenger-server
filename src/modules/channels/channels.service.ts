@@ -3,9 +3,7 @@ import {
 	BadRequestException,
 	ConflictException,
 	Injectable,
-	NotFoundException,
-	Inject,
-	forwardRef
+	NotFoundException
 } from '@nestjs/common'
 import { ChannelResponseDto } from './dto/channel.dto'
 import { UpdateChannelDto } from './dto/update-channel.dto'
@@ -28,7 +26,6 @@ import { randomBytes } from 'crypto'
 import { CreateInviteLinkDto } from '../../common/dtos/create-invite-link.dto'
 import { UpdateInviteLinkDto } from '../../common/dtos/update-invite-link.dto'
 import { InviteLinkResponseDto } from '../invites/dto/invite-link-response.dto'
-import { FileDownloadDto } from '../messages/dto/file-download.dto'
 
 @Injectable()
 export class ChannelsService {
@@ -565,14 +562,6 @@ export class ChannelsService {
 				isCurrent: true
 			}
 		})
-	}
-
-	async getAvatarDownloadUrl(fileId: string): Promise<FileDownloadDto> {
-		const photo = await this.prisma.channelPhoto.findFirst({
-			where: { fileId }
-		})
-		if (!photo) throw new NotFoundException('Avatar not found')
-		return this.storageService.getDownloadUrl(fileId)
 	}
 
 	async deleteAvatar(channelId: ChannelId, fileId: string): Promise<void> {

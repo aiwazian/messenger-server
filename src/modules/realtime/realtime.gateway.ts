@@ -22,7 +22,7 @@ import { ChatOpenDto } from './dto/chat-open.dto'
 
 @WebSocketGateway({
 	maxHttpBufferSize: 1e6,
-	pingTimeout: 30000,
+	pingTimeout: 30000
 })
 export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
 	private readonly logger = new Logger(RealtimeGateway.name)
@@ -37,7 +37,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		@Inject(forwardRef(() => ChatsService))
 		private readonly chatsService: ChatsService,
 		private readonly prisma: PrismaService
-	) { }
+	) {}
 
 	afterInit(server: Server) {
 		server.use(async (socket, next) => {
