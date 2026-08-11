@@ -68,11 +68,6 @@ export class ChannelsService {
 		return plainToInstance(ChannelResponseDto, channel)
 	}
 
-	/**
-	 * Включает или выключает запрет копирования контента канала.
-	 *
-	 * Право вызова проверяется в ChannelOwnerGuard на уровне контроллера.
-	 */
 	async setNoCopy(id: ChannelId, noCopy: boolean): Promise<ChannelResponseDto> {
 		const existingChannel = await this.prisma.channel.findUnique({ where: { id } })
 		if (!existingChannel) throw new NotFoundException('Channel not found')
@@ -91,11 +86,18 @@ export class ChannelsService {
 		return plainToInstance(ChannelResponseDto, channel)
 	}
 
-	/**
-	 * Сообщает подписчикам и владельцу, что флаг запрета копирования изменён,
-	 * чтобы клиенты перестроили меню сообщений без перезахода в чат.
-	 */
 	private async notifyNoCopyChanged(channelId: ChannelId, noCopy: boolean): Promise<void> {
+		const recipients = await this.getChannelAudience(channelId)
+
+		for (const recipient of recipients) {
+			this.realtimeGateway.sendToUser(recipient, SocketEvent.CHAT_UPDATED, {
+				chatId: channelId,
+				noCopy
+			})
+		}
+	}
+
+	private async getChannelAudience(channelId: ChannelId): Promise<UserId[]> {
 		const channel = await this.prisma.channel.findUnique({
 			where: { id: channelId },
 			select: { ownerId: true }
@@ -109,12 +111,7 @@ export class ChannelsService {
 		const recipients = new Set<bigint>(subscribers.map((s) => s.userId))
 		if (channel) recipients.add(channel.ownerId)
 
-		for (const recipient of recipients) {
-			this.realtimeGateway.sendToUser(UserId(recipient), SocketEvent.CHAT_UPDATED, {
-				chatId: channelId,
-				noCopy
-			})
-		}
+		return Array.from(recipients).map((id) => UserId(id))
 	}
 
 	async join(channelId: ChannelId, userId: UserId): Promise<void> {
@@ -212,6 +209,50 @@ export class ChannelsService {
 		this.realtimeGateway.sendToUser(targetUserId, SocketEvent.CHAT_REMOVED, { chatId: id })
 	}
 
+	async transferOwnership(
+		channelId: ChannelId,
+		currentOwnerId: UserId,
+		newOwnerId: UserId
+	): Promise<void> {
+		if (currentOwnerId === newOwnerId) {
+			throw new BadRequestException('User is already the owner of the channel')
+		}
+
+		const channel = await this.prisma.channel.findUnique({ where: { id: channelId } })
+		if (!channel) throw new NotFoundException('Channel not found')
+
+		const subscriber = await this.prisma.channelSubscriber.findUnique({
+			where: { userId_channelId: { userId: newOwnerId, channelId } }
+		})
+		if (!subscriber) {
+			throw new BadRequestException('New owner must be a subscriber of the channel')
+		}
+
+		await this.prisma.$transaction(async (tx) => {
+			await tx.channel.update({
+				where: { id: channelId },
+				data: { ownerId: newOwnerId }
+			})
+
+			await tx.channelSubscriber.deleteMany({
+				where: { channelId, userId: newOwnerId }
+			})
+
+			await tx.channelSubscriber.upsert({
+				where: { userId_channelId: { userId: currentOwnerId, channelId } },
+				create: { userId: currentOwnerId, channelId },
+				update: {}
+			})
+		})
+
+		this.realtimeGateway.sendToUser(currentOwnerId, SocketEvent.CHAT_UPDATED, {
+			chatId: channelId
+		})
+		this.realtimeGateway.sendToUser(newOwnerId, SocketEvent.CHAT_UPDATED, {
+			chatId: channelId
+		})
+	}
+
 	async getById(channelId: ChannelId, userId: UserId): Promise<ChannelResponseDto> {
 		const channel = await this.prisma.channel.findUnique({
 			where: { id: channelId },
@@ -296,7 +337,13 @@ export class ChannelsService {
 	}
 
 	async delete(id: ChannelId): Promise<void> {
+		const recipients = await this.getChannelAudience(id)
+
 		await this.prisma.channel.delete({ where: { id } })
+
+		for (const recipient of recipients) {
+			this.realtimeGateway.sendToUser(recipient, SocketEvent.CHAT_REMOVED, { chatId: id })
+		}
 	}
 
 	async isExists(id: ChannelId): Promise<boolean> {
