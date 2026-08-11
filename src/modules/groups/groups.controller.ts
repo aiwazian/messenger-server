@@ -73,22 +73,12 @@ export class GroupsController {
 		return this.groupsService.getMembers(id, Number(skip) || 0, Number(take) || 100, search)
 	}
 
-	/**
-	 * Теги участников группы.
-	 *
-	 * Нужны любому участнику: тег рисуется рядом с именем отправителя в сообщениях.
-	 */
 	@Get(`:${PARAMS.GROUP_ID}/member-tags`)
 	@UseGuards(GroupExistsGuard, CanReadChatGuard)
 	getMemberTags(@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId) {
 		return this.groupAdminsService.getTags(id)
 	}
 
-	/**
-	 * Права текущего пользователя в группе.
-	 *
-	 * Клиент решает по ним, показывать ли кнопки редактирования и ссылок.
-	 */
 	@Get(`:${PARAMS.GROUP_ID}/admins/me`)
 	@UseGuards(GroupExistsGuard)
 	getMyPermissions(
@@ -98,11 +88,6 @@ export class GroupsController {
 		return this.groupAdminsService.getMyPermissions(id, userId)
 	}
 
-	/**
-	 * Кого можно назначить администратором группы.
-	 *
-	 * Владелец в список не попадает: у него и так все права.
-	 */
 	@Get(`:${PARAMS.GROUP_ID}/admins/candidates`)
 	@UseGuards(GroupExistsGuard, GroupAdminGuard)
 	@RequireAdminPermission('canManageAdmins')
@@ -110,11 +95,6 @@ export class GroupsController {
 		return this.groupAdminsService.listCandidates(id)
 	}
 
-	/**
-	 * Список администраторов группы.
-	 *
-	 * Доступно владельцу и администраторам с правом canManageAdmins.
-	 */
 	@Get(`:${PARAMS.GROUP_ID}/admins`)
 	@UseGuards(GroupExistsGuard, GroupAdminGuard)
 	@RequireAdminPermission('canManageAdmins')
@@ -122,12 +102,6 @@ export class GroupsController {
 		return this.groupAdminsService.list(id)
 	}
 
-	/**
-	 * Назначить администратора или перезаписать его права и тег.
-	 *
-	 * Доступно владельцу и администраторам с правом canManageAdmins:
-	 * само право на управление администраторами выдаёт только владелец.
-	 */
 	@Put(`:${PARAMS.GROUP_ID}/admins/:userId`)
 	@UseGuards(GroupExistsGuard, GroupAdminGuard)
 	@RequireAdminPermission('canManageAdmins')
@@ -140,7 +114,6 @@ export class GroupsController {
 		return this.groupAdminsService.upsert(id, targetUserId, currentUserId, dto)
 	}
 
-	/** Снять администратора группы вместе с его тегом. */
 	@HttpCode(HttpStatus.NO_CONTENT)
 	@Delete(`:${PARAMS.GROUP_ID}/admins/:userId`)
 	@UseGuards(GroupExistsGuard, GroupAdminGuard)
@@ -151,6 +124,17 @@ export class GroupsController {
 		@CurrentUserId() currentUserId: UserId
 	) {
 		return this.groupAdminsService.remove(id, targetUserId, currentUserId)
+	}
+
+	@Post(`:${PARAMS.GROUP_ID}/transfer-ownership/:userId`)
+	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
+	@HttpCode(HttpStatus.NO_CONTENT)
+	transferOwnership(
+		@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId,
+		@Param('userId', ParseUserIdPipe) targetUserId: UserId,
+		@CurrentUserId() ownerId: UserId
+	) {
+		return this.groupsService.transferOwnership(id, ownerId, targetUserId)
 	}
 
 	@Get(`:${PARAMS.GROUP_ID}/available-users`)
@@ -172,22 +156,12 @@ export class GroupsController {
 		return this.groupsService.addMembers(id, dto, ownerId)
 	}
 
-	/**
-	 * Включить или выключить запрет копирования.
-	 *
-	 * Доступно только владельцу группы: GroupOwnerGuard.
-	 */
 	@Patch(`:${PARAMS.GROUP_ID}/no-copy`)
 	@UseGuards(GroupExistsGuard, GroupOwnerGuard)
 	setNoCopy(@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId, @Body() dto: SetNoCopyDto) {
 		return this.groupsService.setNoCopy(id, dto.noCopy)
 	}
 
-	/**
-	 * Изменение профиля группы: название и описание.
-	 *
-	 * Доступно владельцу и администраторам с правом canEditProfile.
-	 */
 	@Patch(`:${PARAMS.GROUP_ID}`)
 	@UseGuards(GroupExistsGuard, GroupAdminGuard)
 	@RequireAdminPermission('canEditProfile')
@@ -283,11 +257,6 @@ export class GroupsController {
 		return this.groupsService.unban(id, targetUserId)
 	}
 
-	/**
-	 * Пригласительные ссылки группы.
-	 *
-	 * Доступно владельцу и администраторам с правом canManageInviteLinks.
-	 */
 	@Get(`:${PARAMS.GROUP_ID}/invite-links`)
 	@UseGuards(GroupExistsGuard, GroupAdminGuard)
 	@RequireAdminPermission('canManageInviteLinks')
@@ -328,7 +297,6 @@ export class GroupsController {
 		return this.groupsService.deleteGroupInviteLink(id, linkId)
 	}
 
-	/** Аватар группы — всегда картинка, поэтому категорию задаёт сервер. */
 	@Post(`:${PARAMS.GROUP_ID}/avatar/init`)
 	@UseGuards(GroupExistsGuard, GroupAdminGuard)
 	@RequireAdminPermission('canEditProfile')
@@ -361,12 +329,6 @@ export class GroupsController {
 		return this.groupsService.deleteAvatar(id, fileId)
 	}
 
-	/**
-	 * Ссылка на аватар группы.
-	 *
-	 * Публичная группа видна всем, закрытая — только владельцу и участникам.
-	 * Раньше проверки не было вовсе.
-	 */
 	@Get('avatars/:fileId')
 	getAvatarDownloadUrl(
 		@CurrentUserId() userId: UserId,

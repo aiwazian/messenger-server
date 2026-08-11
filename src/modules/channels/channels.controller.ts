@@ -74,11 +74,6 @@ export class ChannelsController {
 		return this.channelsService.getSubscribers(id, parseInt(skip), parseInt(take), search)
 	}
 
-	/**
-	 * Права текущего пользователя в канале.
-	 *
-	 * Клиент решает по ним, показывать ли кнопки редактирования и ссылок.
-	 */
 	@Get(`:${PARAMS.CHANNEL_ID}/admins/me`)
 	@UseGuards(ChannelExistsGuard)
 	getMyPermissions(
@@ -88,11 +83,6 @@ export class ChannelsController {
 		return this.channelAdminsService.getMyPermissions(id, userId)
 	}
 
-	/**
-	 * Кого можно назначить администратором канала.
-	 *
-	 * Владелец в список не попадает: у него и так все права.
-	 */
 	@Get(`:${PARAMS.CHANNEL_ID}/admins/candidates`)
 	@UseGuards(ChannelExistsGuard, ChannelAdminGuard)
 	@RequireAdminPermission('canManageAdmins')
@@ -100,11 +90,6 @@ export class ChannelsController {
 		return this.channelAdminsService.listCandidates(id)
 	}
 
-	/**
-	 * Список администраторов канала.
-	 *
-	 * Доступно владельцу и администраторам с правом canManageAdmins.
-	 */
 	@Get(`:${PARAMS.CHANNEL_ID}/admins`)
 	@UseGuards(ChannelExistsGuard, ChannelAdminGuard)
 	@RequireAdminPermission('canManageAdmins')
@@ -112,12 +97,6 @@ export class ChannelsController {
 		return this.channelAdminsService.list(id)
 	}
 
-	/**
-	 * Назначить администратора или перезаписать его права.
-	 *
-	 * Доступно владельцу и администраторам с правом canManageAdmins:
-	 * само право на управление администраторами выдаёт только владелец.
-	 */
 	@Put(`:${PARAMS.CHANNEL_ID}/admins/:userId`)
 	@UseGuards(ChannelExistsGuard, ChannelAdminGuard)
 	@RequireAdminPermission('canManageAdmins')
@@ -130,7 +109,6 @@ export class ChannelsController {
 		return this.channelAdminsService.upsert(id, targetUserId, currentUserId, dto)
 	}
 
-	/** Снять администратора канала. */
 	@HttpCode(HttpStatus.NO_CONTENT)
 	@Delete(`:${PARAMS.CHANNEL_ID}/admins/:userId`)
 	@UseGuards(ChannelExistsGuard, ChannelAdminGuard)
@@ -143,11 +121,17 @@ export class ChannelsController {
 		return this.channelAdminsService.remove(id, targetUserId, currentUserId)
 	}
 
-	/**
-	 * Включить или выключить запрет копирования.
-	 *
-	 * Доступно только владельцу канала: ChannelOwnerGuard.
-	 */
+	@Post(`:${PARAMS.CHANNEL_ID}/transfer-ownership/:userId`)
+	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	@HttpCode(HttpStatus.NO_CONTENT)
+	transferOwnership(
+		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
+		@Param('userId', ParseUserIdPipe) targetUserId: UserId,
+		@CurrentUserId() ownerId: UserId
+	) {
+		return this.channelsService.transferOwnership(id, ownerId, targetUserId)
+	}
+
 	@Patch(`:${PARAMS.CHANNEL_ID}/no-copy`)
 	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
 	setNoCopy(
@@ -157,11 +141,6 @@ export class ChannelsController {
 		return this.channelsService.setNoCopy(id, dto.noCopy)
 	}
 
-	/**
-	 * Изменение профиля канала: название и описание.
-	 *
-	 * Доступно владельцу и администраторам с правом canEditProfile.
-	 */
 	@Patch(`:${PARAMS.CHANNEL_ID}`)
 	@UseGuards(ChannelExistsGuard, ChannelAdminGuard)
 	@RequireAdminPermission('canEditProfile')
@@ -276,11 +255,6 @@ export class ChannelsController {
 		return this.channelsService.rejectJoinRequest(id, targetUserId)
 	}
 
-	/**
-	 * Пригласительные ссылки канала.
-	 *
-	 * Доступно владельцу и администраторам с правом canManageInviteLinks.
-	 */
 	@Get(`:${PARAMS.CHANNEL_ID}/invite-links`)
 	@UseGuards(ChannelExistsGuard, ChannelAdminGuard)
 	@RequireAdminPermission('canManageInviteLinks')
@@ -321,7 +295,6 @@ export class ChannelsController {
 		return this.channelsService.deleteChannelInviteLink(id, linkId)
 	}
 
-	/** Аватар канала — всегда картинка, поэтому категорию задаёт сервер. */
 	@Post(`:${PARAMS.CHANNEL_ID}/avatar/init`)
 	@UseGuards(ChannelExistsGuard, ChannelAdminGuard)
 	@RequireAdminPermission('canEditProfile')
@@ -354,12 +327,6 @@ export class ChannelsController {
 		return this.channelsService.deleteAvatar(id, fileId)
 	}
 
-	/**
-	 * Ссылка на аватар канала.
-	 *
-	 * Публичный канал виден всем, закрытый — только владельцу и подписчикам.
-	 * Раньше проверки не было вовсе.
-	 */
 	@Get('avatars/:fileId')
 	getAvatarDownloadUrl(
 		@CurrentUserId() userId: UserId,

@@ -62,11 +62,6 @@ export class GroupsService {
 		return plainToInstance(GroupResponseDto, group)
 	}
 
-	/**
-	 * Включает или выключает запрет копирования контента группы.
-	 *
-	 * Право вызова проверяется в GroupOwnerGuard на уровне контроллера.
-	 */
 	async setNoCopy(id: GroupId, noCopy: boolean): Promise<GroupResponseDto> {
 		const existingGroup = await this.prisma.group.findUnique({ where: { id } })
 		if (!existingGroup) throw new NotFoundException('Group not found')
@@ -85,11 +80,18 @@ export class GroupsService {
 		return plainToInstance(GroupResponseDto, group)
 	}
 
-	/**
-	 * Сообщает участникам и владельцу, что флаг запрета копирования изменён,
-	 * чтобы клиенты перестроили меню сообщений без перезахода в чат.
-	 */
 	private async notifyNoCopyChanged(groupId: GroupId, noCopy: boolean): Promise<void> {
+		const recipients = await this.getGroupAudience(groupId)
+
+		for (const recipient of recipients) {
+			this.realtimeGateway.sendToUser(recipient, SocketEvent.CHAT_UPDATED, {
+				chatId: groupId,
+				noCopy
+			})
+		}
+	}
+
+	private async getGroupAudience(groupId: GroupId): Promise<UserId[]> {
 		const group = await this.prisma.group.findUnique({
 			where: { id: groupId },
 			select: { ownerId: true }
@@ -103,12 +105,7 @@ export class GroupsService {
 		const recipients = new Set<bigint>(members.map((m) => m.userId))
 		if (group) recipients.add(group.ownerId)
 
-		for (const recipient of recipients) {
-			this.realtimeGateway.sendToUser(UserId(recipient), SocketEvent.CHAT_UPDATED, {
-				chatId: groupId,
-				noCopy
-			})
-		}
+		return Array.from(recipients).map((id) => UserId(id))
 	}
 
 	async join(id: GroupId, userId: UserId): Promise<void> {
@@ -185,6 +182,48 @@ export class GroupsService {
 		})
 
 		this.realtimeGateway.sendToUser(targetUserId, SocketEvent.CHAT_REMOVED, { chatId: id })
+	}
+
+	async transferOwnership(
+		groupId: GroupId,
+		currentOwnerId: UserId,
+		newOwnerId: UserId
+	): Promise<void> {
+		if (currentOwnerId === newOwnerId) {
+			throw new BadRequestException('User is already the owner of the group')
+		}
+
+		const group = await this.prisma.group.findUnique({ where: { id: groupId } })
+		if (!group) throw new NotFoundException('Group not found')
+
+		const member = await this.prisma.groupMember.findUnique({
+			where: { groupId_userId: { groupId, userId: newOwnerId } }
+		})
+		if (!member) {
+			throw new BadRequestException('New owner must be a member of the group')
+		}
+
+		await this.prisma.$transaction(async (tx) => {
+			await tx.group.update({
+				where: { id: groupId },
+				data: { ownerId: newOwnerId }
+			})
+
+			await tx.groupMember.deleteMany({
+				where: { groupId, userId: newOwnerId }
+			})
+
+			await tx.groupMember.upsert({
+				where: { groupId_userId: { groupId, userId: currentOwnerId } },
+				create: { groupId, userId: currentOwnerId },
+				update: {}
+			})
+		})
+
+		this.realtimeGateway.sendToUser(currentOwnerId, SocketEvent.CHAT_UPDATED, {
+			chatId: groupId
+		})
+		this.realtimeGateway.sendToUser(newOwnerId, SocketEvent.CHAT_UPDATED, { chatId: groupId })
 	}
 
 	async getById(id: GroupId, userId: UserId): Promise<GroupResponseDto> {
@@ -341,7 +380,13 @@ export class GroupsService {
 	}
 
 	async delete(id: GroupId): Promise<void> {
+		const recipients = await this.getGroupAudience(id)
+
 		await this.prisma.group.delete({ where: { id } })
+
+		for (const recipient of recipients) {
+			this.realtimeGateway.sendToUser(recipient, SocketEvent.CHAT_REMOVED, { chatId: id })
+		}
 	}
 
 	async isExists(id: GroupId): Promise<boolean> {

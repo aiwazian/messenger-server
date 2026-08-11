@@ -21,7 +21,10 @@ export const SocketEvent = {
 	CHAT_REMOVED: 'chat:removed',
 	CHAT_UPDATED: 'chat:updated',
 	PIN_CHAT: 'pin_chat',
-	UNPIN_CHAT: 'unpin_chat'
+	UNPIN_CHAT: 'unpin_chat',
+
+	CHAT_FOLDER_NEW: 'chat_folder:new',
+	CHAT_FOLDER_DELETED: 'chat_folder:deleted'
 } as const
 
 export type SocketEventType = (typeof SocketEvent)[keyof typeof SocketEvent]
