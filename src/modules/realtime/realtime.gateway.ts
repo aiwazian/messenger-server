@@ -1,4 +1,4 @@
-import { Logger, Inject, forwardRef } from '@nestjs/common'
+import { Logger, Inject, forwardRef, ValidationPipe } from '@nestjs/common'
 import {
 	WebSocketGateway,
 	OnGatewayConnection,
@@ -18,6 +18,7 @@ import { UserId } from '../../common/types/user-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
 import { PrivacyRule } from '../../generated/prisma/enums'
 import { ChatsService } from '../chats/chats.service'
+import { ChatOpenDto } from './dto/chat-open.dto'
 
 @WebSocketGateway({
 	maxHttpBufferSize: 1e6,
@@ -114,20 +115,30 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		}
 	}
 
+	/**
+	 * Пользователь открыл чат.
+	 *
+	 * Полезная нагрузка разбирается схемой ChatOpenDto, а не вручную из any:
+	 * мусор отсекается до тела обработчика, а не падает внутри ChatId().
+	 */
 	@SubscribeMessage(SocketEvent.CHAT_OPEN)
-	async handleChatOpen(@MessageBody() payload: any, @ConnectedSocket() client: Socket) {
-		const raw = payload?.chatId ?? payload
-		let chatId: ChatId
+	async handleChatOpen(
+		@MessageBody(new ValidationPipe({ transform: true, whitelist: true }))
+		payload: ChatOpenDto,
+		@ConnectedSocket() client: Socket
+	) {
 		const userId = client.data.userId as UserId
+
+		let chatId: ChatId
 		try {
-			chatId = ChatId(raw)
-		} catch (e: any) {
+			chatId = ChatId(payload.chatId)
+		} catch {
 			return
 		}
 
 		try {
 			await this.chatsService.canReadChat(userId, chatId)
-		} catch (e: any) {
+		} catch {
 			client.emit(SocketEvent.ACCESS_DENIED, { chatId: chatId.toString() })
 			return
 		}

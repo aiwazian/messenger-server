@@ -26,10 +26,12 @@ import { PrivacyGuard } from '../../common/guards/privacy.guard'
 import { SessionAgeGuard } from '../../common/guards/session-age.guard'
 import { ParseUserIdPipe } from '../../common/pipes/parse-user-id.pipe'
 import { StorageService } from '../storage/storage.service'
+import { AvatarAccessService } from '../storage/services/avatar-access.service'
 import { FileInitDto } from '../messages/dto/file-init.dto'
 import { InitUploadDto } from '../storage/dto/init-upload.dto'
 import { FileDownloadDto } from '../messages/dto/file-download.dto'
 import { FileType } from '../../common/enums/file-type.enum'
+import { UploadCategory } from '../../common/enums/upload-category.enum'
 import { SetProfileChannelDto } from './dto/set-profile-channel.dto'
 import { SetEmailDto } from './dto/set-email.dto'
 import { VerifyEmailDto } from './dto/verify-email.dto'
@@ -39,7 +41,8 @@ import { EmailResponseDto } from './dto/email-response.dto'
 export class UsersController {
 	constructor(
 		private readonly usersService: UsersService,
-		private readonly storage: StorageService
+		private readonly storage: StorageService,
+		private readonly avatarAccess: AvatarAccessService
 	) {}
 
 	@Delete('me')
@@ -86,9 +89,17 @@ export class UsersController {
 		return this.usersService.updatePrivacySettings(userId, dto)
 	}
 
+	/**
+	 * Категорию здесь назначает сервер, а не клиент: аватар может быть только
+	 * картинкой, и объявить для неё FILE, чтобы обойти проверку типа, нельзя.
+	 */
 	@Post('me/avatar/init')
 	initFileUpload(@Body() dto: FileInitDto): Promise<InitUploadDto> {
-		return this.storage.initUpload(dto.name, dto.size, FileType.USER_AVATAR)
+		return this.storage.initUpload({
+			...dto,
+			category: UploadCategory.IMAGE,
+			directory: FileType.USER_AVATAR
+		})
 	}
 
 	@Post('me/avatar/confirm/:fileId')
@@ -102,9 +113,19 @@ export class UsersController {
 		return this.usersService.deleteAvatar(userId, fileId)
 	}
 
+	/**
+	 * Ссылка на аватар.
+	 *
+	 * Проверяется, кому этот файл виден: раньше хватало знать fileId, и
+	 * скачать фото мог любой авторизованный пользователь — включая того, кого
+	 * владелец заблокировал или от кого закрыл фото настройками приватности.
+	 */
 	@Get('avatars/:fileId')
-	getAvatarDownloadUrl(@Param('fileId') fileId: string): Promise<FileDownloadDto> {
-		return this.usersService.getAvatarDownloadUrl(fileId)
+	getAvatarDownloadUrl(
+		@CurrentUserId() userId: UserId,
+		@Param('fileId') fileId: string
+	): Promise<FileDownloadDto> {
+		return this.avatarAccess.getUserAvatarDownloadUrl(userId, fileId)
 	}
 
 	@Get(`:${PARAMS.USER_ID}`)

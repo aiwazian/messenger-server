@@ -8,19 +8,22 @@ import { PrismaModule } from '../../providers/prisma/prisma.module'
 import { EncryptionService } from '../encryption/encryption.service'
 import { InviteLinksService } from '../invites/invite-links.service'
 import { CreateChannelUseCase } from './use-cases/create-channel.use-case'
-import { StorageService } from '../storage/storage.service'
+import { StorageModule } from '../storage/storage.module'
 import { ChannelAdminsService } from './channel-admins.service'
 
 @Module({
-	imports: [SessionsModule, SearchModule, ChatsModule, PrismaModule],
+	/*
+	 * StorageService больше не объявляется здесь провайдером: у него появились
+	 * собственные зависимости, и второй экземпляр вне StorageModule не собрался бы.
+	 */
+	imports: [SessionsModule, SearchModule, ChatsModule, PrismaModule, StorageModule],
 	controllers: [ChannelsController],
 	providers: [
 		ChannelsService,
 		ChannelAdminsService,
 		EncryptionService,
 		InviteLinksService,
-		CreateChannelUseCase,
-		StorageService
+		CreateChannelUseCase
 	],
 	exports: [ChannelAdminsService]
 })
