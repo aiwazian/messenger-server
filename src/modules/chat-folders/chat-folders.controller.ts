@@ -3,6 +3,7 @@ import {
 	Controller,
 	Delete,
 	Get,
+	Headers,
 	HttpCode,
 	HttpStatus,
 	Param,
@@ -31,9 +32,10 @@ export class ChatFoldersController {
 	@Post()
 	async createFolder(
 		@CurrentUserId() userId: UserId,
-		@Body() dto: CreateChatFolderDto
+		@Body() dto: CreateChatFolderDto,
+		@Headers('x-socket-id') socketId?: string
 	): Promise<ChatFolderResponseDto> {
-		return this.chatFoldersService.createFolder(userId, dto)
+		return this.chatFoldersService.createFolder(userId, dto, socketId)
 	}
 
 	@Post('reorder')
@@ -57,9 +59,10 @@ export class ChatFoldersController {
 	@HttpCode(HttpStatus.NO_CONTENT)
 	async deleteFolder(
 		@CurrentUserId() userId: UserId,
-		@Param('folderId', ParseIntPipe) folderId: number
+		@Param('folderId', ParseIntPipe) folderId: number,
+		@Headers('x-socket-id') socketId?: string
 	): Promise<void> {
-		await this.chatFoldersService.deleteFolder(userId, folderId)
+		await this.chatFoldersService.deleteFolder(userId, folderId, socketId)
 	}
 
 	@Post(':folderId/pin')

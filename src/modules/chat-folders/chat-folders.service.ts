@@ -1,6 +1,8 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import { plainToInstance } from 'class-transformer'
 import { PrismaService } from '../../providers/prisma/prisma.service'
+import { RealtimeGateway } from '../realtime/realtime.gateway'
+import { SocketEvent } from '../../common/socket/socket-events'
 import { UserId } from '../../common/types/user-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
 import { ChatFolderCategory } from '../../generated/prisma/enums'
@@ -20,7 +22,10 @@ type ChatFolderWithRelations = {
 
 @Injectable()
 export class ChatFoldersService {
-	constructor(private readonly prisma: PrismaService) {}
+	constructor(
+		private readonly prisma: PrismaService,
+		private readonly realtimeGateway: RealtimeGateway
+	) {}
 
 	async getFolders(userId: UserId): Promise<ChatFolderResponseDto[]> {
 		const folders = await this.prisma.chatFolder.findMany({
@@ -35,7 +40,11 @@ export class ChatFoldersService {
 		return folders.map((folder) => this.toResponse(folder))
 	}
 
-	async createFolder(userId: UserId, dto: CreateChatFolderDto): Promise<ChatFolderResponseDto> {
+	async createFolder(
+		userId: UserId,
+		dto: CreateChatFolderDto,
+		excludeSocketId?: string
+	): Promise<ChatFolderResponseDto> {
 		const chatIds = await this.filterOwnedChatIds(userId, dto.chatIds)
 		const categories = this.normalizeCategories(dto.categories)
 
@@ -68,7 +77,16 @@ export class ChatFoldersService {
 			}
 		})
 
-		return this.toResponse(folder)
+		const response = this.toResponse(folder)
+
+		this.realtimeGateway.sendToUser(
+			userId,
+			SocketEvent.CHAT_FOLDER_NEW,
+			response,
+			excludeSocketId
+		)
+
+		return response
 	}
 
 	async updateFolder(
@@ -121,8 +139,6 @@ export class ChatFoldersService {
 					isPinned: pinnedIds.has(chatId.toString())
 				}))
 
-				/// Закрепление чата, попавшего в папку через категорию, переживает
-				/// пересохранение состава: в список поимённых чатов он не входит.
 				const pinnedOnlyRows = existingChats
 					.filter((chat) => chat.isPinned && !includedIds.has(chat.chatId.toString()))
 					.map((chat, index) => ({
@@ -144,15 +160,23 @@ export class ChatFoldersService {
 		return this.getFolder(userId, folderId)
 	}
 
-	async deleteFolder(userId: UserId, folderId: number): Promise<void> {
+	async deleteFolder(
+		userId: UserId,
+		folderId: number,
+		excludeSocketId?: string
+	): Promise<void> {
 		await this.assertFolderOwner(userId, folderId)
 
 		await this.prisma.chatFolder.delete({ where: { id: folderId } })
+
+		this.realtimeGateway.sendToUser(
+			userId,
+			SocketEvent.CHAT_FOLDER_DELETED,
+			{ folderId },
+			excludeSocketId
+		)
 	}
 
-	/// Закрепление принадлежит папке, а не чату: чат, попавший в папку через
-	/// категорию, своей строки не имеет, поэтому она заводится на лету и в
-	/// состав папки чат при этом не добавляется.
 	async setChatsPinned(
 		userId: UserId,
 		folderId: number,
@@ -192,7 +216,6 @@ export class ChatFoldersService {
 		)
 	}
 
-	/// Порядок вкладок задаётся списком id: позиция в массиве становится sortOrder.
 	async reorderFolders(
 		userId: UserId,
 		dto: ReorderChatFoldersDto
@@ -250,8 +273,6 @@ export class ChatFoldersService {
 		}
 	}
 
-	/// В папку попадают только чаты, которые уже есть у пользователя:
-	/// чужой id из тела запроса молча отбрасывается.
 	private async filterOwnedChatIds(userId: UserId, rawChatIds?: string[]): Promise<bigint[]> {
 		const uniqueIds = Array.from(new Set(rawChatIds ?? [])).map((chatId) => ChatId(chatId))
 
