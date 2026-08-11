@@ -20,6 +20,7 @@ import { SessionsService } from '../sessions/sessions.service'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
 import { hashPassword } from '../../common/utils/password.util'
+import { Prisma } from '../../generated/prisma/client'
 import { PrivacyRule } from '../../generated/prisma/enums'
 import { FileDownloadDto } from '../messages/dto/file-download.dto'
 import { RealtimeGateway } from '../realtime/realtime.gateway'
@@ -515,7 +516,17 @@ export class UsersService {
 		const user = await this.prisma.user.findUnique({ where: { id: userId } })
 		if (!user) throw new NotFoundException('User not found')
 
-		const code = this.emailVerificationStore.generateCode(userId, email)
+		/*
+		 * Занятый адрес отсекается до отправки письма: почта уникальна на уровне базы,
+		 * поэтому иначе пользователь получил бы код, а подтверждение упало бы на
+		 * уникальном индексе уже после ввода кода.
+		 */
+		const existing = await this.prisma.user.findUnique({ where: { email } })
+		if (existing && existing.id !== userId) {
+			throw new ConflictException('Email is already in use')
+		}
+
+		const code = await this.emailVerificationStore.generateCode(userId, email)
 
 		await this.mailService.sendVerifyEmail(email, code)
 	}
@@ -524,15 +535,26 @@ export class UsersService {
 		const user = await this.prisma.user.findUnique({ where: { id: userId } })
 		if (!user) throw new NotFoundException('User not found')
 
-		const result = this.emailVerificationStore.verify(userId, code)
+		const result = await this.emailVerificationStore.verify(userId, code)
 		if (!result.valid || !result.email) {
 			throw new BadRequestException('Invalid verification code')
 		}
 
-		await this.prisma.user.update({
-			where: { id: userId },
-			data: { email: result.email }
-		})
+		try {
+			await this.prisma.user.update({
+				where: { id: userId },
+				data: { email: result.email }
+			})
+		} catch (error) {
+			/*
+			 * Адрес мог занять другой аккаунт, пока код ждал подтверждения: уникальный
+			 * индекс ловит эту гонку, и ответом должен быть конфликт, а не 500.
+			 */
+			if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+				throw new ConflictException('Email is already in use')
+			}
+			throw error
+		}
 
 		return plainToInstance(EmailResponseDto, result)
 	}
@@ -543,7 +565,7 @@ export class UsersService {
 			data: { email: null }
 		})
 
-		this.emailVerificationStore.delete(userId)
+		await this.emailVerificationStore.delete(userId)
 	}
 
 	async getEmail(userId: UserId): Promise<EmailResponseDto | null> {
