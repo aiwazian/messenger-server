@@ -7,19 +7,19 @@ import { ChatsModule } from '../chats/chats.module'
 import { EncryptionService } from '../encryption/encryption.service'
 import { InviteLinksService } from '../invites/invite-links.service'
 import { CreateGroupUseCase } from './use-cases/create-group.use-case'
-import { StorageService } from '../storage/storage.service'
+import { StorageModule } from '../storage/storage.module'
 import { GroupAdminsService } from './group-admins.service'
 
 @Module({
-	imports: [SessionsModule, SearchModule, ChatsModule],
+	/* См. комментарий в ChannelsModule: хранилище подключается модулем. */
+	imports: [SessionsModule, SearchModule, ChatsModule, StorageModule],
 	controllers: [GroupsController],
 	providers: [
 		GroupsService,
 		GroupAdminsService,
 		EncryptionService,
 		InviteLinksService,
-		CreateGroupUseCase,
-		StorageService
+		CreateGroupUseCase
 	],
 	exports: [GroupAdminsService]
 })

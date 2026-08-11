@@ -1,214 +1,133 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
-import {
-	PutObjectCommand,
-	GetObjectCommand,
-	DeleteObjectCommand,
-	S3Client,
-	CopyObjectCommand,
-	MetadataDirective
-} from '@aws-sdk/client-s3'
-import { ConfigService } from '@nestjs/config'
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
-import { randomUUID } from 'crypto'
-import { InitUploadDto } from './dto/init-upload.dto'
+import { ConflictException, Inject, Injectable } from '@nestjs/common'
 import { plainToInstance } from 'class-transformer'
+import { fileTypeFromBuffer } from 'file-type'
+import { InitUploadDto } from './dto/init-upload.dto'
 import { FileDto } from './dto/file.dto'
 import { FileDownloadDto } from '../messages/dto/file-download.dto'
-import { Cron, CronExpression } from '@nestjs/schedule'
-import { PrismaService } from '../../providers/prisma/prisma.service'
+import { OBJECT_STORAGE, ObjectStoragePort } from './ports/object-storage.port'
+import { FileRegistryService } from './services/file-registry.service'
+import { UploadPolicyService } from './services/upload-policy.service'
 import { FileStatus } from '../../generated/prisma/enums'
 import { FileType } from '../../common/enums/file-type.enum'
-import { fileTypeFromBuffer } from 'file-type'
+import { UploadCategory } from '../../common/enums/upload-category.enum'
+import {
+	DOWNLOAD_URL_TTL_SECONDS,
+	MIME_SNIFF_BYTES,
+	UPLOAD_URL_TTL_SECONDS
+} from './constants/upload.constants'
 
+export interface InitUploadInput {
+	name: string
+	size: number
+	mimeType: string
+	/** Что именно загружает пользователь. Без неё действует общий режим FILE. */
+	category?: UploadCategory
+	/** Каталог в бакете: вложение чата, аватар пользователя, канала, группы. */
+	directory: FileType
+}
+
+/**
+ * Фасад загрузки и скачивания.
+ *
+ * Сам ничего не делает: собирает сценарий из правил (UploadPolicyService),
+ * учёта файлов (FileRegistryService) и хранилища (ObjectStoragePort).
+ */
 @Injectable()
 export class StorageService {
-	private s3Client: S3Client
-	private bucketName: string
-
 	constructor(
-		private readonly config: ConfigService,
-		private readonly prisma: PrismaService
-	) {
-		this.s3Client = new S3Client({
-			region: config.get('S3_REGION')!,
-			endpoint: config.get('S3_END_POINT')!,
-			credentials: {
-				accessKeyId: config.get('S3_ACCESS_KEY')!,
-				secretAccessKey: config.get('S3_SECRET_KEY')!
-			},
-			forcePathStyle: true
-		})
-		this.bucketName = config.get('S3_BUCKET_NAME')!
-	}
+		@Inject(OBJECT_STORAGE) private readonly objectStorage: ObjectStoragePort,
+		private readonly files: FileRegistryService,
+		private readonly policy: UploadPolicyService
+	) {}
 
-	async initUpload(
-		name: string,
-		size: number,
-		fileType: FileType = FileType.CHAT_ATTACHMENT
-	): Promise<InitUploadDto> {
-		const id = randomUUID()
-		const path = `${fileType}/${id}`
+	async initUpload(input: InitUploadInput): Promise<InitUploadDto> {
+		const category = input.category ?? UploadCategory.FILE
 
-		const file = await this.prisma.file.create({
-			data: {
-				id,
-				name,
-				size,
-				mimeType: 'application/octet-stream',
-				path,
-				status: FileStatus.PENDING,
-				createdAt: Date.now()
-			}
+		this.policy.assertSizeAllowed(input.size)
+		this.policy.assertDeclaredMimeAllowed(category, input.mimeType)
+
+		const file = await this.files.createPending({
+			name: input.name,
+			size: input.size,
+			mimeType: input.mimeType,
+			directory: input.directory
 		})
 
-		const command = new PutObjectCommand({
-			Bucket: this.bucketName,
-			Key: path
+		const form = await this.objectStorage.createUploadForm({
+			key: file.path,
+			contentType: input.mimeType,
+			minSizeBytes: this.policy.minSizeBytes,
+			maxSizeBytes: this.policy.maxSizeBytes,
+			expiresInSeconds: UPLOAD_URL_TTL_SECONDS
 		})
-
-		const signedUrl = await getSignedUrl(this.s3Client, command, { expiresIn: 3600 })
 
 		return plainToInstance(InitUploadDto, {
-			signedUrl: signedUrl,
-			fileId: file.id
+			url: form.url,
+			fields: form.fields,
+			fileId: file.id,
+			maxSizeBytes: this.policy.maxSizeBytes
 		})
 	}
 
+	/**
+	 * Подтверждение загрузки.
+	 *
+	 * Раньше несовпадение типа молча исправлялось перезаписью заголовка, то есть
+	 * файл принимался в любом случае. Теперь это отказ: объект удаляется, а
+	 * вызывающий получает ошибку и не создаёт ни вложение, ни аватар.
+	 */
 	async confirmUpload(fileId: string): Promise<FileDto> {
-		const file = await this.prisma.file.findUnique({ where: { id: fileId } })
-		if (!file) throw new NotFoundException('File not found')
+		const file = await this.files.findByIdOrFail(fileId)
 
-		let realMime = 'application/octet-stream'
-		try {
-			const getCmd = new GetObjectCommand({
-				Bucket: this.bucketName,
-				Key: file.path,
-				Range: 'bytes=0-4095'
-			})
-
-			const response = await this.s3Client.send(getCmd)
-			const chunks: Buffer[] = []
-			for await (const chunk of response.Body as AsyncIterable<Buffer>) {
-				chunks.push(chunk)
-			}
-
-			const headerBuffer = Buffer.concat(chunks)
-			const detected = await fileTypeFromBuffer(headerBuffer)
-			if (detected) {
-				realMime = detected.mime
-			}
-
-			if (realMime !== file.mimeType) {
-				await this.s3Client.send(
-					new CopyObjectCommand({
-						Bucket: this.bucketName,
-						CopySource: `${this.bucketName}/${file.path}`,
-						Key: file.path,
-						ContentType: realMime,
-						MetadataDirective: MetadataDirective.REPLACE
-					})
-				)
-			}
-		} catch (error) {
-			console.error(`Failed to process file header for ${file.path}: ${(error as Error).message}`)
+		if (file.status === FileStatus.UPLOADED) {
+			return plainToInstance(FileDto, file)
 		}
 
-		const updated = await this.prisma.file.update({
-			where: { id: fileId },
-			data: {
-				status: FileStatus.UPLOADED,
-				mimeType: realMime
-			}
-		})
+		let detectedMime: string | undefined
+		try {
+			const head = await this.objectStorage.readHead(file.path, MIME_SNIFF_BYTES)
+			detectedMime = (await fileTypeFromBuffer(head))?.mime
+		} catch {
+			/*
+			 * Объекта нет: форму получили, а файл не отправили либо S3 отклонил его
+			 * по политике. Запись оставляем — её через сутки уберёт уборщик.
+			 */
+			throw new ConflictException('File was not uploaded')
+		}
+
+		try {
+			this.policy.assertContentMatchesDeclared(file.mimeType, detectedMime)
+		} catch (error) {
+			await this.files.scheduleDeletion(fileId)
+			throw error
+		}
+
+		const updated = await this.files.markUploaded(
+			fileId,
+			this.policy.resolveStoredMime(file.mimeType, detectedMime)
+		)
 
 		return plainToInstance(FileDto, updated)
 	}
 
-	async deleteFile(fileId: string) {
-		const file = await this.prisma.file.findUnique({ where: { id: fileId } })
-		if (!file) return
-
-		await this.prisma.fileCleanupTask.create({
-			data: {
-				fileId,
-				filePath: file.path,
-				createdAt: Date.now(),
-				nextRetry: Date.now() + 1000 * 60 * 60, // 1 hour
-				attempts: 1
-			}
-		})
-
-		await this.prisma.file.delete({ where: { id: fileId } })
-	}
-
-	@Cron(CronExpression.EVERY_HOUR)
-	async processFileCleanupTasks() {
-		const now = Date.now()
-		const oneDayAgo = now - 24 * 60 * 60 * 1000
-
-		const tasks = await this.prisma.fileCleanupTask.findMany({
-			where: {
-				nextRetry: { lte: now }
-			},
-			take: 50
-		})
-
-		for (const task of tasks) {
-			try {
-				await this.s3Client.send(
-					new DeleteObjectCommand({
-						Bucket: this.bucketName,
-						Key: task.filePath
-					})
-				)
-				await this.prisma.fileCleanupTask.delete({ where: { id: task.id } })
-			} catch (e) {
-				console.error(`Retry failed for file ${task.filePath}: ${(e as Error).message}`)
-				await this.prisma.fileCleanupTask.update({
-					where: { id: task.id },
-					data: {
-						attempts: task.attempts + 1,
-						nextRetry: now + 1000 * 60 * 60 // 1 hour
-					}
-				})
-			}
-		}
-
-		const expiredPendingFiles = await this.prisma.file.findMany({
-			where: {
-				status: FileStatus.PENDING,
-				createdAt: { lte: oneDayAgo }
-			},
-			take: 50
-		})
-
-		for (const file of expiredPendingFiles) {
-			try {
-				await this.s3Client.send(
-					new DeleteObjectCommand({
-						Bucket: this.bucketName,
-						Key: file.path
-					})
-				)
-				await this.prisma.file.delete({ where: { id: file.id } })
-			} catch (e) {}
-		}
-	}
-
+	/**
+	 * Ссылка на скачивание.
+	 *
+	 * Права здесь не проверяются осознанно: хранилище не знает ни о чатах, ни о
+	 * профилях. Вызывать этот метод можно только после проверки доступа —
+	 * для аватаров это AvatarAccessService, для вложений MessagesService.
+	 */
 	async getDownloadUrl(fileId: string): Promise<FileDownloadDto> {
-		const file = await this.prisma.file.findUnique({ where: { id: fileId } })
-		if (!file) throw new NotFoundException('File not found')
+		const file = await this.files.findByIdOrFail(fileId)
 
 		if (file.status !== FileStatus.UPLOADED) {
 			throw new ConflictException('File upload not completed')
 		}
 
-		const command = new GetObjectCommand({
-			Bucket: this.bucketName,
-			Key: file.path
+		const downloadUrl = await this.objectStorage.createDownloadUrl({
+			key: file.path,
+			expiresInSeconds: DOWNLOAD_URL_TTL_SECONDS
 		})
-
-		const downloadUrl = await getSignedUrl(this.s3Client, command, { expiresIn: 3600 })
 
 		return plainToInstance(FileDownloadDto, {
 			downloadUrl,
@@ -216,5 +135,15 @@ export class StorageService {
 			size: file.size,
 			mimeType: file.mimeType
 		})
+	}
+
+	/** Безусловное удаление. Вызывающий сам убедился, что ссылок не осталось. */
+	deleteFile(fileId: string): Promise<void> {
+		return this.files.scheduleDeletion(fileId)
+	}
+
+	/** Удаление с проверкой ссылок: файл может использоваться где-то ещё. */
+	releaseFile(fileId: string): Promise<void> {
+		return this.files.release(fileId)
 	}
 }

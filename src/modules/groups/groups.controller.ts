@@ -34,8 +34,10 @@ import { SetNoCopyDto } from '../../common/dtos/set-no-copy.dto'
 import { CreateGroupUseCase } from './use-cases/create-group.use-case'
 import { FileInitDto } from '../messages/dto/file-init.dto'
 import { StorageService } from '../storage/storage.service'
+import { AvatarAccessService } from '../storage/services/avatar-access.service'
 import { FileDownloadDto } from '../messages/dto/file-download.dto'
 import { FileType } from '../../common/enums/file-type.enum'
+import { UploadCategory } from '../../common/enums/upload-category.enum'
 import { GroupAdminsService } from './group-admins.service'
 import { UpsertGroupAdminDto } from './dto/group-admin.dto'
 
@@ -45,6 +47,7 @@ export class GroupsController {
 		private readonly groupsService: GroupsService,
 		private readonly createGroupUseCase: CreateGroupUseCase,
 		private readonly storageService: StorageService,
+		private readonly avatarAccess: AvatarAccessService,
 		private readonly groupAdminsService: GroupAdminsService
 	) {}
 
@@ -325,11 +328,16 @@ export class GroupsController {
 		return this.groupsService.deleteGroupInviteLink(id, linkId)
 	}
 
+	/** Аватар группы — всегда картинка, поэтому категорию задаёт сервер. */
 	@Post(`:${PARAMS.GROUP_ID}/avatar/init`)
 	@UseGuards(GroupExistsGuard, GroupAdminGuard)
 	@RequireAdminPermission('canEditProfile')
 	initFileUpload(@Body() dto: FileInitDto) {
-		return this.storageService.initUpload(dto.name, dto.size, FileType.GROUP_AVATAR)
+		return this.storageService.initUpload({
+			...dto,
+			category: UploadCategory.IMAGE,
+			directory: FileType.GROUP_AVATAR
+		})
 	}
 
 	@Post(`:${PARAMS.GROUP_ID}/avatar/confirm/:fileId`)
@@ -353,8 +361,17 @@ export class GroupsController {
 		return this.groupsService.deleteAvatar(id, fileId)
 	}
 
+	/**
+	 * Ссылка на аватар группы.
+	 *
+	 * Публичная группа видна всем, закрытая — только владельцу и участникам.
+	 * Раньше проверки не было вовсе.
+	 */
 	@Get('avatars/:fileId')
-	async getAvatarDownloadUrl(@Param('fileId') fileId: string): Promise<FileDownloadDto> {
-		return this.groupsService.getAvatarDownloadUrl(fileId)
+	getAvatarDownloadUrl(
+		@CurrentUserId() userId: UserId,
+		@Param('fileId') fileId: string
+	): Promise<FileDownloadDto> {
+		return this.avatarAccess.getGroupAvatarDownloadUrl(userId, fileId)
 	}
 }

@@ -8,13 +8,10 @@ import {
 import { UserId } from '../types/user-id.type'
 import { PARAMS } from '../constants/param.constants'
 import { PrismaService } from '../../providers/prisma/prisma.service'
-import { ChatType } from '../enums/chat-type.enum'
-import { detectChatType } from '../utils/detect-chat-type.util'
-import { ChatId } from '../types/chat-id.type'
 
 @Injectable()
 export class CanEditMessageGuard implements CanActivate {
-	constructor(private readonly prisma: PrismaService) {}
+	constructor(private readonly prisma: PrismaService) { }
 
 	async canActivate(context: ExecutionContext): Promise<boolean> {
 		const request = context.switchToHttp().getRequest()

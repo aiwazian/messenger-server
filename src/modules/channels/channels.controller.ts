@@ -32,8 +32,10 @@ import { SetNoCopyDto } from '../../common/dtos/set-no-copy.dto'
 import { CreateChannelUseCase } from './use-cases/create-channel.use-case'
 import { FileInitDto } from '../messages/dto/file-init.dto'
 import { StorageService } from '../storage/storage.service'
+import { AvatarAccessService } from '../storage/services/avatar-access.service'
 import { FileDownloadDto } from '../messages/dto/file-download.dto'
 import { FileType } from '../../common/enums/file-type.enum'
+import { UploadCategory } from '../../common/enums/upload-category.enum'
 import { ChannelAdminsService } from './channel-admins.service'
 import { UpsertChannelAdminDto } from './dto/channel-admin.dto'
 
@@ -43,6 +45,7 @@ export class ChannelsController {
 		private readonly channelsService: ChannelsService,
 		private readonly createChannelUseCase: CreateChannelUseCase,
 		private readonly storageService: StorageService,
+		private readonly avatarAccess: AvatarAccessService,
 		private readonly channelAdminsService: ChannelAdminsService
 	) {}
 
@@ -318,11 +321,16 @@ export class ChannelsController {
 		return this.channelsService.deleteChannelInviteLink(id, linkId)
 	}
 
+	/** Аватар канала — всегда картинка, поэтому категорию задаёт сервер. */
 	@Post(`:${PARAMS.CHANNEL_ID}/avatar/init`)
 	@UseGuards(ChannelExistsGuard, ChannelAdminGuard)
 	@RequireAdminPermission('canEditProfile')
 	initFileUpload(@Body() dto: FileInitDto) {
-		return this.storageService.initUpload(dto.name, dto.size, FileType.CHANNEL_AVATAR)
+		return this.storageService.initUpload({
+			...dto,
+			category: UploadCategory.IMAGE,
+			directory: FileType.CHANNEL_AVATAR
+		})
 	}
 
 	@Post(`:${PARAMS.CHANNEL_ID}/avatar/confirm/:fileId`)
@@ -346,8 +354,17 @@ export class ChannelsController {
 		return this.channelsService.deleteAvatar(id, fileId)
 	}
 
+	/**
+	 * Ссылка на аватар канала.
+	 *
+	 * Публичный канал виден всем, закрытый — только владельцу и подписчикам.
+	 * Раньше проверки не было вовсе.
+	 */
 	@Get('avatars/:fileId')
-	async getAvatarDownloadUrl(@Param('fileId') fileId: string): Promise<FileDownloadDto> {
-		return this.channelsService.getAvatarDownloadUrl(fileId)
+	getAvatarDownloadUrl(
+		@CurrentUserId() userId: UserId,
+		@Param('fileId') fileId: string
+	): Promise<FileDownloadDto> {
+		return this.avatarAccess.getChannelAvatarDownloadUrl(userId, fileId)
 	}
 }

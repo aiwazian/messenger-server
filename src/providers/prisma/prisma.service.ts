@@ -1,11 +1,11 @@
-import { Injectable, OnModuleInit, Logger } from '@nestjs/common'
+import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { PrismaClient } from '../../generated/prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { EncryptionService } from '../../modules/encryption/encryption.service'
 
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit {
+export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
 	private SYSTEM_USER_ID = 0n
 	private readonly logger = new Logger(PrismaService.name)
 
@@ -23,6 +23,15 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
 		await this.$connect()
 		await this.ensureSystemUser()
 		await this.ensureEncryptionKey()
+	}
+
+	/*
+	 * Без явного отключения пул соединений остаётся открытым до убийства
+	 * процесса: при перезапусках и в тестах это копит висящие сессии в Postgres.
+	 */
+	async onModuleDestroy() {
+		await this.$disconnect()
+		this.logger.log('Database connection closed')
 	}
 
 	private async ensureSystemUser() {

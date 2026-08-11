@@ -22,7 +22,6 @@ import { UserId } from '../../common/types/user-id.type'
 import { hashPassword } from '../../common/utils/password.util'
 import { Prisma } from '../../generated/prisma/client'
 import { PrivacyRule } from '../../generated/prisma/enums'
-import { FileDownloadDto } from '../messages/dto/file-download.dto'
 import { RealtimeGateway } from '../realtime/realtime.gateway'
 import { SocketEvent } from '../../common/socket/socket-events'
 import { EmailVerificationStore } from './email-verification.store'
@@ -334,14 +333,6 @@ export class UsersService {
 				sortOrder: nextSortOrder
 			}
 		})
-	}
-
-	async getAvatarDownloadUrl(fileId: string): Promise<FileDownloadDto> {
-		const photo = await this.prisma.userPhoto.findFirst({
-			where: { fileId }
-		})
-		if (!photo) throw new NotFoundException('Avatar not found')
-		return this.storageService.getDownloadUrl(fileId)
 	}
 
 	async deleteAvatar(userId: UserId, fileId: string): Promise<void> {
