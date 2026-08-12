@@ -3,7 +3,6 @@ import { plainToInstance } from 'class-transformer'
 import { PrismaService } from '../../../providers/prisma/prisma.service'
 import { UserId } from '../../../common/types/user-id.type'
 import { ChatId } from '../../../common/types/chat-id.type'
-import { ChatType } from '../../../common/enums/chat-type.enum'
 import { detectChatType } from '../../../common/utils/detect-chat-type.util'
 import { Prisma } from '../../../generated/prisma/client'
 import { MessagesService } from '../messages.service'
@@ -19,6 +18,9 @@ import { ChatReadStateDto } from '../../chat-read-state/dto/chat-read-state.dto'
  * Курсор — Message.id (autoincrement), поэтому порядок по id совпадает с порядком отправки
  * и не ломается при одинаковых sendTime. offset-пагинация для прыжков не годится:
  * при вставке новых сообщений все offset’ы съезжают.
+ *
+ * Внутрь передаётся chatId, а не готовый chatType: кроме типа чата на выходе нужен ещё
+ * контекст прочтения (курсоры и отметки из Redis), а он считается по чату.
  */
 @Injectable()
 export class GetMessagesWindowUseCase {
@@ -33,11 +35,10 @@ export class GetMessagesWindowUseCase {
 		chatId: ChatId,
 		dto: GetMessagesWindowDto
 	): Promise<MessagesWindowResponseDto> {
-		const chatType = detectChatType(chatId)
 		const baseWhere = this.messagesService.buildChatMessagesWhere(userId, chatId)
 		const readState = await this.chatReadState.getState(userId, chatId)
 
-		const window = await this.loadWindow(userId, dto, baseWhere, chatType, readState)
+		const window = await this.loadWindow(userId, chatId, dto, baseWhere, readState)
 
 		window.unreadCount = readState.unreadCount
 		window.firstUnreadMessageId = readState.firstUnreadMessageId
@@ -47,29 +48,29 @@ export class GetMessagesWindowUseCase {
 
 	private async loadWindow(
 		userId: UserId,
+		chatId: ChatId,
 		dto: GetMessagesWindowDto,
 		baseWhere: Prisma.MessageWhereInput,
-		chatType: ChatType,
 		readState: ChatReadStateDto
 	): Promise<MessagesWindowResponseDto> {
 		if (dto.anchor === 'first_unread') {
 			const anchorId = await this.resolveFirstUnreadAnchor(baseWhere, readState)
 
 			return anchorId
-				? this.around(baseWhere, anchorId, dto.limit, userId, chatType)
-				: this.before(baseWhere, undefined, dto.limit, userId, chatType)
+				? this.around(baseWhere, anchorId, dto.limit, userId, chatId)
+				: this.before(baseWhere, undefined, dto.limit, userId, chatId)
 		}
 
 		if (dto.anchorId) {
-			return this.around(baseWhere, BigInt(dto.anchorId), dto.limit, userId, chatType)
+			return this.around(baseWhere, BigInt(dto.anchorId), dto.limit, userId, chatId)
 		}
 
 		if (dto.afterId) {
-			return this.after(baseWhere, BigInt(dto.afterId), dto.limit, userId, chatType)
+			return this.after(baseWhere, BigInt(dto.afterId), dto.limit, userId, chatId)
 		}
 
 		const beforeId = dto.beforeId ? BigInt(dto.beforeId) : undefined
-		return this.before(baseWhere, beforeId, dto.limit, userId, chatType)
+		return this.before(baseWhere, beforeId, dto.limit, userId, chatId)
 	}
 
 	/**
@@ -96,7 +97,7 @@ export class GetMessagesWindowUseCase {
 		anchorId: bigint,
 		limit: number,
 		userId: UserId,
-		chatType: ChatType
+		chatId: ChatId
 	): Promise<MessagesWindowResponseDto> {
 		const anchor = await this.prisma.message.findFirst({
 			where: { AND: [baseWhere, { id: anchorId }] },
@@ -125,7 +126,7 @@ export class GetMessagesWindowUseCase {
 			olderDesc.length > limit,
 			anchorAndNewer.length > limit,
 			userId,
-			chatType
+			chatId
 		)
 	}
 
@@ -135,7 +136,7 @@ export class GetMessagesWindowUseCase {
 		beforeId: bigint | undefined,
 		limit: number,
 		userId: UserId,
-		chatType: ChatType
+		chatId: ChatId
 	): Promise<MessagesWindowResponseDto> {
 		const rows = await this.prisma.message.findMany({
 			where: beforeId ? { AND: [baseWhere, { id: { lt: beforeId } }] } : baseWhere,
@@ -149,7 +150,7 @@ export class GetMessagesWindowUseCase {
 			rows.length > limit,
 			Boolean(beforeId),
 			userId,
-			chatType
+			chatId
 		)
 	}
 
@@ -159,7 +160,7 @@ export class GetMessagesWindowUseCase {
 		afterId: bigint,
 		limit: number,
 		userId: UserId,
-		chatType: ChatType
+		chatId: ChatId
 	): Promise<MessagesWindowResponseDto> {
 		const rows = await this.prisma.message.findMany({
 			where: { AND: [baseWhere, { id: { gt: afterId } }] },
@@ -168,7 +169,7 @@ export class GetMessagesWindowUseCase {
 			take: limit + 1
 		})
 
-		return this.toResponse(rows.slice(0, limit), true, rows.length > limit, userId, chatType)
+		return this.toResponse(rows.slice(0, limit), true, rows.length > limit, userId, chatId)
 	}
 
 	private async toResponse(
@@ -176,13 +177,15 @@ export class GetMessagesWindowUseCase {
 		hasMoreBefore: boolean,
 		hasMoreAfter: boolean,
 		userId: UserId,
-		chatType: ChatType
+		chatId: ChatId
 	): Promise<MessagesWindowResponseDto> {
+		const chatType = detectChatType(chatId)
 		const sources = await this.messagesService.resolveSources(userId, messages)
+		const readContext = await this.messagesService.resolveReadContext(userId, chatId, messages)
 
 		return plainToInstance(MessagesWindowResponseDto, {
 			messages: messages.map((message) =>
-				this.messagesService.mapMessageToDto(message, userId, chatType, sources)
+				this.messagesService.mapMessageToDto(message, userId, chatType, sources, readContext)
 			),
 			hasMoreBefore,
 			hasMoreAfter
