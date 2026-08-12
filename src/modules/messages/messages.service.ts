@@ -1,4 +1,10 @@
-import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common'
+import {
+	ForbiddenException,
+	forwardRef,
+	Inject,
+	Injectable,
+	NotFoundException
+} from '@nestjs/common'
 import { plainToInstance } from 'class-transformer'
 import { ChatsService } from '../chats/chats.service'
 import {
@@ -29,12 +35,36 @@ import { MESSAGE_INCLUDE, MessageWithRelations } from './message-include.const'
 import { ChatSourceMap, ChatSourceResolver } from './chat-source.resolver'
 import { ForwardSourceAccess } from '../../common/enums/forward-source-access.enum'
 import { ChatReadStateService } from '../chat-read-state/chat-read-state.service'
+import { MessageReadEntry, MessageReadsStore } from '../chat-read-state/message-reads.store'
+
+/**
+ * Сколько времени есть на правку отправленного сообщения.
+ *
+ * Сутки в личных чатах и группах: собеседник уже прочитал сообщение, и подмена
+ * смысла задним числом — это уже не исправление опечатки. В каналах ограничения
+ * нет: там пост живёт как публикация и правится в любой момент.
+ */
+const EDIT_WINDOW_MS = 24 * 60 * 60 * 1000
+
+/**
+ * Данные о прочтении для одной страницы истории.
+ *
+ * Считается один раз на страницу: два курсора, один pipeline в Redis и один запрос
+ * за именами читателей. Иначе каждое сообщение тянуло бы за собой свои запросы.
+ */
+export interface MessageReadContext {
+	/** Курсор самого пользователя: до какого сообщения он дочитал чат. */
+	myCursor: bigint
+	/** Самый дальний курсор остальных: прочитано ли моё сообщение хоть кем-то. */
+	peerCursor: bigint
+	/** Читатели своих сообщений: id сообщения -> отметки от свежих к старым. */
+	reads: Map<string, MessageReadEntry[]>
+	/** Имена читателей для карточек в списке просмотров. */
+	readerNames: Map<string, { firstName: string | null; lastName: string | null }>
+}
 
 @Injectable()
 export class MessagesService {
-	private lastCleanupTime = 0
-	private readonly CLEANUP_INTERVAL_MS = 60 * 60 * 1000
-
 	constructor(
 		private readonly prisma: PrismaService,
 		@Inject(forwardRef(() => ChatsService))
@@ -44,7 +74,8 @@ export class MessagesService {
 		private readonly storageService: StorageService,
 		private readonly encryption: EncryptionService,
 		private readonly chatSourceResolver: ChatSourceResolver,
-		private readonly chatReadState: ChatReadStateService
+		private readonly chatReadState: ChatReadStateService,
+		private readonly messageReads: MessageReadsStore
 	) {}
 
 	/**
@@ -173,8 +204,6 @@ export class MessagesService {
 		limit: number = 50,
 		offset: number = 0
 	): Promise<MessageResponseDto[]> {
-		this.cleanupOldReadReceipts()
-
 		const chatType = detectChatType(chatId)
 
 		const messages = await this.prisma.message.findMany({
@@ -187,8 +216,11 @@ export class MessagesService {
 
 		const ordered = messages.reverse()
 		const sources = await this.resolveSources(userId, ordered)
+		const readContext = await this.resolveReadContext(userId, chatId, ordered)
 
-		return ordered.map((message) => this.mapMessageToDto(message, userId, chatType, sources))
+		return ordered.map((message) =>
+			this.mapMessageToDto(message, userId, chatType, sources, readContext)
+		)
 	}
 
 	/**
@@ -245,44 +277,89 @@ export class MessagesService {
 		return this.chatSourceResolver.resolve(userId, ids)
 	}
 
+	/**
+	 * Контекст прочтения для страницы истории.
+	 *
+	 * Подробности из Redis запрашиваются только для своих сообщений: список просмотров
+	 * всё равно уходит только автору. В канале нет ни галочек, ни просмотров,
+	 * поэтому запросы не делаются вовсе.
+	 */
+	async resolveReadContext(
+		userId: UserId,
+		chatId: ChatId,
+		messages: MessageWithRelations[]
+	): Promise<MessageReadContext> {
+		const context: MessageReadContext = {
+			myCursor: 0n,
+			peerCursor: 0n,
+			reads: new Map(),
+			readerNames: new Map()
+		}
+
+		if (messages.length === 0) return context
+		if (detectChatType(chatId) === ChatType.CHANNEL) return context
+
+		const [myCursor, peerCursor] = await Promise.all([
+			this.chatReadState.getCursor(userId, chatId),
+			this.chatReadState.getPeerCursor(userId, chatId)
+		])
+
+		context.myCursor = myCursor
+		context.peerCursor = peerCursor
+
+		const myMessageIds = messages
+			.filter((message) => BigInt(message.senderId) === BigInt(userId))
+			.map((message) => message.id)
+
+		context.reads = await this.messageReads.get(myMessageIds)
+
+		const readerIds = new Set<bigint>()
+		for (const entries of context.reads.values()) {
+			for (const entry of entries) readerIds.add(entry.userId)
+		}
+
+		if (readerIds.size > 0) {
+			const readers = await this.prisma.user.findMany({
+				where: { id: { in: Array.from(readerIds) } },
+				select: { id: true, firstName: true, lastName: true }
+			})
+
+			for (const reader of readers) {
+				context.readerNames.set(reader.id.toString(), {
+					firstName: reader.firstName,
+					lastName: reader.lastName
+				})
+			}
+		}
+
+		return context
+	}
+
 	/** Единый маппер Message -> MessageResponseDto для всех способов загрузки истории. */
 	mapMessageToDto(
 		message: MessageWithRelations,
 		userId: UserId,
 		chatType: ChatType,
-		sources?: ChatSourceMap
+		sources?: ChatSourceMap,
+		readContext?: MessageReadContext
 	): MessageResponseDto {
+		const isMine = BigInt(message.senderId) === BigInt(userId)
+
 		let isRead: boolean | undefined
 		let readInfo: MessageReadInfoDto[] | undefined
 
-		if (chatType === ChatType.CHANNEL) {
-			isRead = undefined
-			readInfo = undefined
-		} else if (chatType === ChatType.PRIVATE) {
-			const myReceipt = message.readReceipts.find((r) => r.userId === userId)
-			const otherReceipt = message.readReceipts.find((r) => r.userId !== userId)
+		if (chatType !== ChatType.CHANNEL) {
+			/*
+			 * Статус считается по курсору, а не по отметкам из Redis: подробности живут трое
+			 * суток, а галочка должна остаться на сообщении навсегда. Своё сообщение
+			 * прочитано, если его прочитал кто-то другой; чужое — если его прочитал
+			 * сам пользователь.
+			 */
+			const cursor = isMine ? (readContext?.peerCursor ?? 0n) : (readContext?.myCursor ?? 0n)
 
-			if (message.senderId === userId) {
-				isRead = !!otherReceipt
-			} else {
-				isRead = !!myReceipt
-			}
-			readInfo = undefined
-		} else if (chatType === ChatType.GROUP) {
-			const otherReceipts = message.readReceipts.filter((r) => r.userId !== message.senderId)
-			isRead = otherReceipts.length > 0
-			if (message.senderId === userId) {
-				readInfo = otherReceipts.map((r) =>
-					plainToInstance(MessageReadInfoDto, {
-						userId: r.userId,
-						firstName: r.user.firstName,
-						lastName: r.user.lastName,
-						readAt: r.readAt
-					})
-				)
-			} else {
-				readInfo = undefined
-			}
+			isRead = cursor >= message.id
+
+			if (isMine) readInfo = this.buildReadInfo(message.id, readContext)
 		}
 
 		const replyChatType = message.replyTo
@@ -338,6 +415,31 @@ export class MessagesService {
 			forwardedFromName: forwardSource?.name || undefined,
 			forwardedFromAccess: forwardSource?.access,
 			replyTo
+		})
+	}
+
+	/**
+	 * Список просмотров сообщения: кто и когда прочитал.
+	 *
+	 * Уходит только автору и только пока подробности живы в Redis: дальше у сообщения
+	 * остаётся одна галочка «прочитано» без имён и времени.
+	 */
+	private buildReadInfo(
+		messageId: bigint,
+		readContext?: MessageReadContext
+	): MessageReadInfoDto[] | undefined {
+		const entries = readContext?.reads.get(messageId.toString())
+		if (!entries || entries.length === 0) return undefined
+
+		return entries.map((entry) => {
+			const reader = readContext?.readerNames.get(entry.userId.toString())
+
+			return plainToInstance(MessageReadInfoDto, {
+				userId: entry.userId,
+				firstName: reader?.firstName,
+				lastName: reader?.lastName,
+				readAt: entry.readAt
+			})
 		})
 	}
 
@@ -434,6 +536,10 @@ export class MessagesService {
 		dto: EditMessageDto,
 		excludeSocketId: string
 	): Promise<MessageResponseDto> {
+		const chatType = detectChatType(chatId)
+
+		await this.assertEditable(chatType, messageId)
+
 		const now = Date.now()
 		const { encrypted, version } = this.encryption.encrypt(dto.text)
 
@@ -448,8 +554,6 @@ export class MessagesService {
 				attachments: { include: { file: true } }
 			}
 		})
-
-		const chatType = detectChatType(chatId)
 
 		const messageInstance = plainToInstance(MessageResponseDto, {
 			...message,
@@ -490,6 +594,31 @@ export class MessagesService {
 		}
 
 		return messageInstance
+	}
+
+	/**
+	 * Можно ли ещё править это сообщение.
+	 *
+	 * В личном чате и группе — сутки с момента отправки, в канале — всегда.
+	 * Срок считается от sendTime, а не от предыдущей правки: иначе правка каждые
+	 * двадцать три часа продлевала бы окно бесконечно.
+	 *
+	 * Проверка обязательно на сервере: скрытый в интерфейсе пункт меню — это не
+	 * ограничение, запрос можно отправить напрямую.
+	 */
+	private async assertEditable(chatType: ChatType, messageId: number): Promise<void> {
+		if (chatType === ChatType.CHANNEL) return
+
+		const message = await this.prisma.message.findUnique({
+			where: { id: messageId },
+			select: { sendTime: true }
+		})
+
+		if (!message) throw new NotFoundException('Message not found')
+
+		if (Date.now() - Number(message.sendTime) > EDIT_WINDOW_MS) {
+			throw new ForbiddenException('Message can be edited within 24 hours after sending')
+		}
 	}
 
 	async clearHistory(
@@ -616,6 +745,7 @@ export class MessagesService {
 		})
 
 		await this.prisma.message.delete({ where: { id: messageId } })
+		await this.messageReads.remove([BigInt(messageId)])
 		await this.releaseFiles(attachments.map((a) => a.fileId))
 	}
 
@@ -642,6 +772,13 @@ export class MessagesService {
 		const wsTargets = Array.from(new Set([...recipients, senderUserId]))
 
 		await this.chatReadState.onNewMessage(chatId, BigInt(message.id), recipients)
+
+		/*
+		 * Отправка закрывает непрочитанные в этом же чате — и для обычного сообщения,
+		 * и для пересылки, и для вложения: все три пути сходятся здесь, поэтому
+		 * правило живёт в одном месте, а не в каждом use-case отдельно.
+		 */
+		await this.chatReadState.markReadOnSend(senderUserId, chatId, BigInt(message.id))
 
 		const online: UserId[] = []
 		const offline: UserId[] = []
@@ -712,20 +849,5 @@ export class MessagesService {
 		}
 
 		return []
-	}
-
-	private async cleanupOldReadReceipts(): Promise<void> {
-		const now = Date.now()
-		if (now - this.lastCleanupTime < this.CLEANUP_INTERVAL_MS) return
-		this.lastCleanupTime = now
-
-		const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000
-		try {
-			await this.prisma.messageRead.deleteMany({
-				where: { readAt: { lt: sevenDaysAgo } }
-			})
-		} catch (e) {
-			// ignore cleanup errors
-		}
 	}
 }
