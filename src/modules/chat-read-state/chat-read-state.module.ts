@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common'
 import { ChatReadStateService } from './chat-read-state.service'
+import { MessageReadsStore } from './message-reads.store'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 
 /**
@@ -8,7 +9,7 @@ import { PrismaService } from '../../providers/prisma/prisma.service'
  */
 @Global()
 @Module({
-	providers: [ChatReadStateService],
-	exports: [ChatReadStateService]
+	providers: [ChatReadStateService, MessageReadsStore],
+	exports: [ChatReadStateService, MessageReadsStore]
 })
 export class ChatReadStateModule {}
