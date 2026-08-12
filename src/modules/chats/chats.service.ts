@@ -386,35 +386,19 @@ export class ChatsService {
 			where: messageWhere,
 			include: {
 				attachments: { include: { file: true } },
-				systemEvent: true,
-				readReceipts: {
-					select: {
-						userId: true,
-						readAt: true,
-						user: { select: { firstName: true, lastName: true } }
-					}
-				}
+				systemEvent: true
 			},
 			orderBy: { sendTime: 'desc' }
 		})
 
 		if (message == null) return null
 
-		let isRead: boolean | undefined
-
-		if (chatType === ChatType.PRIVATE) {
-			const myReceipt = message.readReceipts.find((r) => r.userId === userId)
-			const otherReceipt = message.readReceipts.find((r) => r.userId !== userId)
-
-			if (message.senderId === userId) {
-				isRead = !!otherReceipt
-			} else {
-				isRead = !!myReceipt
-			}
-		} else if (chatType === ChatType.GROUP) {
-			const otherReceipts = message.readReceipts.filter((r) => r.userId !== message.senderId)
-			isRead = otherReceipts.length > 0
-		}
+		/*
+		 * Галочка в списке чатов берётся из курсора ChatReadState, а не из отметок:
+		 * подробности «кто и когда» живут в Redis трое суток, а старый чат всё равно должен
+		 * показывать «прочитано», а не сбрасываться в одну галочку через три дня.
+		 */
+		const isRead = await this.chatReadState.isMessageRead(userId, chatId, message)
 
 		return plainToInstance(MessageResponseDto, {
 			...message,
