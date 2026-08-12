@@ -5,12 +5,18 @@ import { Prisma } from '../../generated/prisma/client'
  * Держим в одном месте, чтобы окно и обычная пагинация возвращали одинаковую форму.
  */
 export const MESSAGE_INCLUDE = {
+	/*
+	 * Отметки о прочтении идут от свежих к старым: список просмотров у сообщения
+	 * показывает первыми тех, кто прочитал последним. Порядок задаём здесь,
+	 * чтобы он был одинаковым во всех способах загрузки истории.
+	 */
 	readReceipts: {
 		select: {
 			userId: true,
 			readAt: true,
 			user: { select: { firstName: true, lastName: true } }
-		}
+		},
+		orderBy: { readAt: 'desc' }
 	},
 	attachments: { include: { file: true } },
 	systemEvent: { select: { eventType: true } },
