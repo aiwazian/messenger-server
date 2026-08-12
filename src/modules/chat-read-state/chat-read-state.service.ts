@@ -9,6 +9,7 @@ import { Prisma } from '../../generated/prisma/client'
 import { RealtimeGateway } from '../realtime/realtime.gateway'
 import { SocketEvent } from '../../common/socket/socket-events'
 import { ChatReadStateDto } from './dto/chat-read-state.dto'
+import { MessageReadsStore } from './message-reads.store'
 
 /**
  * Счётчик непрочитанных и курсор прочтения.
@@ -17,9 +18,13 @@ import { ChatReadStateDto } from './dto/chat-read-state.dto'
  * и в списке чатов (ChatsService), и в сообщениях; общий модуль избавляет от ещё одного
  * кругового forwardRef между ними.
  *
+ * Курсор — долговременный источник правды о том, прочитано сообщение или нет.
+ * Подробности «кто и когда» живут отдельно и недолго (см. MessageReadsStore),
+ * поэтому галочки считаются именно по курсору, а не по наличию отметок.
+ *
  * Каналы тоже считаются: бейдж нужен, но галочки «прочитано» автору не рассылаются
- * и MessageRead для них не пишется — иначе на канале с сотней тысяч подписчиков
- * таблица растёт на каждый просмотр.
+ * и отметки о прочтении для них не пишутся — иначе на канале с сотней тысяч
+ * подписчиков список читателей копился бы на каждый просмотр.
  *
  * Важное правило про chatId в личных чатах: id пользователя совпадает с id его чата,
  * поэтому один и тот же диалог у собеседников называется по-разному. Олег (id 1) пишет
@@ -31,7 +36,8 @@ export class ChatReadStateService {
 	constructor(
 		private readonly prisma: PrismaService,
 		@Inject(forwardRef(() => RealtimeGateway))
-		private readonly realtimeGateway: RealtimeGateway
+		private readonly realtimeGateway: RealtimeGateway,
+		private readonly messageReads: MessageReadsStore
 	) {}
 
 	/** Состояния сразу по всем чатам пользователя: список чатов грузится одним запросом. */
@@ -53,6 +59,70 @@ export class ChatReadStateService {
 			unreadCount: 0,
 			isManuallyUnread: false
 		})
+	}
+
+	/** Курсор одного пользователя в чате: 0 означает «не прочитал ничего». */
+	async getCursor(userId: UserId, chatId: ChatId): Promise<bigint> {
+		const row = await this.prisma.chatReadState.findUnique({
+			where: { userId_chatId: { userId, chatId } },
+			select: { lastReadMessageId: true }
+		})
+
+		return row?.lastReadMessageId ?? 0n
+	}
+
+	/**
+	 * Самый дальний курсор всех участников чата, кроме самого пользователя.
+	 *
+	 * Отвечает на вопрос «прочитал ли моё сообщение хоть кто-то» и заменяет прежний
+	 * подсчёт отметок: курсор живёт вечно, поэтому галочка не пропадает вместе
+	 * с TTL подробностей в Redis.
+	 *
+	 * В личном чате тот же диалог у собеседника называется иначе — его строка
+	 * состояния лежит под chatId, равным id пользователя.
+	 */
+	async getPeerCursor(userId: UserId, chatId: ChatId): Promise<bigint> {
+		const chatType = detectChatType(chatId)
+
+		if (chatType === ChatType.PRIVATE) {
+			// «Избранное»: собеседника нет, читать сообщение некому.
+			if (BigInt(chatId) === BigInt(userId)) return 0n
+
+			return this.getCursor(UserId(chatId), ChatId(userId))
+		}
+
+		if (chatType === ChatType.GROUP) {
+			const aggregate = await this.prisma.chatReadState.aggregate({
+				where: { chatId, userId: { not: userId } },
+				_max: { lastReadMessageId: true }
+			})
+
+			return aggregate._max.lastReadMessageId ?? 0n
+		}
+
+		return 0n
+	}
+
+	/**
+	 * Прочитано ли одно конкретное сообщение.
+	 *
+	 * Для мест, где страницы истории нет и батчить нечего — например, последнее
+	 * сообщение в списке чатов. Своё сообщение прочитано, если его прочитал кто-то
+	 * другой; чужое — если его прочитал сам пользователь. В канале галочек нет.
+	 */
+	async isMessageRead(
+		userId: UserId,
+		chatId: ChatId,
+		message: { id: bigint; senderId: bigint }
+	): Promise<boolean | undefined> {
+		if (detectChatType(chatId) === ChatType.CHANNEL) return undefined
+
+		const cursor =
+			BigInt(message.senderId) === BigInt(userId)
+				? await this.getPeerCursor(userId, chatId)
+				: await this.getCursor(userId, chatId)
+
+		return cursor >= message.id
 	}
 
 	/**
@@ -192,12 +262,29 @@ export class ChatReadStateService {
 	}
 
 	/**
+	 * Отправка сообщения — это тоже прочтение чата.
+	 *
+	 * Человек физически видит то, на что отвечает, поэтому десяток непрочитанных
+	 * под собственным ответом — заведомо неверное состояние. Курсор двигается до
+	 * только что отправленного сообщения, а собеседники получают галочки: для них
+	 * это обычное прочтение.
+	 *
+	 * Ошибка здесь не должна ломать отправку — сообщение уже создано и разослано,
+	 * а счётчик в худшем случае пересчитается при следующем открытии чата.
+	 */
+	async markReadOnSend(userId: UserId, chatId: ChatId, messageId: bigint): Promise<void> {
+		try {
+			await this.markReadUpTo(userId, chatId, messageId)
+		} catch {}
+	}
+
+	/**
 	 * Пометить пачку чатов прочитанными — меню выделения на главном экране.
 	 *
-	 * Идёт через markReadUpTo, а не отдельным updateMany: нужны и MessageRead,
-	 * и chat:read собеседникам — для них это обычное прочтение.
+	 * Идёт через markReadUpTo, а не отдельным updateMany: нужны и отметки
+	 * о прочтении, и chat:read собеседникам — для них это обычное прочтение.
 	 *
-	 * Последовательно, а не Promise.all: каждый чат — это пачка записей в MessageRead,
+	 * Последовательно, а не Promise.all: каждый чат — это пачка отметок,
 	 * и параллельный запуск на десятке выделенных чатов забивает пул соединений.
 	 */
 	async markChatsRead(
@@ -222,9 +309,9 @@ export class ChatReadStateService {
 	/**
 	 * Пометить пачку чатов непрочитанными.
 	 *
-	 * Собеседникам ничего не отправляется и MessageRead не трогается: это личная
-	 * пометка «вернуться позже», а не отмена уже отосланных галочек. Отозвать у автора
-	 * уже показанное «прочитано» всё равно нельзя.
+	 * Собеседникам ничего не отправляется и отметки о прочтении не трогаются: это
+	 * личная пометка «вернуться позже», а не отмена уже отосланных галочек. Отозвать
+	 * у автора уже показанное «прочитано» всё равно нельзя.
 	 *
 	 * Счётчик не трогается: если реальные непрочитанные есть — бейдж покажет их число,
 	 * если нет — клиент нарисует пустой бейдж по флагу.
@@ -369,7 +456,17 @@ export class ChatReadStateService {
 		return last?.id ?? null
 	}
 
-	/** MessageRead пишется пачкой и только на новый диапазон, а не по всей истории чата. */
+	/**
+	 * Отметки о прочтении пишутся в Redis и только на новый диапазон.
+	 *
+	 * Раньше это была пачка строк в MessageRead плюс ночная чистка старше недели:
+	 * таблица пухла на каждый просмотр, а потом массово удалялась. Подробность
+	 * «кто и когда» нужна только у свежих сообщений, поэтому теперь она живёт
+	 * в Redis с TTL, а долговременный статус остаётся курсором.
+	 *
+	 * Дедупликация ушла в ZADD NX — подзапрос «нет отметки этого пользователя»
+	 * больше не нужен.
+	 */
 	private async createReceipts(
 		userId: UserId,
 		visibleWhere: Prisma.MessageWhereInput,
@@ -381,20 +478,15 @@ export class ChatReadStateService {
 				AND: [
 					visibleWhere,
 					{ id: { gt: fromExclusive, lte: toInclusive } },
-					{ senderId: { not: userId } },
-					{ readReceipts: { none: { userId } } }
+					{ senderId: { not: userId } }
 				]
 			},
-			select: { id: true }
+			select: { id: true, sendTime: true }
 		})
 
 		if (messages.length === 0) return
 
-		const now = Date.now()
-		await this.prisma.messageRead.createMany({
-			data: messages.map((message) => ({ messageId: message.id, userId, readAt: now })),
-			skipDuplicates: true
-		})
+		await this.messageReads.add(messages, userId, Date.now())
 	}
 
 	/** Событие chat:read автору (личный чат) или всем участникам (группа). */

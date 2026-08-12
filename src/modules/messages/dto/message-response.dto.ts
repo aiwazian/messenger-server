@@ -112,6 +112,12 @@ export class MessageResponseDto {
 	@OmitNull()
 	systemEventType?: string
 
+	/**
+	 * Кто прочитал сообщение в группе.
+	 *
+	 * Приходит только автору сообщения и отсортирован от свежих прочтений к старым:
+	 * клиент показывает его в меню сообщения как «N просмотров».
+	 */
 	@Expose()
 	@OmitNull()
 	readInfo?: MessageReadInfoDto[]
