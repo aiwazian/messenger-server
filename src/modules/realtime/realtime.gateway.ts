@@ -12,21 +12,27 @@ import {
 import { Server, Socket } from 'socket.io'
 import { SessionsService } from '../sessions/sessions.service'
 import { instanceToPlain } from 'class-transformer'
-import { PrismaService } from '../../providers/prisma/prisma.service'
 import { SocketEvent, SocketEventType } from '../../common/socket/socket-events'
 import { UserId } from '../../common/types/user-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
-import { PrivacyRule } from '../../generated/prisma/enums'
 import { ChatsService } from '../chats/chats.service'
 import { ChatOpenDto } from './dto/chat-open.dto'
+import { PresenceService } from './presence.service'
+import { PresenceRecipientsService } from './presence-recipients.service'
+import { SessionActivityService } from './session-activity.service'
 
+/*
+ * pingInterval и pingTimeout заданы явно: сервер шлёт ping раз в 20 секунд и, если
+ * pong не пришёл за 30, рвёт соединение. Дальше срабатывает handleDisconnect, и
+ * собеседники узнают об офлайне тем же путём, что и при обычном выходе.
+ */
 @WebSocketGateway({
 	maxHttpBufferSize: 1e6,
+	pingInterval: 20000,
 	pingTimeout: 30000
 })
 export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
 	private readonly logger = new Logger(RealtimeGateway.name)
-	private readonly onlineUsers = new Set<string>()
 
 	@WebSocketServer()
 	server: Server
@@ -36,10 +42,23 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		private readonly sessionsService: SessionsService,
 		@Inject(forwardRef(() => ChatsService))
 		private readonly chatsService: ChatsService,
-		private readonly prisma: PrismaService
+		private readonly presence: PresenceService,
+		private readonly presenceRecipients: PresenceRecipientsService,
+		private readonly sessionActivity: SessionActivityService
 	) {}
 
 	afterInit(server: Server) {
+		/*
+		 * PresenceService хранит состояние, но ничего не рассылает, поэтому шлюз
+		 * отдаёт ему три действия: объявить онлайн, объявить офлайн и закрыть
+		 * зависшее соединение.
+		 */
+		this.presence.setHandlers({
+			announceOnline: (userId) => this.broadcastPresence(userId, SocketEvent.USER_ONLINE),
+			announceOffline: (userId) => this.broadcastPresence(userId, SocketEvent.USER_OFFLINE),
+			dropSocket: (socketId, reason) => this.dropSocket(socketId, reason)
+		})
+
 		server.use(async (socket, next) => {
 			try {
 				const token = socket.handshake.auth.token as string
@@ -72,40 +91,31 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		})
 	}
 
-	async handleConnection(client: Socket, ...args: any[]) {
+	handleConnection(client: Socket) {
 		try {
 			const userIdRaw = client.data.userId
 			const sessionId = client.data.sessionId as number | undefined
 			if (!userIdRaw) return
 
-			if (sessionId) {
-				try {
-					await this.prisma.session.update({
-						where: { id: sessionId },
-						data: { lastSeen: BigInt(Date.now()) }
-					})
-				} catch (error: any) {
-					this.logger.warn(`Failed to update session lastSeen on connect: ${error.message}`)
-				}
-			}
-
 			const userId = UserId(userIdRaw)
-			const userRoom = `user:${userId.toString()}`
+			const userKey = userId.toString()
 
-			client.join(userRoom)
+			client.join(`user:${userKey}`)
 
-			this.logger.debug(`Client connected: ${userId.toString()}`)
+			/*
+			 * Любой пакет от клиента, включая pong, продлевает жизнь соединения: по
+			 * этой отметке сторож находит сокеты, которые формально открыты, но
+			 * уже ничего не отвечают.
+			 */
+			client.conn.on('packet', () => this.presence.touch(userKey, client.id))
 
-			if (!this.onlineUsers.has(userId.toString())) {
-				this.onlineUsers.add(userId.toString())
+			this.presence.register(userKey, client.id)
 
-				const recipients = await this.getPresenceRecipients(userId)
-				if (recipients.length > 0) {
-					this.server
-						.to(recipients.map((id) => `user:${id.toString()}`))
-						.emit(SocketEvent.USER_ONLINE, { userId: userId.toString() })
-				}
+			if (sessionId) {
+				void this.sessionActivity.touch(sessionId)
 			}
+
+			this.logger.debug(`Client connected: ${userKey}`)
 		} catch (error: any) {
 			this.logger.error(
 				`Error in handleConnection for client ${client.id}: ${error.message}`,
@@ -151,35 +161,62 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		client.data.activeChatId = chatId
 	}
 
-	async handleDisconnect(client: Socket) {
-		this.logger.debug(`Client disconnected: ${client.id}`)
-		const userId = client.data.userId as UserId | undefined
+	/*
+	 * Раньше здесь ждали fetchSockets() по комнате пользователя, чтобы понять,
+	 * остались ли другие устройства. Теперь это знание есть в PresenceService, и
+	 * отключение обходится без обхода комнаты.
+	 */
+	handleDisconnect(client: Socket) {
+		const userIdRaw = client.data.userId
 		const sessionId = client.data.sessionId as number | undefined
-		if (!userId) return
+		if (!userIdRaw) return
+
+		const userId = UserId(userIdRaw)
+		this.presence.unregister(userId.toString(), client.id)
 
 		if (sessionId) {
-			try {
-				await this.prisma.session.update({
-					where: { id: sessionId },
-					data: { lastSeen: BigInt(Date.now()) }
-				})
-			} catch (error: any) {
-				this.logger.warn(`Failed to update session lastSeen: ${error.message}`)
-			}
+			void this.sessionActivity.touch(sessionId)
 		}
 
-		const room = `user:${userId.toString()}`
-		const sockets = await this.server.in(room).fetchSockets()
-		if (sockets.length > 0) return
+		this.logger.debug(`Client disconnected: ${client.id}`)
+	}
 
-		this.onlineUsers.delete(userId.toString())
+	/**
+	 * Рассылает смену статуса собеседникам.
+	 *
+	 * При приватности "Никто" список пустой и наружу не уходит ничего.
+	 */
+	private broadcastPresence(userId: string, event: SocketEventType): void {
+		void this.presenceRecipients
+			.resolve(UserId(userId))
+			.then((recipients) => {
+				if (recipients.length === 0) return
 
-		const recipients = await this.getPresenceRecipients(userId)
-		if (recipients.length > 0) {
-			this.server
-				.to(recipients.map((id) => `user:${id.toString()}`))
-				.emit(SocketEvent.USER_OFFLINE, { userId: userId.toString() })
-		}
+				/*
+				 * Офлайновым собеседникам событие не нужно: при следующем входе
+				 * они всё равно запросят снапшот статусов. На списках в сотни
+				 * человек это убирает почти всю рассылку. Заодно отсеиваются
+				 * идентификаторы, которые вообще не принадлежат пользователям.
+				 */
+				const rooms = recipients
+					.filter((recipientId) => this.presence.isOnline(recipientId))
+					.map((recipientId) => `user:${recipientId}`)
+
+				if (rooms.length === 0) return
+
+				this.server.to(rooms).emit(event, { userId })
+			})
+			.catch((error: any) => {
+				this.logger.error(`Failed to broadcast ${event} for ${userId}: ${error.message}`)
+			})
+	}
+
+	private dropSocket(socketId: string, reason: string): void {
+		const socket = this.server.sockets.sockets.get(socketId)
+		if (!socket) return
+
+		this.logger.warn(`Dropping socket ${socketId}: ${reason}`)
+		socket.disconnect(true)
 	}
 
 	/*
@@ -268,8 +305,13 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		}
 	}
 
+	/*
+	 * Статус считается по живым сокетам: отправка сообщений по нему выбирает
+	 * между вебсокетом и пушем, и задержка перед объявлением офлайна здесь
+	 * учитываться не должна.
+	 */
 	isUserOnline(userId: UserId): boolean {
-		return this.onlineUsers.has(userId.toString())
+		return this.presence.isOnline(userId.toString())
 	}
 
 	private prepareData(data: any) {
@@ -289,83 +331,5 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 			)
 		}
 		return obj
-	}
-
-	private async getPresenceRecipients(userId: UserId): Promise<UserId[]> {
-		const settings = await this.prisma.privacySettings.findUnique({
-			where: { userId },
-			select: { lastSeen: true }
-		})
-
-		const visibility = settings?.lastSeen ?? PrivacyRule.EVERYBODY
-
-		if (visibility === PrivacyRule.NOBODY) {
-			return []
-		}
-
-		if (visibility === PrivacyRule.EVERYBODY) {
-			const directChats = await this.prisma.chat.findMany({
-				where: {
-					userId
-				},
-				select: { chatId: true }
-			})
-			return directChats.filter((c) => c.chatId !== userId).map((c) => UserId(c.chatId))
-		}
-
-		const [directChats, groupMembers, channelSubs, channelOwners] = await Promise.all([
-			this.prisma.chat.findMany({
-				where: { userId },
-				select: { chatId: true }
-			}),
-			this.prisma.groupMember.findMany({
-				where: { userId },
-				select: { groupId: true }
-			}),
-			this.prisma.channelSubscriber.findMany({
-				where: { userId },
-				select: { channelId: true }
-			}),
-			this.prisma.channel.findMany({
-				where: { ownerId: userId },
-				select: { id: true }
-			})
-		])
-
-		let otherGroupMembers: { userId: bigint }[] = []
-		if (groupMembers.length > 0) {
-			const groupIds = groupMembers.map((g) => g.groupId)
-			otherGroupMembers = await this.prisma.groupMember.findMany({
-				where: { groupId: { in: groupIds }, userId: { not: userId } },
-				select: { userId: true }
-			})
-		}
-
-		let otherChannelSubs: { userId: bigint }[] = []
-		if (channelSubs.length > 0) {
-			const channelIds = channelSubs.map((c) => c.channelId)
-			otherChannelSubs = await this.prisma.channelSubscriber.findMany({
-				where: { channelId: { in: channelIds }, userId: { not: userId } },
-				select: { userId: true }
-			})
-		}
-
-		const otherChannelOwners = channelOwners
-			.filter((c) => c.id !== userId)
-			.map((c) => ({ userId: c.id }))
-
-		const directChatIds = directChats
-			.filter((c) => c.chatId !== userId)
-			.map((c) => c.chatId.toString())
-
-		const allUserIds = [
-			...directChatIds,
-			...otherGroupMembers.map((g) => g.userId.toString()),
-			...otherChannelSubs.map((s) => s.userId.toString()),
-			...otherChannelOwners.map((o) => o.userId.toString())
-		]
-
-		const unique = Array.from(new Set(allUserIds)).map((id) => UserId(id))
-		return unique
 	}
 }
