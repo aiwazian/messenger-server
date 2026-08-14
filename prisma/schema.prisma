@@ -78,7 +78,6 @@ model User {
   chats        Chat[]
   sessions     Session[]
   sentMessages Message[]
-  messageReads MessageRead[]
   chatReadStates ChatReadState[]
   chatFolders  ChatFolder[]
 
@@ -247,7 +246,13 @@ model Message {
   chatId      BigInt
   text        String?
   sendTime    BigInt
-  editedAt    BigInt?
+
+  /// Сообщение редактировали.
+  ///
+  /// Здесь только сам факт: подпись «изменено» должна оставаться на сообщении
+  /// всегда. Точное время правки живёт трое суток в Redis (MessageEditsStore) —
+  /// «изменено в 14:42» интересно у свежих сообщений, а не через год.
+  isEdited    Boolean     @default(false)
   messageType MessageType
 
   encryptionKeyVersion Int
@@ -268,7 +273,6 @@ model Message {
   /// При пересылке уже пересланного источник наследуется: посредники не записываются.
   forwardedFromChatId BigInt?
 
-  readReceipts     MessageRead[]
   attachments      MessageAttachment[]
   systemEvent      SystemMessageEvent?
   deletedFor       DeletedMessage[]
@@ -297,9 +301,9 @@ model SystemMessageEvent {
 
 /// Состояние прочтения чата для одного пользователя.
 ///
-/// Считать непрочитанные каждый раз через COUNT по MessageRead дорого
-/// (список чатов запрашивается на каждом открытии главного экрана),
-/// поэтому счётчик и курсор денормализованы.
+/// Единственное долговременное хранилище прочтения: подробности «кто и когда»
+/// живут трое суток в Redis (MessageReadsStore), а курсор и счётчик остаются
+/// здесь навсегда, поэтому галочка у старого сообщения никуда не девается.
 model ChatReadState {
   id     Int    @id @default(autoincrement())
   userId BigInt
@@ -325,19 +329,6 @@ model ChatReadState {
   @@unique([userId, chatId])
   @@index([userId])
   @@index([chatId])
-}
-
-model MessageRead {
-  id        Int    @id @default(autoincrement())
-  messageId BigInt
-  userId    BigInt
-  readAt    BigInt
-
-  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([messageId, userId])
-  @@index([userId, readAt])
 }
 
 model MessageReaction {
