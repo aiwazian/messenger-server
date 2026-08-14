@@ -10,6 +10,7 @@ import { GetMessagesWindowUseCase } from './use-cases/get-messages-window.use-ca
 import { SearchChatMessagesUseCase } from './use-cases/search-chat-messages.use-case'
 import { ForwardMessageUseCase } from './use-cases/forward-message.use-case'
 import { ChatSourceResolver } from './chat-source.resolver'
+import { MessageEditsStore } from './message-edits.store'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { EncryptionModule } from '../encryption/encryption.module'
 
@@ -29,6 +30,7 @@ import { EncryptionModule } from '../encryption/encryption.module'
 		SearchChatMessagesUseCase,
 		ForwardMessageUseCase,
 		ChatSourceResolver,
+		MessageEditsStore,
 		PrismaService
 	],
 	exports: [MessagesService]
