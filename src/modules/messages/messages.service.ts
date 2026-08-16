@@ -36,6 +36,7 @@ import { ChatSourceMap, ChatSourceResolver } from './chat-source.resolver'
 import { ForwardSourceAccess } from '../../common/enums/forward-source-access.enum'
 import { ChatReadStateService } from '../chat-read-state/chat-read-state.service'
 import { MessageReadEntry, MessageReadsStore } from '../chat-read-state/message-reads.store'
+import { MessageEditsStore } from './message-edits.store'
 
 /**
  * Сколько времени есть на правку отправленного сообщения.
@@ -47,12 +48,12 @@ import { MessageReadEntry, MessageReadsStore } from '../chat-read-state/message-
 const EDIT_WINDOW_MS = 24 * 60 * 60 * 1000
 
 /**
- * Данные о прочтении для одной страницы истории.
+ * Данные из Redis для одной страницы истории.
  *
- * Считается один раз на страницу: два курсора, один pipeline в Redis и один запрос
+ * Считается один раз на страницу: два курсора, два pipeline в Redis и один запрос
  * за именами читателей. Иначе каждое сообщение тянуло бы за собой свои запросы.
  */
-export interface MessageReadContext {
+export interface MessagePageContext {
 	/** Курсор самого пользователя: до какого сообщения он дочитал чат. */
 	myCursor: bigint
 	/** Самый дальний курсор остальных: прочитано ли моё сообщение хоть кем-то. */
@@ -61,6 +62,8 @@ export interface MessageReadContext {
 	reads: Map<string, MessageReadEntry[]>
 	/** Имена читателей для карточек в списке просмотров. */
 	readerNames: Map<string, { firstName: string | null; lastName: string | null }>
+	/** Время правки: id сообщения -> когда изменили. Живёт трое суток. */
+	edits: Map<string, number>
 }
 
 @Injectable()
@@ -75,7 +78,8 @@ export class MessagesService {
 		private readonly encryption: EncryptionService,
 		private readonly chatSourceResolver: ChatSourceResolver,
 		private readonly chatReadState: ChatReadStateService,
-		private readonly messageReads: MessageReadsStore
+		private readonly messageReads: MessageReadsStore,
+		private readonly messageEdits: MessageEditsStore
 	) {}
 
 	/**
@@ -216,10 +220,10 @@ export class MessagesService {
 
 		const ordered = messages.reverse()
 		const sources = await this.resolveSources(userId, ordered)
-		const readContext = await this.resolveReadContext(userId, chatId, ordered)
+		const context = await this.resolveMessageContext(userId, chatId, ordered)
 
 		return ordered.map((message) =>
-			this.mapMessageToDto(message, userId, chatType, sources, readContext)
+			this.mapMessageToDto(message, userId, chatType, sources, context)
 		)
 	}
 
@@ -278,25 +282,35 @@ export class MessagesService {
 	}
 
 	/**
-	 * Контекст прочтения для страницы истории.
+	 * Контекст страницы истории: прочтения и время правок.
 	 *
-	 * Подробности из Redis запрашиваются только для своих сообщений: список просмотров
-	 * всё равно уходит только автору. В канале нет ни галочек, ни просмотров,
-	 * поэтому запросы не делаются вовсе.
+	 * Подробности прочтения из Redis запрашиваются только для своих сообщений: список
+	 * просмотров всё равно уходит только автору. В канале нет ни галочек, ни просмотров,
+	 * поэтому запросы не делаются вовсе — а вот время правки нужно везде.
 	 */
-	async resolveReadContext(
+	async resolveMessageContext(
 		userId: UserId,
 		chatId: ChatId,
 		messages: MessageWithRelations[]
-	): Promise<MessageReadContext> {
-		const context: MessageReadContext = {
+	): Promise<MessagePageContext> {
+		const context: MessagePageContext = {
 			myCursor: 0n,
 			peerCursor: 0n,
 			reads: new Map(),
-			readerNames: new Map()
+			readerNames: new Map(),
+			edits: new Map()
 		}
 
 		if (messages.length === 0) return context
+
+		/*
+		 * Время правки берём до выхода по каналу: пост в канале правится в любой
+		 * момент, и «изменено в 14:42» там нужно так же, как в чате. Ключи спрашиваются
+		 * только для отредактированных: без флага isEdited в Redis заведомо пусто.
+		 */
+		const editedIds = messages.filter((message) => message.isEdited).map((message) => message.id)
+		context.edits = await this.messageEdits.get(editedIds)
+
 		if (detectChatType(chatId) === ChatType.CHANNEL) return context
 
 		const [myCursor, peerCursor] = await Promise.all([
@@ -341,7 +355,7 @@ export class MessagesService {
 		userId: UserId,
 		chatType: ChatType,
 		sources?: ChatSourceMap,
-		readContext?: MessageReadContext
+		context?: MessagePageContext
 	): MessageResponseDto {
 		const isMine = BigInt(message.senderId) === BigInt(userId)
 
@@ -355,11 +369,11 @@ export class MessagesService {
 			 * прочитано, если его прочитал кто-то другой; чужое — если его прочитал
 			 * сам пользователь.
 			 */
-			const cursor = isMine ? (readContext?.peerCursor ?? 0n) : (readContext?.myCursor ?? 0n)
+			const cursor = isMine ? (context?.peerCursor ?? 0n) : (context?.myCursor ?? 0n)
 
 			isRead = cursor >= message.id
 
-			if (isMine) readInfo = this.buildReadInfo(message.id, readContext)
+			if (isMine) readInfo = this.buildReadInfo(message.id, context)
 		}
 
 		const replyChatType = message.replyTo
@@ -403,6 +417,10 @@ export class MessagesService {
 			text: this.decryptText(message.text, message.encryptionKeyVersion),
 			isRead,
 			readInfo,
+			/* Нетронутым сообщениям флаг не отдаём: false в каждом — лишний трафик. */
+			isEdited: message.isEdited || undefined,
+			/* Время правки лежит в Redis и через трое суток исчезает. */
+			editedAt: context?.edits.get(message.id.toString()),
 			systemEventType: message.systemEvent?.eventType,
 			attachments: message.attachments.map((f) =>
 				plainToInstance(MessageAttachmentDto, { ...f.file, fileId: f.fileId, type: f.type })
@@ -426,13 +444,13 @@ export class MessagesService {
 	 */
 	private buildReadInfo(
 		messageId: bigint,
-		readContext?: MessageReadContext
+		context?: MessagePageContext
 	): MessageReadInfoDto[] | undefined {
-		const entries = readContext?.reads.get(messageId.toString())
+		const entries = context?.reads.get(messageId.toString())
 		if (!entries || entries.length === 0) return undefined
 
 		return entries.map((entry) => {
-			const reader = readContext?.readerNames.get(entry.userId.toString())
+			const reader = context?.readerNames.get(entry.userId.toString())
 
 			return plainToInstance(MessageReadInfoDto, {
 				userId: entry.userId,
@@ -543,11 +561,16 @@ export class MessagesService {
 		const now = Date.now()
 		const { encrypted, version } = this.encryption.encrypt(dto.text)
 
+		/*
+		 * В Postgres уезжает только факт правки, само время — в Redis на трое суток.
+		 * Сначала база, потом Redis: неудавшаяся правка не должна оставлять время
+		 * правки у нетронутого сообщения.
+		 */
 		const message = await this.prisma.message.update({
 			where: { id: messageId },
 			data: {
 				text: encrypted,
-				editedAt: now,
+				isEdited: true,
 				encryptionKeyVersion: version
 			},
 			include: {
@@ -555,10 +578,14 @@ export class MessagesService {
 			}
 		})
 
+		await this.messageEdits.set(BigInt(messageId), now)
+
 		const messageInstance = plainToInstance(MessageResponseDto, {
 			...message,
 			text: dto.text,
 			isRead: undefined,
+			isEdited: true,
+			editedAt: now,
 			attachments: message.attachments.map((f) =>
 				plainToInstance(MessageAttachmentDto, { ...f.file, fileId: f.fileId, type: f.type })
 			),
@@ -676,10 +703,13 @@ export class MessagesService {
 		} else {
 			const messages = await this.prisma.message.findMany({
 				where: messageWhere,
-				select: { attachments: { select: { fileId: true } } }
+				select: { id: true, attachments: { select: { fileId: true } } }
 			})
 
 			await this.prisma.message.deleteMany({ where: messageWhere })
+
+			/* Сообщений больше нет — держать их время правки трое суток незачем. */
+			await this.messageEdits.remove(messages.map((message) => message.id))
 
 			await this.releaseFiles(
 				messages.flatMap((message) => message.attachments.map((f) => f.fileId))
@@ -746,6 +776,7 @@ export class MessagesService {
 
 		await this.prisma.message.delete({ where: { id: messageId } })
 		await this.messageReads.remove([BigInt(messageId)])
+		await this.messageEdits.remove([BigInt(messageId)])
 		await this.releaseFiles(attachments.map((a) => a.fileId))
 	}
 

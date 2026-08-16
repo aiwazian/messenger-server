@@ -20,7 +20,8 @@ import { ChatReadStateDto } from '../../chat-read-state/dto/chat-read-state.dto'
  * при вставке новых сообщений все offset’ы съезжают.
  *
  * Внутрь передаётся chatId, а не готовый chatType: кроме типа чата на выходе нужен ещё
- * контекст прочтения (курсоры и отметки из Redis), а он считается по чату.
+ * контекст страницы (курсоры, отметки о прочтении и время правок из Redis),
+ * а он считается по чату.
  */
 @Injectable()
 export class GetMessagesWindowUseCase {
@@ -181,11 +182,11 @@ export class GetMessagesWindowUseCase {
 	): Promise<MessagesWindowResponseDto> {
 		const chatType = detectChatType(chatId)
 		const sources = await this.messagesService.resolveSources(userId, messages)
-		const readContext = await this.messagesService.resolveReadContext(userId, chatId, messages)
+		const context = await this.messagesService.resolveMessageContext(userId, chatId, messages)
 
 		return plainToInstance(MessagesWindowResponseDto, {
 			messages: messages.map((message) =>
-				this.messagesService.mapMessageToDto(message, userId, chatType, sources, readContext)
+				this.messagesService.mapMessageToDto(message, userId, chatType, sources, context)
 			),
 			hasMoreBefore,
 			hasMoreAfter
