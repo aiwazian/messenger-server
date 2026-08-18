@@ -4,10 +4,13 @@ import { PrismaService } from '../../providers/prisma/prisma.service'
 import { RealtimeGateway } from '../realtime/realtime.gateway'
 import { SocketEvent } from '../../common/socket/socket-events'
 import { UserId } from '../../common/types/user-id.type'
+import { ChatId } from '../../common/types/chat-id.type'
 import { ChatType } from '../../common/enums/chat-type.enum'
+import { detectChatType } from '../../common/utils/detect-chat-type.util'
 import { Prisma } from '../../generated/prisma/client'
 import { NotificationSettingsDto } from './dto/notification-settings.dto'
 import { UpdateNotificationSettingsDto } from './dto/update-notification-settings.dto'
+import { ChatNotificationSettingDto } from './dto/chat-notification-setting.dto'
 
 /**
  * Значения по умолчанию: уведомления включены везде.
@@ -71,31 +74,163 @@ export class NotificationSettingsService {
 	}
 
 	/**
-	 * Отсеивает тех, кто отключил уведомления для этой категории чатов.
+	 * Исключения пользователя: чаты, у которых уведомления отличаются от их
+	 * категории или просто были переключены руками.
 	 *
-	 * Спрашиваются только выключенные строки: у пользователя со включёнными
-	 * уведомлениями строки в базе обычно нет вовсе.
+	 * Свежие сверху: на будущем экране исключений нужен именно тот чат, который
+	 * только что выключили.
+	 */
+	async getChatSettings(userId: UserId): Promise<ChatNotificationSettingDto[]> {
+		const rows = await this.prisma.chatNotificationSetting.findMany({
+			where: { userId },
+			orderBy: { updatedAt: 'desc' }
+		})
+
+		return rows.map((row) => this.toChatDto(row.chatId, row.enabled))
+	}
+
+	/**
+	 * Кнопка «Выключить уведомления» в самом чате.
+	 *
+	 * Строка заводится всегда, даже когда значение совпало с категорией: чат
+	 * попал в исключения осознанно и не должен молча уехать вслед за категорией,
+	 * когда её переключат на экране настроек.
+	 */
+	async setChatSetting(
+		userId: UserId,
+		chatId: ChatId,
+		enabled: boolean
+	): Promise<ChatNotificationSettingDto> {
+		const now = Date.now()
+
+		const row = await this.prisma.chatNotificationSetting.upsert({
+			where: { userId_chatId: { userId, chatId } },
+			create: { userId, chatId, enabled, updatedAt: now },
+			update: { enabled, updatedAt: now }
+		})
+
+		const setting = this.toChatDto(row.chatId, row.enabled)
+
+		this.realtimeGateway.sendToUser(userId, SocketEvent.CHAT_NOTIFICATIONS, setting)
+
+		return setting
+	}
+
+	/**
+	 * Убрать чат из исключений.
+	 *
+	 * В событие уезжает уже действующее значение, а не сам факт удаления: для
+	 * колокольчика в списке чатов важно итоговое состояние, а оно теперь
+	 * приходит из категории.
+	 */
+	async deleteChatSetting(userId: UserId, chatId: ChatId): Promise<void> {
+		await this.prisma.chatNotificationSetting.deleteMany({ where: { userId, chatId } })
+
+		const enabled = await this.isChatEnabled(userId, chatId)
+
+		this.realtimeGateway.sendToUser(
+			userId,
+			SocketEvent.CHAT_NOTIFICATIONS,
+			this.toChatDto(chatId, enabled)
+		)
+	}
+
+	/** Действующая настройка одного чата: исключение, иначе его категория. */
+	async isChatEnabled(userId: UserId, chatId: ChatId): Promise<boolean> {
+		const [settings, override] = await Promise.all([
+			this.prisma.notificationSettings.findUnique({ where: { userId } }),
+			this.prisma.chatNotificationSetting.findUnique({
+				where: { userId_chatId: { userId, chatId } },
+				select: { enabled: true }
+			})
+		])
+
+		if (override) return override.enabled
+
+		return this.categoryEnabled(settings ?? DEFAULT_SETTINGS, detectChatType(chatId))
+	}
+
+	/**
+	 * Чаты с выключенными уведомлениями: перечёркнутый колокольчик в списке чатов.
+	 *
+	 * Обе таблицы читаются один раз на весь список: исключений у пользователя
+	 * единицы, а отдельный запрос на каждый чат превратил бы список чатов
+	 * в десятки запросов.
+	 */
+	async getMutedChatIds(userId: UserId, chatIds: bigint[]): Promise<Set<string>> {
+		const muted = new Set<string>()
+
+		if (chatIds.length === 0) return muted
+
+		const [settings, overrides] = await Promise.all([
+			this.prisma.notificationSettings.findUnique({ where: { userId } }),
+			this.prisma.chatNotificationSetting.findMany({
+				where: { userId, chatId: { in: chatIds } },
+				select: { chatId: true, enabled: true }
+			})
+		])
+
+		const overridden = new Map(overrides.map((row) => [row.chatId.toString(), row.enabled]))
+
+		for (const chatId of chatIds) {
+			const key = chatId.toString()
+			const override = overridden.get(key)
+
+			const enabled =
+				override ??
+				this.categoryEnabled(settings ?? DEFAULT_SETTINGS, detectChatType(ChatId(chatId)))
+
+			if (!enabled) muted.add(key)
+		}
+
+		return muted
+	}
+
+	/**
+	 * Отсеивает тех, кому это уведомление показывать не нужно.
+	 *
+	 * Исключение по самому чату сильнее категории: канал, включённый руками,
+	 * звучит и при выключенных каналах — иначе список исключений не имел бы смысла.
 	 *
 	 * Ошибка базы не отменяет доставку: потерянное сообщение хуже лишнего
 	 * уведомления, тем более что клиент проверяет настройку ещё раз перед показом.
 	 */
-	async filterPushRecipients(userIds: UserId[], chatType: ChatType): Promise<UserId[]> {
+	async filterPushRecipients(
+		userIds: UserId[],
+		chatType: ChatType,
+		chatId?: ChatId
+	): Promise<UserId[]> {
 		if (userIds.length === 0) return []
 
 		const disabledWhere = this.disabledWhere(chatType)
-		if (!disabledWhere) return userIds
 
 		try {
-			const disabled = await this.prisma.notificationSettings.findMany({
-				where: { userId: { in: userIds }, ...disabledWhere },
-				select: { userId: true }
-			})
+			const disabledQuery = disabledWhere
+				? this.prisma.notificationSettings.findMany({
+						where: { userId: { in: userIds }, ...disabledWhere },
+						select: { userId: true }
+					})
+				: Promise.resolve<{ userId: bigint }[]>([])
 
-			if (disabled.length === 0) return userIds
+			const overrideQuery = chatId
+				? this.prisma.chatNotificationSetting.findMany({
+						where: { userId: { in: userIds }, chatId },
+						select: { userId: true, enabled: true }
+					})
+				: Promise.resolve<{ userId: bigint; enabled: boolean }[]>([])
+
+			const [disabled, overrides] = await Promise.all([disabledQuery, overrideQuery])
+
+			if (disabled.length === 0 && overrides.length === 0) return userIds
 
 			const blocked = new Set(disabled.map((row) => row.userId.toString()))
+			const overridden = new Map(overrides.map((row) => [row.userId.toString(), row.enabled]))
 
-			return userIds.filter((userId) => !blocked.has(userId.toString()))
+			return userIds.filter((userId) => {
+				const key = userId.toString()
+
+				return overridden.get(key) ?? !blocked.has(key)
+			})
 		} catch (e) {
 			this.logger.error('Error filtering push recipients', e)
 			return userIds
@@ -121,6 +256,20 @@ export class NotificationSettingsService {
 		}
 	}
 
+	/** Правило категории для этого типа чата: то, что перекрывает исключение. */
+	private categoryEnabled(settings: SettingsRow, chatType: ChatType): boolean {
+		switch (chatType) {
+			case ChatType.PRIVATE:
+				return settings.privateChats
+			case ChatType.GROUP:
+				return settings.groups
+			case ChatType.CHANNEL:
+				return settings.channels
+			default:
+				return true
+		}
+	}
+
 	private changes(dto: UpdateNotificationSettingsDto): Partial<SettingsRow> {
 		const data: Partial<SettingsRow> = {}
 
@@ -136,6 +285,13 @@ export class NotificationSettingsService {
 			privateChats: row.privateChats,
 			groups: row.groups,
 			channels: row.channels
+		})
+	}
+
+	private toChatDto(chatId: bigint, enabled: boolean): ChatNotificationSettingDto {
+		return plainToInstance(ChatNotificationSettingDto, {
+			chatId: chatId.toString(),
+			enabled
 		})
 	}
 }

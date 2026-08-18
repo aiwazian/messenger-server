@@ -95,6 +95,7 @@ model User {
 
   privacySettings          PrivacySettings?
   notificationSettings     NotificationSettings?
+  chatNotificationSettings ChatNotificationSetting[]
   scheduledAccountDeletion ScheduledAccountDeletion?
 
   messageReactions MessageReaction[]
@@ -350,6 +351,37 @@ model NotificationSettings {
   updatedAt BigInt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Уведомления по одному чату: исключение из настройки его категории.
+///
+/// Категории (NotificationSettings) задают правило по умолчанию, а строка
+/// здесь перекрывает его для конкретного чата: канал звучит, когда все каналы
+/// выключены, и молчит, когда все каналы включены.
+///
+/// Строка существует только у чатов, которые пользователь тронул руками, —
+/// это и есть список исключений для отдельного экрана. Хранится и
+/// «принудительно включён», и «принудительно выключен»: без первого чат
+/// нельзя было бы вернуть в исключения, не трогая категорию целиком.
+/// Удаление строки возвращает чат к настройке его категории.
+model ChatNotificationSetting {
+  id     Int    @id @default(autoincrement())
+  userId BigInt
+  chatId BigInt
+
+  /// Уведомления по этому чату включены.
+  ///
+  /// Значение перекрывает категорию целиком: false — чат молчит даже при
+  /// включённой категории, true — звучит даже при выключенной.
+  enabled Boolean
+
+  updatedAt BigInt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, chatId])
+  @@index([userId])
+  @@index([chatId])
 }
 
 model MessageReaction {
