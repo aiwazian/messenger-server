@@ -94,6 +94,7 @@ model User {
   channelAdminPermissions ChannelAdminPermission[]
 
   privacySettings          PrivacySettings?
+  notificationSettings     NotificationSettings?
   scheduledAccountDeletion ScheduledAccountDeletion?
 
   messageReactions MessageReaction[]
@@ -329,6 +330,26 @@ model ChatReadState {
   @@unique([userId, chatId])
   @@index([userId])
   @@index([chatId])
+}
+
+/// Категории чатов, от которых пользователь хочет получать уведомления.
+///
+/// Отдельная таблица, а не поля в PrivacySettings: это настройка доставки,
+/// а не приватности, и читается она на каждом исходящем пуше.
+///
+/// Строки может не быть вовсе — это штатное состояние «всё включено»:
+/// заводить запись каждому пользователю ради трёх true незачем.
+model NotificationSettings {
+  id     Int    @id @default(autoincrement())
+  userId BigInt @unique
+
+  privateChats Boolean @default(true)
+  groups       Boolean @default(true)
+  channels     Boolean @default(true)
+
+  updatedAt BigInt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model MessageReaction {
