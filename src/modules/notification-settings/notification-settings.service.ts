@@ -142,6 +142,53 @@ export class NotificationSettingsService {
 		)
 	}
 
+	/**
+	 * Снять исключения разом.
+	 *
+	 * Затронутые чаты читаем до удаления: после него каждый снова следует своей
+	 * категории, и это итоговое состояние уходит теми же событиями на чат, что и
+	 * одиночное удаление, — чтобы колокольчик в списке чатов обновился на всех
+	 * устройствах.
+	 *
+	 * category сужает набор до одной категории: экран исключений работает по
+	 * категориям, и его «Удалить все» не должно трогать чужие.
+	 */
+	async deleteAllChatSettings(userId: UserId, category?: string): Promise<void> {
+		const chatType = this.categoryToChatType(category)
+
+		const rows = await this.prisma.chatNotificationSetting.findMany({
+			where: { userId },
+			select: { chatId: true }
+		})
+
+		const targets = chatType
+			? rows.filter((row) => detectChatType(ChatId(row.chatId)) === chatType)
+			: rows
+
+		if (targets.length === 0) return
+
+		const chatIds = targets.map((row) => row.chatId)
+
+		await this.prisma.chatNotificationSetting.deleteMany({
+			where: { userId, chatId: { in: chatIds } }
+		})
+
+		const settings = await this.prisma.notificationSettings.findUnique({ where: { userId } })
+
+		for (const chatId of chatIds) {
+			const enabled = this.categoryEnabled(
+				settings ?? DEFAULT_SETTINGS,
+				detectChatType(ChatId(chatId))
+			)
+
+			this.realtimeGateway.sendToUser(
+				userId,
+				SocketEvent.CHAT_NOTIFICATIONS,
+				this.toChatDto(chatId, enabled)
+			)
+		}
+	}
+
 	/** Действующая настройка одного чата: исключение, иначе его категория. */
 	async isChatEnabled(userId: UserId, chatId: ChatId): Promise<boolean> {
 		const [settings, override] = await Promise.all([
@@ -274,6 +321,24 @@ export class NotificationSettingsService {
 				return settings.channels
 			default:
 				return true
+		}
+	}
+
+	/**
+	 * Категория чатов с клиента в тип чата этого сервера.
+	 *
+	 * null — сузить нечем: снимаем все исключения пользователя.
+	 */
+	private categoryToChatType(category?: string): ChatType | null {
+		switch (category) {
+			case 'PRIVATE_CHATS':
+				return ChatType.PRIVATE
+			case 'GROUPS':
+				return ChatType.GROUP
+			case 'CHANNELS':
+				return ChatType.CHANNEL
+			default:
+				return null
 		}
 	}
 

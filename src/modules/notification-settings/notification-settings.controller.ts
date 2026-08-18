@@ -7,7 +7,8 @@ import {
 	HttpStatus,
 	Param,
 	Patch,
-	Put
+	Put,
+	Query
 } from '@nestjs/common'
 import { NotificationSettingsService } from './notification-settings.service'
 import { NotificationSettingsDto } from './dto/notification-settings.dto'
@@ -45,6 +46,22 @@ export class NotificationSettingsController {
 	@Get('chats')
 	getChats(@CurrentUserId() userId: UserId): Promise<ChatNotificationSettingDto[]> {
 		return this.notificationSettings.getChatSettings(userId)
+	}
+
+	/**
+	 * Убрать исключения разом.
+	 *
+	 * category сужает удаление до одной категории: экран исключений открыт для
+	 * своей категории, и его кнопка «Удалить все» не должна трогать чужие. Без
+	 * параметра снимаются все исключения пользователя.
+	 */
+	@Delete('chats')
+	@HttpCode(HttpStatus.NO_CONTENT)
+	deleteAllChats(
+		@CurrentUserId() userId: UserId,
+		@Query('category') category?: string
+	): Promise<void> {
+		return this.notificationSettings.deleteAllChatSettings(userId, category)
 	}
 
 	/** Добавить чат в исключения или изменить уже существующее. */
