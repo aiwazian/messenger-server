@@ -850,6 +850,10 @@ export class MessagesService {
 			 * Тип чата уезжает отдельным полем: в actualChatId для группы лежит отправитель,
 			 * а не сама группа, и настройка «Группы» никогда бы не сработала.
 			 *
+			 * По той же причине рядом едет recipientChatId — тот же чат в терминах
+			 * списка чатов получателя. По нему ищется исключение по чату: выключенная
+			 * руками группа должна молчать, а не искаться по id отправителя.
+			 *
 			 * sendTime — время отправки сообщения, а не доставки уведомления: клиент
 			 * ставит его в setWhen(), и пролежавший час в очереди пуш не выглядит свежим.
 			 */
@@ -858,6 +862,7 @@ export class MessagesService {
 				body: message.text || 'Вложение',
 				chatId: actualChatId.toString(),
 				chatType,
+				recipientChatId: (chatType === ChatType.PRIVATE ? message.senderId : chatId).toString(),
 				sendTime: message.sendTime.toString()
 			})
 		}
