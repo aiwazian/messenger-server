@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common'
 import { plainToInstance } from 'class-transformer'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { RealtimeGateway } from '../realtime/realtime.gateway'
@@ -36,6 +36,13 @@ export class NotificationSettingsService {
 
 	constructor(
 		private readonly prisma: PrismaService,
+		/*
+		 * forwardRef разрывает кольцо импортов: шлюз тянет ChatsService, а тот
+		 * теперь — эти настройки, чтобы отдать isMuted в списке чатов. Без
+		 * отложенной ссылки класс шлюза на момент разбора конструктора ещё
+		 * undefined, и Nest падает на старте. Сам шлюз так же держит ChatsService.
+		 */
+		@Inject(forwardRef(() => RealtimeGateway))
 		private readonly realtimeGateway: RealtimeGateway
 	) {}
 
