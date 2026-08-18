@@ -61,7 +61,8 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 	 *
 	 * Настройки уведомлений проверяются здесь, а не в вызывающем коде: через этот
 	 * метод уходят все пуши приложения, поэтому правило не потеряется в новом
-	 * сценарии отправки.
+	 * сценарии отправки. Проверяется и категория чата, и исключение по самому
+	 * чату: выключенный в меню чат молчит, даже когда его категория включена.
 	 */
 	async sendToUsers(userIds: UserId[], payload: PushNotificationPayload): Promise<void> {
 		if (userIds.length === 0) return
@@ -72,7 +73,8 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 
 		const recipients = await this.notificationSettings.filterPushRecipients(
 			userIds,
-			payload.chatType ?? this.detectChatType(payload.chatId)
+			payload.chatType ?? this.detectChatType(payload.chatId),
+			this.toChatId(payload.recipientChatId ?? payload.chatId)
 		)
 
 		if (recipients.length === 0) return
@@ -135,10 +137,22 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 
 	/** Запасной вариант для вызовов, где тип чата явно не передан. */
 	private detectChatType(chatId: string): ChatType {
+		const parsed = this.toChatId(chatId)
+
+		return parsed ? detectChatType(parsed) : ChatType.UNKNOWN
+	}
+
+	/**
+	 * Разбор id из payload.
+	 *
+	 * id приходит строкой, и некорректное значение не должно ронять отправку:
+	 * без id просто не будет проверки исключения.
+	 */
+	private toChatId(chatId: string): ChatId | undefined {
 		try {
-			return detectChatType(ChatId(chatId))
+			return ChatId(chatId)
 		} catch {
-			return ChatType.UNKNOWN
+			return undefined
 		}
 	}
 
