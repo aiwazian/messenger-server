@@ -845,10 +845,20 @@ export class MessagesService {
 
 		if (offline.length > 0) {
 			const actualChatId = chatType === ChatType.CHANNEL ? message.chatId : message.senderId
+
+			/*
+			 * Тип чата уезжает отдельным полем: в actualChatId для группы лежит отправитель,
+			 * а не сама группа, и настройка «Группы» никогда бы не сработала.
+			 *
+			 * sendTime — время отправки сообщения, а не доставки уведомления: клиент
+			 * ставит его в setWhen(), и пролежавший час в очереди пуш не выглядит свежим.
+			 */
 			this.pushService.sendToUsers(offline, {
 				title: 'Новое сообщение',
 				body: message.text || 'Вложение',
-				chatId: actualChatId.toString()
+				chatId: actualChatId.toString(),
+				chatType,
+				sendTime: message.sendTime.toString()
 			})
 		}
 	}
