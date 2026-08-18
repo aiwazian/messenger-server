@@ -4,6 +4,9 @@ import { App, cert, deleteApp, initializeApp } from 'firebase-admin/app'
 import { getMessaging, Messaging } from 'firebase-admin/messaging'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
+import { ChatId } from '../../common/types/chat-id.type'
+import { ChatType } from '../../common/enums/chat-type.enum'
+import { detectChatType } from '../../common/utils/detect-chat-type.util'
 import { PushNotificationPayload } from './push.types'
 import { NotificationSettingsService } from '../notification-settings/notification-settings.service'
 
@@ -57,8 +60,8 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 	 * Отправка уведомлений пачкой получателей.
 	 *
 	 * Настройки уведомлений проверяются здесь, а не в вызывающем коде: через этот
-	 * метод уходят все пуши приложения, поэтому правило живёт в одном месте и не
-	 * может потеряться в новом сценарии отправки.
+	 * метод уходят все пуши приложения, поэтому правило не потеряется в новом
+	 * сценарии отправки.
 	 */
 	async sendToUsers(userIds: UserId[], payload: PushNotificationPayload): Promise<void> {
 		if (userIds.length === 0) return
@@ -69,7 +72,7 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 
 		const recipients = await this.notificationSettings.filterPushRecipients(
 			userIds,
-			payload.chatId
+			payload.chatType ?? this.detectChatType(payload.chatId)
 		)
 
 		if (recipients.length === 0) return
@@ -81,6 +84,13 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 			},
 			select: { userId: true, installationId: true }
 		})
+
+		/*
+		 * Если время отправки не передали, берём текущее: это всё равно ближе
+		 * к правде, чем момент доставки на устройстве, и data у FCM принимает
+		 * только строки — undefined уронил бы отправку.
+		 */
+		const sendTime = payload.sendTime ?? Date.now().toString()
 
 		const staleInstallationIds: string[] = []
 
@@ -97,7 +107,7 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 							title: payload.title,
 							body: payload.body,
 							chatId: payload.chatId,
-							sendTime: payload.sendTime
+							sendTime
 						}
 					})
 
@@ -121,6 +131,15 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 		}
 
 		await this.clearStaleInstallationIds(staleInstallationIds)
+	}
+
+	/** Запасной вариант для вызовов, где тип чата явно не передан. */
+	private detectChatType(chatId: string): ChatType {
+		try {
+			return detectChatType(ChatId(chatId))
+		} catch {
+			return ChatType.UNKNOWN
+		}
 	}
 
 	/**

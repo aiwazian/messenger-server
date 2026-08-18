@@ -4,9 +4,7 @@ import { PrismaService } from '../../providers/prisma/prisma.service'
 import { RealtimeGateway } from '../realtime/realtime.gateway'
 import { SocketEvent } from '../../common/socket/socket-events'
 import { UserId } from '../../common/types/user-id.type'
-import { ChatId } from '../../common/types/chat-id.type'
 import { ChatType } from '../../common/enums/chat-type.enum'
-import { detectChatType } from '../../common/utils/detect-chat-type.util'
 import { Prisma } from '../../generated/prisma/client'
 import { NotificationSettingsDto } from './dto/notification-settings.dto'
 import { UpdateNotificationSettingsDto } from './dto/update-notification-settings.dto'
@@ -47,9 +45,10 @@ export class NotificationSettingsService {
 	/**
 	 * Переключение тумблера на одном из устройств.
 	 *
-	 * Остальные сессии узнают об этом сразу: иначе на втором устройстве экран
-	 * настроек показывал бы старое состояние до следующего запуска, а локальная
-	 * проверка перед показом уведомления работала бы по устаревшим данным.
+	 * Событие уходит во все сессии, включая инициатора: значение идемпотентно,
+	 * а инициатор к этому моменту уже применил его локально. Зато остальные
+	 * устройства узнают об изменении сразу, а не при следующем запуске: иначе
+	 * локальная проверка перед показом уведомления работала бы по устаревшим данным.
 	 */
 	async update(
 		userId: UserId,
@@ -75,16 +74,15 @@ export class NotificationSettingsService {
 	 * Отсеивает тех, кто отключил уведомления для этой категории чатов.
 	 *
 	 * Спрашиваются только выключенные строки: у пользователя со включёнными
-	 * уведомлениями строки в базе обычно нет вовсе, и её отсутствие ничего
-	 * не должно значить, кроме значений по умолчанию.
+	 * уведомлениями строки в базе обычно нет вовсе.
 	 *
-	 * Ошибка базы не должна отменять доставку: пуш важнее настройки, поэтому
-	 * в этом случае список возвращается нетронутым.
+	 * Ошибка базы не отменяет доставку: потерянное сообщение хуже лишнего
+	 * уведомления, тем более что клиент проверяет настройку ещё раз перед показом.
 	 */
-	async filterPushRecipients(userIds: UserId[], chatId: string): Promise<UserId[]> {
+	async filterPushRecipients(userIds: UserId[], chatType: ChatType): Promise<UserId[]> {
 		if (userIds.length === 0) return []
 
-		const disabledWhere = this.disabledWhere(chatId)
+		const disabledWhere = this.disabledWhere(chatType)
 		if (!disabledWhere) return userIds
 
 		try {
@@ -107,18 +105,10 @@ export class NotificationSettingsService {
 	/**
 	 * Условие «категория этого чата выключена».
 	 *
-	 * null означает, что тип чата определить не удалось: фильтровать нечего
-	 * и уведомление уходит всем.
+	 * null означает неизвестный тип чата: фильтровать нечего, уведомление
+	 * уходит всем.
 	 */
-	private disabledWhere(chatId: string): Prisma.NotificationSettingsWhereInput | null {
-		let chatType: ChatType
-
-		try {
-			chatType = detectChatType(ChatId(chatId))
-		} catch {
-			return null
-		}
-
+	private disabledWhere(chatType: ChatType): Prisma.NotificationSettingsWhereInput | null {
 		switch (chatType) {
 			case ChatType.PRIVATE:
 				return { privateChats: false }
