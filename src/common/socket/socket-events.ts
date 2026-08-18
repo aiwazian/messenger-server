@@ -24,7 +24,16 @@ export const SocketEvent = {
 	UNPIN_CHAT: 'unpin_chat',
 
 	CHAT_FOLDER_NEW: 'chat_folder:new',
-	CHAT_FOLDER_DELETED: 'chat_folder:deleted'
+	CHAT_FOLDER_DELETED: 'chat_folder:deleted',
+
+	/**
+	 * Настройки уведомлений изменились на одном из устройств.
+	 *
+	 * Уходит во все сессии пользователя, включая ту, что прислала запрос:
+	 * значение идемпотентно, а инициатор к этому моменту уже применил его
+	 * локально и просто перезапишет тем же.
+	 */
+	SETTINGS_NOTIFICATIONS: 'settings:notifications'
 } as const
 
 export type SocketEventType = (typeof SocketEvent)[keyof typeof SocketEvent]

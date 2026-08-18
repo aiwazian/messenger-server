@@ -5,6 +5,7 @@ import { getMessaging, Messaging } from 'firebase-admin/messaging'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
 import { PushNotificationPayload } from './push.types'
+import { NotificationSettingsService } from '../notification-settings/notification-settings.service'
 
 const FCM_BATCH_SIZE = 500
 
@@ -26,7 +27,8 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 
 	constructor(
 		private readonly config: ConfigService,
-		private readonly prisma: PrismaService
+		private readonly prisma: PrismaService,
+		private readonly notificationSettings: NotificationSettingsService
 	) {}
 
 	onModuleInit(): void {
@@ -51,6 +53,13 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 		this.messaging = null
 	}
 
+	/**
+	 * Отправка уведомлений пачкой получателей.
+	 *
+	 * Настройки уведомлений проверяются здесь, а не в вызывающем коде: через этот
+	 * метод уходят все пуши приложения, поэтому правило живёт в одном месте и не
+	 * может потеряться в новом сценарии отправки.
+	 */
 	async sendToUsers(userIds: UserId[], payload: PushNotificationPayload): Promise<void> {
 		if (userIds.length === 0) return
 
@@ -58,9 +67,16 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 
 		if (!messaging) return
 
+		const recipients = await this.notificationSettings.filterPushRecipients(
+			userIds,
+			payload.chatId
+		)
+
+		if (recipients.length === 0) return
+
 		const sessions = await this.prisma.session.findMany({
 			where: {
-				userId: { in: userIds },
+				userId: { in: recipients },
 				installationId: { not: null }
 			},
 			select: { userId: true, installationId: true }
@@ -80,7 +96,8 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 							userId,
 							title: payload.title,
 							body: payload.body,
-							chatId: payload.chatId
+							chatId: payload.chatId,
+							sendTime: payload.sendTime
 						}
 					})
 
