@@ -19,6 +19,7 @@ import { SocketEvent } from '../../common/socket/socket-events'
 import { ChannelType, GroupType } from '../../generated/prisma/enums'
 import { ChatReadStateService } from '../chat-read-state/chat-read-state.service'
 import { ChatReadStateDto } from '../chat-read-state/dto/chat-read-state.dto'
+import { NotificationSettingsService } from '../notification-settings/notification-settings.service'
 
 @Injectable()
 export class ChatsService {
@@ -27,7 +28,8 @@ export class ChatsService {
 		private readonly encryption: EncryptionService,
 		@Inject(forwardRef(() => RealtimeGateway))
 		private readonly realtimeGateway: RealtimeGateway,
-		private readonly chatReadState: ChatReadStateService
+		private readonly chatReadState: ChatReadStateService,
+		private readonly notificationSettings: NotificationSettingsService
 	) {}
 
 	async getAll(userId: UserId): Promise<ChatResponseDto[]> {
@@ -39,7 +41,18 @@ export class ChatsService {
 			return []
 		}
 
-		const readStates = await this.chatReadState.getStates(userId)
+		/*
+		 * Непрочитанные и выключенные чаты считаются одним заходом на весь список, как
+		 * и раньше с ChatReadState: поиск исключения на каждую карточку дал бы запрос
+		 * на чат, а список открывается при каждом запуске.
+		 */
+		const [readStates, mutedChatIds] = await Promise.all([
+			this.chatReadState.getStates(userId),
+			this.notificationSettings.getMutedChatIds(
+				userId,
+				chats.map((chat) => chat.chatId)
+			)
+		])
 
 		const resChats = await Promise.all(
 			chats.map(async (chat) => {
@@ -53,6 +66,7 @@ export class ChatsService {
 								name: user.firstName,
 								isPinned: chat.isPinned,
 								lastMessage: lastMessage,
+								isMuted: mutedChatIds.has(chat.chatId.toString()),
 								...this.unreadFields(readStates, chat.chatId)
 							})
 						}
@@ -66,6 +80,7 @@ export class ChatsService {
 								name: channel.name,
 								isPinned: chat.isPinned,
 								lastMessage: lastMessage,
+								isMuted: mutedChatIds.has(chat.chatId.toString()),
 								...this.unreadFields(readStates, chat.chatId)
 							})
 						}
@@ -79,6 +94,7 @@ export class ChatsService {
 								name: group.name,
 								isPinned: chat.isPinned,
 								lastMessage: lastMessage,
+								isMuted: mutedChatIds.has(chat.chatId.toString()),
 								...this.unreadFields(readStates, chat.chatId)
 							})
 						}
@@ -159,7 +175,10 @@ export class ChatsService {
 
 		const lastMessage = await this.getLastMessage(userId, chatId)
 
-		const readState = await this.chatReadState.getState(userId, chatId)
+		const [readState, isEnabled] = await Promise.all([
+			this.chatReadState.getState(userId, chatId),
+			this.notificationSettings.isChatEnabled(userId, chatId)
+		])
 
 		return plainToInstance(ChatResponseDto, {
 			id: resolvedChatId.toString(),
@@ -168,7 +187,8 @@ export class ChatsService {
 			lastMessage,
 			unreadCount: readState.unreadCount,
 			firstUnreadMessageId: readState.firstUnreadMessageId,
-			isManuallyUnread: readState.isManuallyUnread
+			isManuallyUnread: readState.isManuallyUnread,
+			isMuted: !isEnabled
 		})
 	}
 

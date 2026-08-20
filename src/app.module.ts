@@ -22,6 +22,7 @@ import { APP_GUARD } from '@nestjs/core'
 import { ScheduleModule } from '@nestjs/schedule'
 import { AuthGuard } from './common/guards/auth.guard'
 import { ChatReadStateModule } from './modules/chat-read-state/chat-read-state.module'
+import { NotificationSettingsModule } from './modules/notification-settings/notification-settings.module'
 
 @Module({
 	imports: [
@@ -97,6 +98,7 @@ import { ChatReadStateModule } from './modules/chat-read-state/chat-read-state.m
 		ChatFoldersModule,
 		MessagesModule,
 		SearchModule,
+		NotificationSettingsModule,
 		PushModule,
 		StorageModule,
 		ChatReadStateModule

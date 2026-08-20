@@ -4,7 +4,11 @@ import { App, cert, deleteApp, initializeApp } from 'firebase-admin/app'
 import { getMessaging, Messaging } from 'firebase-admin/messaging'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
+import { ChatId } from '../../common/types/chat-id.type'
+import { ChatType } from '../../common/enums/chat-type.enum'
+import { detectChatType } from '../../common/utils/detect-chat-type.util'
 import { PushNotificationPayload } from './push.types'
+import { NotificationSettingsService } from '../notification-settings/notification-settings.service'
 
 const FCM_BATCH_SIZE = 500
 
@@ -26,7 +30,8 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 
 	constructor(
 		private readonly config: ConfigService,
-		private readonly prisma: PrismaService
+		private readonly prisma: PrismaService,
+		private readonly notificationSettings: NotificationSettingsService
 	) {}
 
 	onModuleInit(): void {
@@ -51,6 +56,14 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 		this.messaging = null
 	}
 
+	/**
+	 * Отправка уведомлений пачкой получателей.
+	 *
+	 * Настройки уведомлений проверяются здесь, а не в вызывающем коде: через этот
+	 * метод уходят все пуши приложения, поэтому правило не потеряется в новом
+	 * сценарии отправки. Проверяется и категория чата, и исключение по самому
+	 * чату: выключенный в меню чат молчит, даже когда его категория включена.
+	 */
 	async sendToUsers(userIds: UserId[], payload: PushNotificationPayload): Promise<void> {
 		if (userIds.length === 0) return
 
@@ -58,13 +71,28 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 
 		if (!messaging) return
 
+		const recipients = await this.notificationSettings.filterPushRecipients(
+			userIds,
+			payload.chatType ?? this.detectChatType(payload.chatId),
+			this.toChatId(payload.recipientChatId ?? payload.chatId)
+		)
+
+		if (recipients.length === 0) return
+
 		const sessions = await this.prisma.session.findMany({
 			where: {
-				userId: { in: userIds },
+				userId: { in: recipients },
 				installationId: { not: null }
 			},
 			select: { userId: true, installationId: true }
 		})
+
+		/*
+		 * Если время отправки не передали, берём текущее: это всё равно ближе
+		 * к правде, чем момент доставки на устройстве, и data у FCM принимает
+		 * только строки — undefined уронил бы отправку.
+		 */
+		const sendTime = payload.sendTime ?? Date.now().toString()
 
 		const staleInstallationIds: string[] = []
 
@@ -80,7 +108,8 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 							userId,
 							title: payload.title,
 							body: payload.body,
-							chatId: payload.chatId
+							chatId: payload.chatId,
+							sendTime
 						}
 					})
 
@@ -104,6 +133,27 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 		}
 
 		await this.clearStaleInstallationIds(staleInstallationIds)
+	}
+
+	/** Запасной вариант для вызовов, где тип чата явно не передан. */
+	private detectChatType(chatId: string): ChatType {
+		const parsed = this.toChatId(chatId)
+
+		return parsed ? detectChatType(parsed) : ChatType.UNKNOWN
+	}
+
+	/**
+	 * Разбор id из payload.
+	 *
+	 * id приходит строкой, и некорректное значение не должно ронять отправку:
+	 * без id просто не будет проверки исключения.
+	 */
+	private toChatId(chatId: string): ChatId | undefined {
+		try {
+			return ChatId(chatId)
+		} catch {
+			return undefined
+		}
 	}
 
 	/**

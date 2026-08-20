@@ -94,6 +94,8 @@ model User {
   channelAdminPermissions ChannelAdminPermission[]
 
   privacySettings          PrivacySettings?
+  notificationSettings     NotificationSettings?
+  chatNotificationSettings ChatNotificationSetting[]
   scheduledAccountDeletion ScheduledAccountDeletion?
 
   messageReactions MessageReaction[]
@@ -323,6 +325,57 @@ model ChatReadState {
   isManuallyUnread Boolean @default(false)
 
   updatedAt   BigInt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, chatId])
+  @@index([userId])
+  @@index([chatId])
+}
+
+/// Категории чатов, от которых пользователь хочет получать уведомления.
+///
+/// Отдельная таблица, а не поля в PrivacySettings: это настройка доставки,
+/// а не приватности, и читается она на каждом исходящем пуше.
+///
+/// Строки может не быть вовсе — это штатное состояние «всё включено»:
+/// заводить запись каждому пользователю ради трёх true незачем.
+model NotificationSettings {
+  id     Int    @id @default(autoincrement())
+  userId BigInt @unique
+
+  privateChats Boolean @default(true)
+  groups       Boolean @default(true)
+  channels     Boolean @default(true)
+
+  updatedAt BigInt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Уведомления по одному чату: исключение из настройки его категории.
+///
+/// Категории (NotificationSettings) задают правило по умолчанию, а строка
+/// здесь перекрывает его для конкретного чата: канал звучит, когда все каналы
+/// выключены, и молчит, когда все каналы включены.
+///
+/// Строка существует только у чатов, которые пользователь тронул руками, —
+/// это и есть список исключений для отдельного экрана. Хранится и
+/// «принудительно включён», и «принудительно выключен»: без первого чат
+/// нельзя было бы вернуть в исключения, не трогая категорию целиком.
+/// Удаление строки возвращает чат к настройке его категории.
+model ChatNotificationSetting {
+  id     Int    @id @default(autoincrement())
+  userId BigInt
+  chatId BigInt
+
+  /// Уведомления по этому чату включены.
+  ///
+  /// Значение перекрывает категорию целиком: false — чат молчит даже при
+  /// включённой категории, true — звучит даже при выключенной.
+  enabled Boolean
+
+  updatedAt BigInt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
