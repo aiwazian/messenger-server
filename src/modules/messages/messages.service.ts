@@ -151,15 +151,23 @@ export class MessagesService {
 			}
 		})
 
+		/*
+		 * Подпись к вложению шифруется так же, как текст обычного сообщения.
+		 * Раньше она уезжала в базу открытым текстом, но с версией ключа, и на
+		 * чтении её пытались расшифровать: список чатов отвечал пятисоткой, а в
+		 * истории подпись превращалась в null и сообщение приходило пустым.
+		 */
+		const caption = dto.text ? this.encryption.encrypt(dto.text) : null
+
 		const message = await this.prisma.message.create({
 			data: {
 				sequenceId: sequenceId + 1,
 				chatId,
-				text: dto.text,
+				text: caption?.encrypted ?? null,
 				sendTime: Date.now(),
 				senderId: userId,
 				messageType: MessageType.TEXT,
-				encryptionKeyVersion: this.encryption.currentVersion,
+				encryptionKeyVersion: caption?.version ?? this.encryption.currentVersion,
 				replyToId,
 				replyToChatId: replyToId ? chatId : null,
 				attachments: {
