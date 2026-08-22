@@ -420,11 +420,16 @@ export class ChatsService {
 		 */
 		const isRead = await this.chatReadState.isMessageRead(userId, chatId, message)
 
+		/*
+		 * Расшифровываем той версией ключа, которой сообщение шифровали, а не текущей:
+		 * после ротации ключа старые строки читались бы новым ключом, и весь список чатов
+		 * снова падал бы из-за одного сообщения.
+		 */
+		const keyVersion = message.encryptionKeyVersion ?? this.encryption.currentVersion
+
 		return plainToInstance(MessageResponseDto, {
 			...message,
-			text: message.text
-				? this.encryption.decrypt(message.text, this.encryption.currentVersion)
-				: null,
+			text: message.text ? this.encryption.decrypt(message.text, keyVersion) : null,
 			isRead,
 			systemEventType: message.systemEvent?.eventType,
 			attachments: message.attachments.map((f) =>
