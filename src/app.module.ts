@@ -11,6 +11,7 @@ import { RealtimeModule } from './modules/realtime/realtime.module'
 import { GroupsModule } from './modules/groups/groups.module'
 import { ChatsModule } from './modules/chats/chats.module'
 import { ChatFoldersModule } from './modules/chat-folders/chat-folders.module'
+import { ChatMediaModule } from './modules/chat-media/chat-media.module'
 import { MessagesModule } from './modules/messages/messages.module'
 import { PrismaModule } from './providers/prisma/prisma.module'
 import { RedisModule } from './providers/redis/redis.module'
@@ -96,6 +97,7 @@ import { NotificationSettingsModule } from './modules/notification-settings/noti
 		GroupsModule,
 		ChatsModule,
 		ChatFoldersModule,
+		ChatMediaModule,
 		MessagesModule,
 		SearchModule,
 		NotificationSettingsModule,
