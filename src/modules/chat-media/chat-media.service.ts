@@ -7,13 +7,16 @@ import { AttachmentType, FileStatus } from '../../generated/prisma/enums'
 import { Prisma } from '../../generated/prisma/client'
 import { MessagesService } from '../messages/messages.service'
 import { ChatMediaQueryDto } from './dto/chat-media-query.dto'
-import { ChatMediaResponseDto } from './dto/chat-media-response.dto'
+import { ChatMediaCountsResponseDto, ChatMediaResponseDto } from './dto/chat-media-response.dto'
 
 /** Фото и видео: то, что открывается во весь экран, а не скачивается документом. */
 const MEDIA_TYPES: AttachmentType[] = [AttachmentType.IMAGE, AttachmentType.VIDEO]
 
-/** Документы. Голосовые сюда не попадают: они живут только внутри переписки. */
+/** Документы. Голосовые сюда не попадают: у них своя вкладка и свой список. */
 const FILE_TYPES: AttachmentType[] = [AttachmentType.FILE]
+
+/** Голосовые сообщения чата. */
+const VOICE_TYPES: AttachmentType[] = [AttachmentType.VOICE]
 
 /**
  * Вложения чата отдельным списком, без загрузки самой переписки.
@@ -41,6 +44,43 @@ export class ChatMediaService {
 		return this.getAttachments(userId, chatId, FILE_TYPES, dto)
 	}
 
+	/** Голосовые чата, от новых к старым. */
+	getVoices(userId: UserId, chatId: ChatId, dto: ChatMediaQueryDto): Promise<ChatMediaResponseDto> {
+		return this.getAttachments(userId, chatId, VOICE_TYPES, dto)
+	}
+
+	/**
+	 * Счётчики вложений по всему чату.
+	 *
+	 * Один groupBy вместо четырёх count: типов ровно столько, сколько строк в
+	 * ответе, и лишний запрос на каждую вкладку здесь не нужен.
+	 *
+	 * Отсутствующий тип в ответе не приходит вовсе, поэтому нули подставляются
+	 * на месте: пустая вкладка должна давать 0, а не пропуск в подписи.
+	 */
+	async getCounts(userId: UserId, chatId: ChatId): Promise<ChatMediaCountsResponseDto> {
+		const grouped = await this.prisma.messageAttachment.groupBy({
+			by: ['type'],
+			where: {
+				message: this.messagesService.buildChatMessagesWhere(userId, chatId),
+				file: { status: { not: FileStatus.FAILED } }
+			},
+			_count: { _all: true }
+		})
+
+		const counts = new Map<AttachmentType, number>()
+		for (const row of grouped) {
+			counts.set(row.type, row._count._all)
+		}
+
+		return plainToInstance(ChatMediaCountsResponseDto, {
+			photos: counts.get(AttachmentType.IMAGE) ?? 0,
+			videos: counts.get(AttachmentType.VIDEO) ?? 0,
+			files: counts.get(AttachmentType.FILE) ?? 0,
+			voices: counts.get(AttachmentType.VOICE) ?? 0
+		})
+	}
+
 	private async getAttachments(
 		userId: UserId,
 		chatId: ChatId,
@@ -58,7 +98,7 @@ export class ChatMediaService {
 			where,
 			include: {
 				file: { select: { name: true, size: true, mimeType: true } },
-				message: { select: { sendTime: true } }
+				message: { select: { sendTime: true, senderId: true } }
 			},
 			orderBy: { id: 'desc' },
 			take: dto.limit + 1,
@@ -78,6 +118,7 @@ export class ChatMediaService {
 				id: row.id,
 				fileId: row.fileId,
 				messageId: Number(row.messageId),
+				senderId: Number(row.message.senderId),
 				name: row.file.name,
 				size: Number(row.file.size),
 				mimeType: row.file.mimeType,

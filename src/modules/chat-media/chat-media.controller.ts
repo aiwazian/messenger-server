@@ -9,11 +9,11 @@ import { ChatId } from '../../common/types/chat-id.type'
 import { UserId } from '../../common/types/user-id.type'
 
 /**
- * Вложения чата двумя отдельными списками.
+ * Вложения чата отдельными списками.
  *
- * Разделение по адресу, а не параметром запроса: у вкладок «Медиа» и «Файлы»
- * свои курсоры и свой размер страницы, и общий endpoint пришлось бы разбирать
- * на клиенте по типу вложения.
+ * Разделение по адресу, а не параметром запроса: у вкладок «Медиа», «Файлы» и
+ * «Голосовые» свои курсоры и свой размер страницы, и общий endpoint пришлось бы
+ * разбирать на клиенте по типу вложения.
  *
  * Гард на весь контроллер: доступ к чату проверяется до любого чтения, поэтому
  * добавленный сюда endpoint не может оказаться открытым по забывчивости.
@@ -44,5 +44,29 @@ export class ChatMediaController {
 		@Query() dto: ChatMediaQueryDto
 	) {
 		return this.chatMediaService.getFiles(userId, chatId, dto)
+	}
+
+	/** Голосовые чата, от новых к старым. */
+	@Get('voices')
+	getVoices(
+		@Param('chatId', ParseChatIdPipe) chatId: ChatId,
+		@CurrentUserId() userId: UserId,
+		@Query() dto: ChatMediaQueryDto
+	) {
+		return this.chatMediaService.getVoices(userId, chatId, dto)
+	}
+
+	/**
+	 * Сколько чего лежит в чате: для подзаголовка в шапке галереи.
+	 *
+	 * Отдельным запросом, а не полем в странице вложений: подпись нужна сразу
+	 * для всех трёх вкладок, а страницы приходят каждая своя.
+	 */
+	@Get('media-counts')
+	getCounts(
+		@Param('chatId', ParseChatIdPipe) chatId: ChatId,
+		@CurrentUserId() userId: UserId
+	) {
+		return this.chatMediaService.getCounts(userId, chatId)
 	}
 }

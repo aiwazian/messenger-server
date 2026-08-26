@@ -21,6 +21,16 @@ export class ChatMediaItemDto {
 	@Expose()
 	messageId: number
 
+	/**
+	 * Автор сообщения.
+	 *
+	 * Нужен вкладке голосовых: во второй строке у своих стоит «Вы», у чужих —
+	 * название чата. По составу страницы это не вычислить, а тянуть ради подписи
+	 * само сообщение — это второй запрос на каждый элемент списка.
+	 */
+	@Expose()
+	senderId: number
+
 	@Expose()
 	name: string
 
@@ -49,4 +59,29 @@ export class ChatMediaResponseDto {
 	@Expose()
 	@OmitNull()
 	nextCursorId?: number
+}
+
+/**
+ * Сколько вложений в чате всего.
+ *
+ * Считается по всему чату, а не по загруженной странице: подзаголовок в шапке
+ * галереи показывает «142 фото, 421 видео» сразу, а страницами к этому числу
+ * пришлось бы прокручивать всю историю.
+ *
+ * Фото и видео разделены, потому что лежат на одной вкладке и в подписи стоят
+ * рядом; документы и голосовые — каждый на своей.
+ */
+@Exclude()
+export class ChatMediaCountsResponseDto {
+	@Expose()
+	photos: number
+
+	@Expose()
+	videos: number
+
+	@Expose()
+	files: number
+
+	@Expose()
+	voices: number
 }
