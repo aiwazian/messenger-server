@@ -15,6 +15,17 @@ const BATCH_SIZE = 500
 const MAX_SCANNED_PER_REQUEST = 20_000
 
 /**
+ * Предел просмотренных сообщений при подсчёте общего числа совпадений.
+ *
+ * Считается один раз на первую страницу поиска, поэтому лимит выше страничного:
+ * иначе клиенту нечего показать в «10 результатов» и «1 из 142».
+ */
+const MAX_SCANNED_FOR_TOTAL = 200_000
+
+/** Условие видимости сообщений чата для текущего пользователя. */
+type ChatMessagesWhere = ReturnType<MessagesService['buildChatMessagesWhere']>
+
+/**
  * Поиск по сообщениям внутри чата.
  *
  * ВАЖНО: text в БД лежит зашифрованным (AES-256-GCM), поэтому поиск через
@@ -41,7 +52,9 @@ export class SearchChatMessagesUseCase {
 			return plainToInstance(MessageSearchResponseDto, {
 				items: [],
 				nextCursorId: null,
-				scannedAll: true
+				scannedAll: true,
+				total: 0,
+				totalIsExact: true
 			})
 		}
 
@@ -106,10 +119,81 @@ export class SearchChatMessagesUseCase {
 			}
 		}
 
+		let total: number | null = null
+		let totalIsExact: boolean | null = null
+
+		/*
+		 * Общее число совпадений считаем только на первой странице: клиент держит
+		 * его у себя и на догрузках пересчитывать нечего.
+		 */
+		if (!dto.cursorId) {
+			if (scannedAll) {
+				/* История просмотрена целиком — найденное и есть всё. */
+				total = items.length
+				totalIsExact = true
+			} else {
+				const rest = await this.countMatches(baseWhere, needle, cursor)
+				total = items.length + rest.matches
+				totalIsExact = rest.scannedAll
+			}
+		}
+
 		return plainToInstance(MessageSearchResponseDto, {
 			items,
 			nextCursorId: scannedAll ? null : (cursor ?? null),
-			scannedAll
+			scannedAll,
+			total,
+			totalIsExact
 		})
+	}
+
+	/**
+	 * Досчитывает совпадения от курсора до конца истории.
+	 *
+	 * Проход отдельный и намеренно «пустой»: расшифровка та же, но в память,
+	 * кроме счётчика, ничего не складывается, поэтому десятки тысяч совпадений
+	 * стоят столько же, сколько одно.
+	 */
+	private async countMatches(
+		baseWhere: ChatMessagesWhere,
+		needle: string,
+		startCursor: bigint | undefined
+	): Promise<{ matches: number; scannedAll: boolean }> {
+		let cursor = startCursor
+		let matches = 0
+		let scanned = 0
+
+		while (scanned < MAX_SCANNED_FOR_TOTAL) {
+			const batch = await this.prisma.message.findMany({
+				where: {
+					AND: [
+						baseWhere,
+						{ text: { not: null }, messageType: { not: MessageType.SYSTEM } },
+						...(cursor ? [{ id: { lt: cursor } }] : [])
+					]
+				},
+				orderBy: { id: 'desc' },
+				take: BATCH_SIZE,
+				select: {
+					id: true,
+					text: true,
+					encryptionKeyVersion: true
+				}
+			})
+
+			if (batch.length === 0) return { matches, scannedAll: true }
+
+			scanned += batch.length
+			cursor = batch[batch.length - 1].id
+
+			for (const row of batch) {
+				const text = this.messagesService.decryptText(row.text, row.encryptionKeyVersion)
+				if (text && text.toLowerCase().includes(needle)) matches++
+			}
+
+			if (batch.length < BATCH_SIZE) return { matches, scannedAll: true }
+		}
+
+		return { matches, scannedAll: false }
 	}
 }
