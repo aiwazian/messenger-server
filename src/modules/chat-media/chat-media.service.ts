@@ -97,7 +97,9 @@ export class ChatMediaService {
 		const rows = await this.prisma.messageAttachment.findMany({
 			where,
 			include: {
-				file: { select: { name: true, size: true, mimeType: true } },
+				file: {
+					select: { name: true, size: true, mimeType: true, width: true, height: true }
+				},
 				message: { select: { sendTime: true, senderId: true } }
 			},
 			orderBy: { id: 'desc' },
@@ -123,7 +125,9 @@ export class ChatMediaService {
 				size: Number(row.file.size),
 				mimeType: row.file.mimeType,
 				type: row.type,
-				sendTime: Number(row.message.sendTime)
+				sendTime: Number(row.message.sendTime),
+				width: row.file.width,
+				height: row.file.height
 			})),
 			nextCursorId: hasMore ? page[page.length - 1]?.id : undefined
 		})
