@@ -43,9 +43,8 @@ import { MessageEditsStore } from './message-edits.store'
  *
  * Сутки в личных чатах и группах: собеседник уже прочитал сообщение, и подмена
  * смысла задним числом — это уже не исправление опечатки. В каналах ограничения
- * нет: там пост живёт как публикация и правится в любой момент. В «Избранном»
- * срока тоже нет: чат виден одному владельцу, и своя заметка правится хоть
- * через год.
+ * нет: там пост живёт как публикация. В «Избранном» срока тоже нет: чат виден
+ * одному владельцу, и своя заметка правится хоть через год.
  */
 const EDIT_WINDOW_MS = 24 * 60 * 60 * 1000
 
@@ -291,7 +290,8 @@ export class MessagesService {
 	 * Подробности прочтения из Redis запрашиваются только для своих сообщений: список
 	 * просмотров всё равно уходит только автору. В канале нет ни галочек, ни просмотров,
 	 * поэтому запросы не делаются вовсе — а вот время правки нужно везде, и потому оно
-	 * читается до выхода по каналу.
+	 * читается до выхода по каналу. Ключи спрашиваются только для отредактированных:
+	 * без флага isEdited в Redis заведомо пусто.
 	 */
 	async resolveMessageContext(
 		userId: UserId,
@@ -355,7 +355,8 @@ export class MessagesService {
 	 * Статус прочтения считается по курсору, а не по отметкам из Redis: подробности
 	 * живут трое суток, а галочка должна остаться на сообщении навсегда. Своё
 	 * сообщение прочитано, если его прочитал кто-то другой; чужое — если его
-	 * прочитал сам пользователь.
+	 * прочитал сам пользователь. Флаг isEdited и время правки отдаются только
+	 * тронутым сообщениям: false в каждом — лишний трафик.
 	 */
 	mapMessageToDto(
 		message: MessageWithRelations,
@@ -567,4 +568,324 @@ export class MessagesService {
 				isEdited: true,
 				encryptionKeyVersion: version
 			},
-			incl
+			include: {
+				attachments: { include: { file: true } }
+			}
+		})
+
+		await this.messageEdits.set(BigInt(messageId), now)
+
+		const messageInstance = plainToInstance(MessageResponseDto, {
+			...message,
+			text: dto.text,
+			isRead: undefined,
+			isEdited: true,
+			editedAt: now,
+			attachments: message.attachments.map((f) =>
+				plainToInstance(MessageAttachmentDto, { ...f.file, fileId: f.fileId, type: f.type })
+			),
+			senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
+			messageType: message.messageType
+		})
+
+		if (BigInt(chatId) === BigInt(userId)) {
+			this.realtimeGateway.sendToUser(
+				userId,
+				SocketEvent.MESSAGE_EDIT,
+				messageInstance,
+				excludeSocketId
+			)
+		} else {
+			this.realtimeGateway.sendToChat(
+				chatId,
+				SocketEvent.MESSAGE_EDIT,
+				messageInstance,
+				excludeSocketId
+			)
+		}
+
+		const recipients = await this.getRecipients(userId, chatId, chatType)
+		if (recipients.length > 0) {
+			this.realtimeGateway.sendToUsersExceptChat(
+				recipients,
+				chatId,
+				SocketEvent.MESSAGE_EDIT,
+				messageInstance,
+				excludeSocketId
+			)
+		}
+
+		return messageInstance
+	}
+
+	/**
+	 * Можно ли ещё править это сообщение.
+	 *
+	 * В личном чате и группе — сутки с момента отправки, в канале — всегда.
+	 * Срок считается от sendTime, а не от предыдущей правки: иначе правка каждые
+	 * двадцать три часа продлевала бы окно бесконечно.
+	 *
+	 * «Избранное» — личный чат с самим собой, и там срок не считается вовсе:
+	 * собеседника нет, подменять смысл задним числом не перед кем, а самая старая
+	 * заметка остаётся заметкой. Пересылка в «Избранном» под исключение не попадает:
+	 * это копия чужого текста, и её правку запрещает CanEditMessageGuard.
+	 *
+	 * Проверка обязательно на сервере: скрытый в интерфейсе пункт меню — это не
+	 * ограничение, запрос можно отправить напрямую.
+	 */
+	private async assertEditable(
+		userId: UserId,
+		chatId: ChatId,
+		chatType: ChatType,
+		messageId: number
+	): Promise<void> {
+		if (chatType === ChatType.CHANNEL) return
+
+		const message = await this.prisma.message.findUnique({
+			where: { id: messageId },
+			select: { sendTime: true, forwardedFromChatId: true }
+		})
+
+		if (!message) throw new NotFoundException('Message not found')
+
+		const isSavedMessages = chatType === ChatType.PRIVATE && BigInt(chatId) === BigInt(userId)
+
+		if (isSavedMessages && message.forwardedFromChatId === null) return
+
+		if (Date.now() - Number(message.sendTime) > EDIT_WINDOW_MS) {
+			throw new ForbiddenException('Message can be edited within 24 hours after sending')
+		}
+	}
+
+	async clearHistory(
+		userId: UserId,
+		chatId: ChatId,
+		clearForRecipient: boolean = false
+	): Promise<void> {
+		const chatType = detectChatType(chatId)
+
+		const isPrivateChat = chatType === ChatType.PRIVATE
+
+		let messageWhere: Prisma.MessageWhereInput
+		if (isPrivateChat) {
+			messageWhere = {
+				OR: [
+					{ senderId: userId, chatId: chatId },
+					{ senderId: chatId, chatId: userId }
+				]
+			}
+		} else {
+			messageWhere = {
+				chatId: chatId,
+				OR: [
+					{ systemEvent: null },
+					{
+						systemEvent: {
+							eventType: { notIn: [SystemEventType.CHANNEL_CREATED, SystemEventType.GROUP_CREATED] }
+						}
+					}
+				]
+			}
+		}
+
+		if (isPrivateChat && !clearForRecipient) {
+			const messagesToHide = await this.prisma.message.findMany({
+				where: {
+					...messageWhere,
+					deletedFor: {
+						none: { userId }
+					}
+				},
+				select: { id: true }
+			})
+
+			if (messagesToHide.length > 0) {
+				const now = Date.now()
+				await this.prisma.deletedMessage.createMany({
+					data: messagesToHide.map((m) => ({
+						messageId: m.id,
+						userId: userId,
+						deletedAt: now
+					}))
+				})
+			}
+		} else {
+			const messages = await this.prisma.message.findMany({
+				where: messageWhere,
+				select: { id: true, attachments: { select: { fileId: true } } }
+			})
+
+			await this.prisma.message.deleteMany({ where: messageWhere })
+
+			await this.messageEdits.remove(messages.map((message) => message.id))
+
+			await this.releaseFiles(
+				messages.flatMap((message) => message.attachments.map((f) => f.fileId))
+			)
+		}
+
+		const recipients = await this.getRecipients(userId, chatId, chatType)
+		const targets = Array.from(new Set([...recipients, userId]))
+
+		if (isPrivateChat) {
+			const otherUserId = recipients[0]
+			const payloadForMe = { chatId: chatId }
+			this.realtimeGateway.sendToUser(userId, SocketEvent.HISTORY_CLEAR, payloadForMe)
+
+			if (otherUserId && clearForRecipient) {
+				const payloadForOther = { chatId: userId }
+				this.realtimeGateway.sendToUser(otherUserId, SocketEvent.HISTORY_CLEAR, payloadForOther)
+			}
+		} else {
+			const payload = { chatId: chatId }
+			this.realtimeGateway.sendToChat(chatId, SocketEvent.HISTORY_CLEAR, payload)
+			this.realtimeGateway.sendToUsersExceptChat(
+				targets,
+				chatId,
+				SocketEvent.HISTORY_CLEAR,
+				payload,
+				undefined
+			)
+		}
+
+		if (!isPrivateChat || clearForRecipient) {
+			await this.prisma.message.create({
+				data: {
+					sequenceId: 0,
+					chatId: chatId,
+					senderId: userId,
+					text: null,
+					sendTime: Date.now(),
+					messageType: MessageType.SYSTEM,
+					systemEvent: { create: { eventType: SystemEventType.HISTORY_CLEARED } },
+					encryptionKeyVersion: this.encryption.currentVersion
+				}
+			})
+		}
+
+		await this.chatReadState.recount(userId, chatId)
+
+		if (isPrivateChat && clearForRecipient && recipients[0]) {
+			await this.chatReadState.recount(recipients[0], ChatId(userId))
+		}
+	}
+
+	/**
+	 * Удаляет сообщение и освобождает его файлы.
+	 *
+	 * Пересланные копии ссылаются на те же File, поэтому безусловное удаление
+	 * ломало бы вложения в чужих чатах.
+	 */
+	private async deleteMessageWithFiles(messageId: number): Promise<void> {
+		const attachments = await this.prisma.messageAttachment.findMany({
+			where: { messageId },
+			select: { fileId: true }
+		})
+
+		await this.prisma.message.delete({ where: { id: messageId } })
+		await this.messageReads.remove([BigInt(messageId)])
+		await this.messageEdits.remove([BigInt(messageId)])
+		await this.releaseFiles(attachments.map((a) => a.fileId))
+	}
+
+	/**
+	 * Удаляет файлы, на которые не осталось ни одной ссылки.
+	 *
+	 * Сам подсчёт ссылок живёт в хранилище: раньше та же пятёрка count() была
+	 * скопирована в двух местах, и новая связь с File легко терялась в одном из них.
+	 */
+	private async releaseFiles(fileIds: string[]): Promise<void> {
+		for (const fileId of Array.from(new Set(fileIds))) {
+			await this.storageService.releaseFile(fileId)
+		}
+	}
+
+	async notifyRecipients(
+		senderUserId: UserId,
+		chatId: ChatId,
+		message: MessageResponseDto,
+		excludeSocketId?: string
+	): Promise<void> {
+		const chatType = detectChatType(chatId)
+		const recipients = await this.getRecipients(senderUserId, chatId, chatType)
+		const wsTargets = Array.from(new Set([...recipients, senderUserId]))
+
+		await this.chatReadState.onNewMessage(chatId, BigInt(message.id), recipients)
+
+		await this.chatReadState.markReadOnSend(senderUserId, chatId, BigInt(message.id))
+
+		const online: UserId[] = []
+		const offline: UserId[] = []
+
+		for (const userId of wsTargets) {
+			if (this.realtimeGateway.isUserOnline(userId)) {
+				online.push(userId)
+			} else if (userId !== senderUserId) {
+				offline.push(userId)
+			}
+		}
+
+		if (BigInt(chatId) === BigInt(senderUserId)) {
+			this.realtimeGateway.sendToUser(
+				senderUserId,
+				SocketEvent.MESSAGE_NEW,
+				message,
+				excludeSocketId
+			)
+		} else {
+			this.realtimeGateway.sendToChat(chatId, SocketEvent.MESSAGE_NEW, message, excludeSocketId)
+		}
+
+		if (online.length > 0) {
+			this.realtimeGateway.sendToUsersExceptChat(
+				online,
+				chatId,
+				SocketEvent.MESSAGE_NEW,
+				message,
+				excludeSocketId
+			)
+		}
+
+		if (offline.length > 0) {
+			const actualChatId = chatType === ChatType.CHANNEL ? message.chatId : message.senderId
+
+			this.pushService.sendToUsers(offline, {
+				title: 'Новое сообщение',
+				body: message.text || 'Вложение',
+				chatId: actualChatId.toString(),
+				chatType,
+				recipientChatId: (chatType === ChatType.PRIVATE ? message.senderId : chatId).toString(),
+				sendTime: message.sendTime.toString()
+			})
+		}
+	}
+
+	private async getRecipients(
+		senderUserId: UserId,
+		chatId: ChatId,
+		chatType: ChatType
+	): Promise<UserId[]> {
+		if (chatType === ChatType.PRIVATE) {
+			const recipient = UserId(chatId)
+			return recipient === senderUserId ? [] : [recipient]
+		}
+
+		if (chatType === ChatType.GROUP) {
+			const members = await this.prisma.groupMember.findMany({
+				where: { groupId: chatId },
+				select: { userId: true }
+			})
+			return members.map((m) => UserId(m.userId)).filter((id) => id !== senderUserId)
+		}
+
+		if (chatType === ChatType.CHANNEL) {
+			const subs = await this.prisma.channelSubscriber.findMany({
+				where: { channelId: chatId },
+				select: { userId: true }
+			})
+			return subs.map((s) => UserId(s.userId)).filter((id) => id !== senderUserId)
+		}
+
+		return []
+	}
+}
