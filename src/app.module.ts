@@ -18,6 +18,7 @@ import { RedisModule } from './providers/redis/redis.module'
 import { SearchModule } from './modules/search/search.module'
 import { PushModule } from './modules/push/push.module'
 import { StorageModule } from './modules/storage/storage.module'
+import { StickersModule } from './modules/stickers/stickers.module'
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
 import { APP_GUARD } from '@nestjs/core'
 import { ScheduleModule } from '@nestjs/schedule'
@@ -118,6 +119,7 @@ import { NotificationSettingsModule } from './modules/notification-settings/noti
 		NotificationSettingsModule,
 		PushModule,
 		StorageModule,
+		StickersModule,
 		ChatReadStateModule
 	],
 	controllers: [AppController],
