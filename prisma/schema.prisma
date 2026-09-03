@@ -105,6 +105,9 @@ model User {
 
   channelJoinRequests ChannelJoinRequest[]
   groupJoinRequests   GroupJoinRequest[]
+
+  stickerPacks          StickerPack[]
+  installedStickerPacks UserStickerPack[]
 }
 
 model UserPhoto {
@@ -438,6 +441,7 @@ model File {
   channelPhotos ChannelPhoto[]
   groupPhotos   GroupPhoto[]
   wallpapers    Wallpaper[]
+  stickers      Sticker[]
 
   @@index([status])
 }
@@ -457,6 +461,77 @@ model MessageAttachment {
   @@unique([messageId, fileId])
   @@index([messageId])
   @@index([fileId])
+}
+
+/// Набор стикеров.
+///
+/// Файлы стикеров лежат в публичном бакете и раздаются через CDN без подписи:
+/// набор и так распространяется ссылкой на добавление, поэтому закрывать
+/// каждую картинку подписью незачем — она лишь мешала бы кэшированию.
+model StickerPack {
+  id   BigInt @id
+  name String
+
+  /// Короткое имя набора в ссылке на добавление.
+  ///
+  /// В отличие от username у пользователя, здесь оно обязательное: без него
+  /// набор нельзя добавить по ссылке, а другого способа поделиться им нет.
+  username String @unique
+
+  ownerId   BigInt
+  createdAt BigInt
+
+  owner    User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  stickers Sticker[]
+  installs UserStickerPack[]
+
+  @@index([ownerId])
+}
+
+/// Стикер внутри набора.
+model Sticker {
+  id     BigInt @id @default(autoincrement())
+  packId BigInt
+
+  /// Без @unique: одна и та же картинка может лежать в двух наборах.
+  /// Физическое удаление файла — только когда исчезла последняя ссылка.
+  fileId String
+
+  /// Позиция стикера в наборе. По умолчанию совпадает с порядком загрузки:
+  /// первый загруженный — первый в наборе.
+  sortOrder Int @default(0)
+
+  createdAt BigInt
+
+  pack StickerPack @relation(fields: [packId], references: [id], onDelete: Cascade)
+  file File        @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([packId, sortOrder])
+  @@index([fileId])
+}
+
+/// Набор, добавленный пользователем себе.
+///
+/// Своих наборов здесь нет: автор виден через StickerPack.ownerId. Строка
+/// появляется, только когда набор добавили по ссылке, поэтому её удаление
+/// убирает набор у одного пользователя и не затрагивает сам набор.
+model UserStickerPack {
+  id     Int    @id @default(autoincrement())
+  userId BigInt
+  packId BigInt
+
+  /// Порядок наборов в панели стикеров. Задел под ручную сортировку:
+  /// пока проставляется по порядку добавления.
+  sortOrder Int @default(0)
+
+  addedAt BigInt
+
+  user User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pack StickerPack @relation(fields: [packId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, packId])
+  @@index([userId, sortOrder])
+  @@index([packId])
 }
 
 model Channel {
