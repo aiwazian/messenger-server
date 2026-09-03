@@ -9,6 +9,17 @@ import { UserId } from '../types/user-id.type'
 import { PARAMS } from '../constants/param.constants'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 
+/**
+ * Кто и когда может править сообщение.
+ *
+ * Только своё и только не пересланное: пересланное — копия чужого текста, и
+ * запрет живёт на сервере, а не только в меню клиента.
+ *
+ * Срок правки — сутки, но в «Избранном» он не считается вовсе. Это личные
+ * заметки: чат виден одному владельцу, подменить смысл задним числом не перед
+ * кем, поэтому текст правится и через год. В «Избранном» лежит и пересылка, и
+ * её по-прежнему править нельзя — проверка выше срабатывает раньше.
+ */
 @Injectable()
 export class CanEditMessageGuard implements CanActivate {
 	constructor(private readonly prisma: PrismaService) { }
@@ -34,12 +45,12 @@ export class CanEditMessageGuard implements CanActivate {
 			throw new ForbiddenException('You can only edit your own messages')
 		}
 
-		/**
-		 * Пересланное сообщение — копия чужого текста, поэтому редактирование
-		 * запрещено на сервере, а не только скрыто в меню клиента.
-		 */
 		if (message.forwardedFromChatId !== null) {
 			throw new ForbiddenException('Cannot edit forwarded messages')
+		}
+
+		if (message.chatId === userId) {
+			return true
 		}
 
 		const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000

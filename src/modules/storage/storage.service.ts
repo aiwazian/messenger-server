@@ -24,6 +24,15 @@ export interface InitUploadInput {
 	category?: UploadCategory
 	/** Каталог в бакете: вложение чата, аватар пользователя, канала, группы. */
 	directory: FileType
+	/**
+	 * Размеры кадра в пикселях: есть только у фото и видео.
+	 *
+	 * Хранилище ими не пользуется и не проверяет их по файлу — они просто
+	 * доезжают до записи File, чтобы получатель узнал форму вложения до
+	 * скачивания.
+	 */
+	width?: number
+	height?: number
 }
 
 /**
@@ -50,7 +59,9 @@ export class StorageService {
 			name: input.name,
 			size: input.size,
 			mimeType: input.mimeType,
-			directory: input.directory
+			directory: input.directory,
+			width: input.width,
+			height: input.height
 		})
 
 		const form = await this.objectStorage.createUploadForm({

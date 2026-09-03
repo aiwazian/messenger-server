@@ -9,6 +9,9 @@ export interface CreatePendingFileInput {
 	size: number
 	mimeType: string
 	directory: FileType
+	/** Размеры кадра в пикселях. Есть только у фото и видео. */
+	width?: number
+	height?: number
 }
 
 /**
@@ -24,6 +27,10 @@ export class FileRegistryService {
 	/**
 	 * Запись создаётся до загрузки: путь в бакете строится из её идентификатора,
 	 * а он же подписывается в политике, поэтому клиент не может выбрать ключ сам.
+	 *
+	 * Размеры кадра пишутся сразу здесь, а не при подтверждении: подтверждение
+	 * знает только о самом объекте в бакете, а измерил кадр отправитель ещё до
+	 * загрузки.
 	 */
 	async createPending(input: CreatePendingFileInput) {
 		const id = randomUUID()
@@ -36,7 +43,9 @@ export class FileRegistryService {
 				mimeType: input.mimeType,
 				path: `${input.directory}/${id}`,
 				status: FileStatus.PENDING,
-				createdAt: Date.now()
+				createdAt: Date.now(),
+				width: input.width ?? null,
+				height: input.height ?? null
 			}
 		})
 	}

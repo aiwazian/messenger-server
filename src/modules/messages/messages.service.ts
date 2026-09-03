@@ -43,7 +43,8 @@ import { MessageEditsStore } from './message-edits.store'
  *
  * Сутки в личных чатах и группах: собеседник уже прочитал сообщение, и подмена
  * смысла задним числом — это уже не исправление опечатки. В каналах ограничения
- * нет: там пост живёт как публикация и правится в любой момент.
+ * нет: там пост живёт как публикация. В «Избранном» срока тоже нет: чат виден
+ * одному владельцу, и своя заметка правится хоть через год.
  */
 const EDIT_WINDOW_MS = 24 * 60 * 60 * 1000
 
@@ -151,12 +152,6 @@ export class MessagesService {
 			}
 		})
 
-		/*
-		 * Подпись к вложению шифруется так же, как текст обычного сообщения.
-		 * Раньше она уезжала в базу открытым текстом, но с версией ключа, и на
-		 * чтении её пытались расшифровать: список чатов отвечал пятисоткой, а в
-		 * истории подпись превращалась в null и сообщение приходило пустым.
-		 */
 		const caption = dto.text ? this.encryption.encrypt(dto.text) : null
 
 		const message = await this.prisma.message.create({
@@ -294,7 +289,9 @@ export class MessagesService {
 	 *
 	 * Подробности прочтения из Redis запрашиваются только для своих сообщений: список
 	 * просмотров всё равно уходит только автору. В канале нет ни галочек, ни просмотров,
-	 * поэтому запросы не делаются вовсе — а вот время правки нужно везде.
+	 * поэтому запросы не делаются вовсе — а вот время правки нужно везде, и потому оно
+	 * читается до выхода по каналу. Ключи спрашиваются только для отредактированных:
+	 * без флага isEdited в Redis заведомо пусто.
 	 */
 	async resolveMessageContext(
 		userId: UserId,
@@ -311,11 +308,6 @@ export class MessagesService {
 
 		if (messages.length === 0) return context
 
-		/*
-		 * Время правки берём до выхода по каналу: пост в канале правится в любой
-		 * момент, и «изменено в 14:42» там нужно так же, как в чате. Ключи спрашиваются
-		 * только для отредактированных: без флага isEdited в Redis заведомо пусто.
-		 */
 		const editedIds = messages.filter((message) => message.isEdited).map((message) => message.id)
 		context.edits = await this.messageEdits.get(editedIds)
 
@@ -357,7 +349,15 @@ export class MessagesService {
 		return context
 	}
 
-	/** Единый маппер Message -> MessageResponseDto для всех способов загрузки истории. */
+	/**
+	 * Единый маппер Message -> MessageResponseDto для всех способов загрузки истории.
+	 *
+	 * Статус прочтения считается по курсору, а не по отметкам из Redis: подробности
+	 * живут трое суток, а галочка должна остаться на сообщении навсегда. Своё
+	 * сообщение прочитано, если его прочитал кто-то другой; чужое — если его
+	 * прочитал сам пользователь. Флаг isEdited и время правки отдаются только
+	 * тронутым сообщениям: false в каждом — лишний трафик.
+	 */
 	mapMessageToDto(
 		message: MessageWithRelations,
 		userId: UserId,
@@ -371,12 +371,6 @@ export class MessagesService {
 		let readInfo: MessageReadInfoDto[] | undefined
 
 		if (chatType !== ChatType.CHANNEL) {
-			/*
-			 * Статус считается по курсору, а не по отметкам из Redis: подробности живут трое
-			 * суток, а галочка должна остаться на сообщении навсегда. Своё сообщение
-			 * прочитано, если его прочитал кто-то другой; чужое — если его прочитал
-			 * сам пользователь.
-			 */
 			const cursor = isMine ? (context?.peerCursor ?? 0n) : (context?.myCursor ?? 0n)
 
 			isRead = cursor >= message.id
@@ -425,9 +419,7 @@ export class MessagesService {
 			text: this.decryptText(message.text, message.encryptionKeyVersion),
 			isRead,
 			readInfo,
-			/* Нетронутым сообщениям флаг не отдаём: false в каждом — лишний трафик. */
 			isEdited: message.isEdited || undefined,
-			/* Время правки лежит в Redis и через трое суток исчезает. */
 			editedAt: context?.edits.get(message.id.toString()),
 			systemEventType: message.systemEvent?.eventType,
 			attachments: message.attachments.map((f) =>
@@ -564,16 +556,11 @@ export class MessagesService {
 	): Promise<MessageResponseDto> {
 		const chatType = detectChatType(chatId)
 
-		await this.assertEditable(chatType, messageId)
+		await this.assertEditable(userId, chatId, chatType, messageId)
 
 		const now = Date.now()
 		const { encrypted, version } = this.encryption.encrypt(dto.text)
 
-		/*
-		 * В Postgres уезжает только факт правки, само время — в Redis на трое суток.
-		 * Сначала база, потом Redis: неудавшаяся правка не должна оставлять время
-		 * правки у нетронутого сообщения.
-		 */
 		const message = await this.prisma.message.update({
 			where: { id: messageId },
 			data: {
@@ -638,18 +625,32 @@ export class MessagesService {
 	 * Срок считается от sendTime, а не от предыдущей правки: иначе правка каждые
 	 * двадцать три часа продлевала бы окно бесконечно.
 	 *
+	 * «Избранное» — личный чат с самим собой, и там срок не считается вовсе:
+	 * собеседника нет, подменять смысл задним числом не перед кем, а самая старая
+	 * заметка остаётся заметкой. Пересылка в «Избранном» под исключение не попадает:
+	 * это копия чужого текста, и её правку запрещает CanEditMessageGuard.
+	 *
 	 * Проверка обязательно на сервере: скрытый в интерфейсе пункт меню — это не
 	 * ограничение, запрос можно отправить напрямую.
 	 */
-	private async assertEditable(chatType: ChatType, messageId: number): Promise<void> {
+	private async assertEditable(
+		userId: UserId,
+		chatId: ChatId,
+		chatType: ChatType,
+		messageId: number
+	): Promise<void> {
 		if (chatType === ChatType.CHANNEL) return
 
 		const message = await this.prisma.message.findUnique({
 			where: { id: messageId },
-			select: { sendTime: true }
+			select: { sendTime: true, forwardedFromChatId: true }
 		})
 
 		if (!message) throw new NotFoundException('Message not found')
+
+		const isSavedMessages = chatType === ChatType.PRIVATE && BigInt(chatId) === BigInt(userId)
+
+		if (isSavedMessages && message.forwardedFromChatId === null) return
 
 		if (Date.now() - Number(message.sendTime) > EDIT_WINDOW_MS) {
 			throw new ForbiddenException('Message can be edited within 24 hours after sending')
@@ -716,7 +717,6 @@ export class MessagesService {
 
 			await this.prisma.message.deleteMany({ where: messageWhere })
 
-			/* Сообщений больше нет — держать их время правки трое суток незачем. */
 			await this.messageEdits.remove(messages.map((message) => message.id))
 
 			await this.releaseFiles(
@@ -812,11 +812,6 @@ export class MessagesService {
 
 		await this.chatReadState.onNewMessage(chatId, BigInt(message.id), recipients)
 
-		/*
-		 * Отправка закрывает непрочитанные в этом же чате — и для обычного сообщения,
-		 * и для пересылки, и для вложения: все три пути сходятся здесь, поэтому
-		 * правило живёт в одном месте, а не в каждом use-case отдельно.
-		 */
 		await this.chatReadState.markReadOnSend(senderUserId, chatId, BigInt(message.id))
 
 		const online: UserId[] = []
@@ -854,17 +849,6 @@ export class MessagesService {
 		if (offline.length > 0) {
 			const actualChatId = chatType === ChatType.CHANNEL ? message.chatId : message.senderId
 
-			/*
-			 * Тип чата уезжает отдельным полем: в actualChatId для группы лежит отправитель,
-			 * а не сама группа, и настройка «Группы» никогда бы не сработала.
-			 *
-			 * По той же причине рядом едет recipientChatId — тот же чат в терминах
-			 * списка чатов получателя. По нему ищется исключение по чату: выключенная
-			 * руками группа должна молчать, а не искаться по id отправителя.
-			 *
-			 * sendTime — время отправки сообщения, а не доставки уведомления: клиент
-			 * ставит его в setWhen(), и пролежавший час в очереди пуш не выглядит свежим.
-			 */
 			this.pushService.sendToUsers(offline, {
 				title: 'Новое сообщение',
 				body: message.text || 'Вложение',
