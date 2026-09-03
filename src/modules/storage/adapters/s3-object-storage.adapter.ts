@@ -7,14 +7,22 @@ import {
 	CreateDownloadUrlInput,
 	CreateUploadFormInput,
 	ObjectStoragePort,
-	PresignedUploadForm
+	PresignedUploadForm,
+	StorageBucket
 } from '../ports/object-storage.port'
 
 /** Реализация порта хранилища поверх S3-совместимого API. */
 @Injectable()
 export class S3ObjectStorage implements ObjectStoragePort {
 	private readonly client: S3Client
-	private readonly bucketName: string
+
+	/**
+	 * Имена бакетов по роли.
+	 *
+	 * Один клиент на оба бакета: ключи доступа у провайдера общие для
+	 * всего аккаунта, поэтому разные бакеты отличаются только именем.
+	 */
+	private readonly buckets: Record<StorageBucket, string>
 
 	constructor(private readonly config: ConfigService) {
 		this.client = new S3Client({
@@ -26,7 +34,11 @@ export class S3ObjectStorage implements ObjectStoragePort {
 			},
 			forcePathStyle: true
 		})
-		this.bucketName = config.get('S3_BUCKET_NAME')!
+
+		this.buckets = {
+			[StorageBucket.PRIVATE]: config.get('S3_BUCKET_NAME')!,
+			[StorageBucket.PUBLIC]: config.get('S3_PUBLIC_BUCKET_NAME')!
+		}
 	}
 
 	/**
@@ -40,7 +52,7 @@ export class S3ObjectStorage implements ObjectStoragePort {
 	 */
 	async createUploadForm(input: CreateUploadFormInput): Promise<PresignedUploadForm> {
 		const { url, fields } = await createPresignedPost(this.client, {
-			Bucket: this.bucketName,
+			Bucket: this.buckets[input.bucket],
 			Key: input.key,
 			Expires: input.expiresInSeconds,
 			Fields: {
@@ -57,17 +69,17 @@ export class S3ObjectStorage implements ObjectStoragePort {
 
 	async createDownloadUrl(input: CreateDownloadUrlInput): Promise<string> {
 		const command = new GetObjectCommand({
-			Bucket: this.bucketName,
+			Bucket: this.buckets[input.bucket],
 			Key: input.key
 		})
 
 		return getSignedUrl(this.client, command, { expiresIn: input.expiresInSeconds })
 	}
 
-	async readHead(key: string, byteLength: number): Promise<Buffer> {
+	async readHead(key: string, byteLength: number, bucket: StorageBucket): Promise<Buffer> {
 		const response = await this.client.send(
 			new GetObjectCommand({
-				Bucket: this.bucketName,
+				Bucket: this.buckets[bucket],
 				Key: key,
 				Range: `bytes=0-${byteLength - 1}`
 			})
@@ -81,10 +93,10 @@ export class S3ObjectStorage implements ObjectStoragePort {
 		return Buffer.concat(chunks)
 	}
 
-	async deleteObject(key: string): Promise<void> {
+	async deleteObject(key: string, bucket: StorageBucket): Promise<void> {
 		await this.client.send(
 			new DeleteObjectCommand({
-				Bucket: this.bucketName,
+				Bucket: this.buckets[bucket],
 				Key: key
 			})
 		)

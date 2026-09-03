@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule'
 import { PrismaService } from '../../../providers/prisma/prisma.service'
 import { FileStatus } from '../../../generated/prisma/enums'
 import { OBJECT_STORAGE, ObjectStoragePort } from '../ports/object-storage.port'
+import { resolveBucketForKey } from '../constants/bucket-routing'
 
 /**
  * Фоновая уборка хранилища.
@@ -35,7 +36,10 @@ export class FileCleanupService {
 
 		for (const task of tasks) {
 			try {
-				await this.objectStorage.deleteObject(task.filePath)
+				await this.objectStorage.deleteObject(
+					task.filePath,
+					resolveBucketForKey(task.filePath)
+				)
 				await this.prisma.fileCleanupTask.delete({ where: { id: task.id } })
 			} catch (error: any) {
 				this.logger.warn(`Retry failed for file ${task.filePath}: ${error.message}`)
@@ -69,7 +73,7 @@ export class FileCleanupService {
 
 		for (const file of expired) {
 			try {
-				await this.objectStorage.deleteObject(file.path)
+				await this.objectStorage.deleteObject(file.path, resolveBucketForKey(file.path))
 				await this.prisma.file.delete({ where: { id: file.id } })
 			} catch (error: any) {
 				this.logger.warn(`Failed to purge abandoned upload ${file.path}: ${error.message}`)

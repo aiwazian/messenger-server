@@ -1,6 +1,11 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
 import { UploadCategory } from '../../../common/enums/upload-category.enum'
-import { MAX_UPLOAD_SIZE_BYTES, MIN_UPLOAD_SIZE_BYTES } from '../constants/upload.constants'
+import {
+	MAX_STICKER_SIZE_BYTES,
+	MAX_UPLOAD_SIZE_BYTES,
+	MIN_UPLOAD_SIZE_BYTES,
+	STICKER_MIME_TYPE
+} from '../constants/upload.constants'
 
 /**
  * Обязательный префикс MIME для категории.
@@ -10,15 +15,24 @@ const CATEGORY_MIME_PREFIX: Record<UploadCategory, string | null> = {
 	[UploadCategory.IMAGE]: 'image/',
 	[UploadCategory.VIDEO]: 'video/',
 	[UploadCategory.VOICE]: 'audio/',
-	[UploadCategory.FILE]: null
+	[UploadCategory.FILE]: null,
+	[UploadCategory.STICKER]: 'image/'
 }
 
 /**
- * Типы, у которых содержимое обязано опознаваться по сигнатуре.
- * У документов и текста надёжных magic bytes нет, поэтому требовать
- * определения для них нельзя — будут ложные отказы.
+ * Категории, где префикса недостаточно и тип обязан совпасть точно.
+ *
+ * У стикера единственный формат: он попадает в публичный бакет и
+ * раздаётся без подписи, поэтому «любая картинка» здесь не подходит.
  */
-const SNIFFABLE_PREFIXES = ['image/', 'video/', 'audio/']
+const CATEGORY_EXACT_MIME: Partial<Record<UploadCategory, string[]>> = {
+	[UploadCategory.STICKER]: [STICKER_MIME_TYPE]
+}
+
+/** Потолок размера для категорий, где он строже общего. */
+const CATEGORY_MAX_SIZE_BYTES: Partial<Record<UploadCategory, number>> = {
+	[UploadCategory.STICKER]: MAX_STICKER_SIZE_BYTES
+}
 
 /**
  * Правила допустимости загрузки.
@@ -31,13 +45,20 @@ export class UploadPolicyService {
 	readonly minSizeBytes = MIN_UPLOAD_SIZE_BYTES
 	readonly maxSizeBytes = MAX_UPLOAD_SIZE_BYTES
 
-	assertSizeAllowed(size: number): void {
+	/** Потолок размера для категории: у стикера свой, у остальных общий. */
+	maxSizeBytesFor(category: UploadCategory): number {
+		return CATEGORY_MAX_SIZE_BYTES[category] ?? this.maxSizeBytes
+	}
+
+	assertSizeAllowed(size: number, category: UploadCategory = UploadCategory.FILE): void {
+		const maxSizeBytes = this.maxSizeBytesFor(category)
+
 		if (!Number.isInteger(size) || size < this.minSizeBytes) {
 			throw new BadRequestException('File size must be a positive integer')
 		}
 
-		if (size > this.maxSizeBytes) {
-			throw new BadRequestException(`File size must not exceed ${this.maxSizeBytes} bytes`)
+		if (size > maxSizeBytes) {
+			throw new BadRequestException(`File size must not exceed ${maxSizeBytes} bytes`)
 		}
 	}
 
@@ -48,6 +69,18 @@ export class UploadPolicyService {
 	 * application/x-msdownload, подписывать политику незачем.
 	 */
 	assertDeclaredMimeAllowed(category: UploadCategory, mimeType: string): void {
+		const allowed = CATEGORY_EXACT_MIME[category]
+
+		if (allowed) {
+			if (!allowed.includes(mimeType)) {
+				throw new BadRequestException(
+					`Category ${category} requires one of: ${allowed.join(', ')}`
+				)
+			}
+
+			return
+		}
+
 		const prefix = CATEGORY_MIME_PREFIX[category]
 		if (!prefix) return
 
@@ -85,3 +118,10 @@ export class UploadPolicyService {
 		return detectedMime ?? declaredMime
 	}
 }
+
+/**
+ * Типы, у которых содержимое обязано опознаваться по сигнатуре.
+ * У документов и текста надёжных magic bytes нет, поэтому требовать
+ * определения для них нельзя — будут ложные отказы.
+ */
+const SNIFFABLE_PREFIXES = ['image/', 'video/', 'audio/']
