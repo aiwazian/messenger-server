@@ -170,4 +170,40 @@ export class StorageService {
 			downloadUrl,
 			name: file.name,
 			size: file.size,
-			mimeType: file.mime
+			mimeType: file.mimeType
+		})
+	}
+
+	/**
+	 * Постоянная ссылка на публичный файл по его пути в бакете.
+	 *
+	 * Без запроса к хранилищу и без подписи: такую ссылку можно отдавать
+	 * сразу сотнями в одном ответе — именно так отдаются наборы стикеров.
+	 * У ссылки нет query-параметров и срока жизни, поэтому она годится в качестве
+	 * ключа кэша и не заставляет скачивать один и тот же файл заново.
+	 *
+	 * Домен подставляет сервер, а не собирает клиент: CDN можно сменить,
+	 * не выпуская новую версию приложения.
+	 */
+	getPublicUrl(path: string): string {
+		if (resolveBucketForKey(path) !== StorageBucket.PUBLIC) {
+			throw new ConflictException('File is not publicly available')
+		}
+
+		return this.buildPublicUrl(path)
+	}
+
+	/** Безусловное удаление. Вызывающий сам убедился, что ссылок не осталось. */
+	deleteFile(fileId: string): Promise<void> {
+		return this.files.scheduleDeletion(fileId)
+	}
+
+	/** Удаление с проверкой ссылок: файл может использоваться где-то ещё. */
+	releaseFile(fileId: string): Promise<void> {
+		return this.files.release(fileId)
+	}
+
+	private buildPublicUrl(path: string): string {
+		return `${this.publicBaseUrl}/${path}`
+	}
+}
