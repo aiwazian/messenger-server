@@ -11,8 +11,7 @@
         "start:dev": "nest start --watch",
         "start:debug": "nest start --debug --watch",
         "start:prod": "node dist/main",
-        "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
-        "s3:policy": "ts-node --project scripts/tsconfig.json --transpile-only scripts/apply-bucket-policy.ts"
+        "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix"
     },
     "dependencies": {
         "@aws-sdk/client-s3": "^3.1107.0",
