@@ -8,8 +8,11 @@ import { StorageBucket } from '../ports/object-storage.port'
  * доступ на чтение можно дать как отдельным бакетом, так и политикой на
  * префикс внутри общего бакета. Важно только одно: что лежит здесь, то
  * отдаётся всем и кэшируется, а всё остальное — по подписанной ссылке.
+ *
+ * Из этого же списка строится политика бакета на старте сервера, поэтому
+ * настройки доступа и маршрутизация не могут рассогласоваться.
  */
-const PUBLIC_DIRECTORIES: FileType[] = [FileType.STICKER]
+export const PUBLIC_DIRECTORIES: FileType[] = [FileType.STICKER]
 
 /** Бакет для нового файла — по каталогу, в который его кладут. */
 export function resolveBucketForDirectory(directory: FileType): StorageBucket {

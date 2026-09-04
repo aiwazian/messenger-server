@@ -10,9 +10,9 @@
  * Бакет, в котором лежит объект.
  *
  * Здесь роль, а не имя: какое имя бакета соответствует роли, знает только
- * реализация порта. Разделение нужно потому, что публичный доступ
- * настраивается на бакет целиком: файлы, которые раздаются через CDN без
- * подписи, не могут лежать рядом с приватными.
+ * реализация порта. Роль говорит о способе раздачи — постоянная ссылка против
+ * подписанной, — поэтому обе роли могут указывать на один бакет: открытый
+ * доступ к части его содержимого даётся правилом на префикс.
  */
 export enum StorageBucket {
 	PRIVATE = 'PRIVATE',
@@ -45,6 +45,18 @@ export interface CreateDownloadUrlInput {
 	expiresInSeconds: number
 }
 
+export interface ApplyPublicReadPolicyInput {
+	bucket: StorageBucket
+
+	/**
+	 * Каталоги, которые должны читаться без подписи.
+	 *
+	 * Передаются каталогами, а не готовыми путями: имя бакета и форма
+	 * правила известны только реализации.
+	 */
+	directories: string[]
+}
+
 export interface ObjectStoragePort {
 	/** Подписанная форма загрузки с зашитыми в политику ограничениями. */
 	createUploadForm(input: CreateUploadFormInput): Promise<PresignedUploadForm>
@@ -55,6 +67,14 @@ export interface ObjectStoragePort {
 	readHead(key: string, byteLength: number, bucket: StorageBucket): Promise<Buffer>
 
 	deleteObject(key: string, bucket: StorageBucket): Promise<void>
+
+	/**
+	 * Открыть анонимное чтение указанных каталогов.
+	 *
+	 * Вызывается один раз на старте, а не на каждую загрузку: доступ описывается
+	 * правилом на префикс, а не правами на каждом объекте по отдельности.
+	 */
+	applyPublicReadPolicy(input: ApplyPublicReadPolicyInput): Promise<void>
 }
 
 /** DI-токен: потребители инжектят интерфейс, а не конкретную реализацию. */
