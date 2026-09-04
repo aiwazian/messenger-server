@@ -1,4 +1,4 @@
-import { ConflictException, Inject, Injectable } from '@nestjs/common'
+import { ConflictException, Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { plainToInstance } from 'class-transformer'
 import { fileTypeFromBuffer } from 'file-type'
@@ -6,7 +6,11 @@ import { InitUploadDto } from './dto/init-upload.dto'
 import { FileDto } from './dto/file.dto'
 import { FileDownloadDto } from '../messages/dto/file-download.dto'
 import { OBJECT_STORAGE, ObjectStoragePort, StorageBucket } from './ports/object-storage.port'
-import { resolveBucketForDirectory, resolveBucketForKey } from './constants/bucket-routing'
+import {
+	PUBLIC_DIRECTORIES,
+	resolveBucketForDirectory,
+	resolveBucketForKey
+} from './constants/bucket-routing'
 import { FileRegistryService } from './services/file-registry.service'
 import { UploadPolicyService } from './services/upload-policy.service'
 import { FileStatus } from '../../generated/prisma/enums'
@@ -48,7 +52,9 @@ export interface InitUploadInput {
  * учёта файлов (FileRegistryService) и хранилища (ObjectStoragePort).
  */
 @Injectable()
-export class StorageService {
+export class StorageService implements OnModuleInit {
+	private readonly logger = new Logger(StorageService.name)
+
 	/** Домен раздачи публичных файлов без завершающего слэша. */
 	private readonly publicBaseUrl: string
 
@@ -59,6 +65,36 @@ export class StorageService {
 		config: ConfigService
 	) {
 		this.publicBaseUrl = config.get<string>('CDN_PUBLIC_BASE_URL')!.replace(/\/+$/, '')
+	}
+
+	/**
+	 * Открытие доступа к публичным каталогам на старте.
+	 *
+	 * Настройка живёт в коде, а не в ручном шаге развёртывания: список публичных
+	 * каталогов и права на них берутся из одного источника, поэтому новый
+	 * публичный каталог нельзя добавить и забыть открыть.
+	 *
+	 * Операция идемпотентная: политика заменяется целиком одним и тем же
+	 * документом, так что перезапуски ничего не накапливают.
+	 *
+	 * Ошибка не роняет сервер: без политики перестают открываться только
+	 * стикеры, а переписка, звонки и аватары работают через подписанные
+	 * ссылки и от неё не зависят. Причина пишется в лог целиком: чаще всего
+	 * это отсутствие права s3:PutBucketPolicy у ключа доступа.
+	 */
+	async onModuleInit(): Promise<void> {
+		try {
+			await this.objectStorage.applyPublicReadPolicy({
+				bucket: StorageBucket.PUBLIC,
+				directories: PUBLIC_DIRECTORIES
+			})
+
+			this.logger.log(`Public read access granted to ${PUBLIC_DIRECTORIES.join(', ')}`)
+		} catch (error) {
+			this.logger.error(
+				`Failed to grant public read access: ${error instanceof Error ? error.message : error}`
+			)
+		}
 	}
 
 	async initUpload(input: InitUploadInput): Promise<InitUploadDto> {
