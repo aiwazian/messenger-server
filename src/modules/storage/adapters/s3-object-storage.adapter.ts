@@ -19,8 +19,12 @@ export class S3ObjectStorage implements ObjectStoragePort {
 	/**
 	 * Имена бакетов по роли.
 	 *
-	 * Один клиент на оба бакета: ключи доступа у провайдера общие для
-	 * всего аккаунта, поэтому разные бакеты отличаются только именем.
+	 * Один клиент на обе роли: ключи доступа у провайдера общие для
+	 * всего аккаунта, поэтому бакеты отличаются только именем.
+	 *
+	 * Роли могут смотреть в один и тот же бакет: различаются они способом
+	 * раздачи — постоянная ссылка против подписанной, — а не обязательно
+	 * местом хранения.
 	 */
 	private readonly buckets: Record<StorageBucket, string>
 
@@ -35,9 +39,18 @@ export class S3ObjectStorage implements ObjectStoragePort {
 			forcePathStyle: true
 		})
 
+		/*
+		 * Отдельное имя для публичных файлов необязательно.
+		 *
+		 * Открытый доступ к стикерам даётся либо политикой бакета на
+		 * префикс stickers/, либо вторым бакетом. В первом случае
+		 * переменная не нужна: всё лежит в одном бакете.
+		 */
+		const bucketName = config.get<string>('S3_BUCKET_NAME')!
+
 		this.buckets = {
-			[StorageBucket.PRIVATE]: config.get('S3_BUCKET_NAME')!,
-			[StorageBucket.PUBLIC]: config.get('S3_PUBLIC_BUCKET_NAME')!
+			[StorageBucket.PRIVATE]: bucketName,
+			[StorageBucket.PUBLIC]: config.get<string>('S3_PUBLIC_BUCKET_NAME') ?? bucketName
 		}
 	}
 
