@@ -1,13 +1,32 @@
-import { IsUUID } from 'class-validator'
+import { Transform } from 'class-transformer'
+import {
+	ArrayMaxSize,
+	ArrayMinSize,
+	ArrayUnique,
+	IsArray,
+	IsString,
+	IsUUID,
+	Matches
+} from 'class-validator'
+import {
+	normalizeStickerEmojis,
+	STICKER_EMOJI_PATTERN
+} from './sticker-emoji.util'
+import {
+	MAX_EMOJIS_PER_STICKER,
+	MIN_EMOJIS_PER_STICKER
+} from './sticker-pack.constants'
 
-/**
- * Один стикер в запросе.
- *
- * Картинка здесь не передаётся: к этому моменту файл уже ушёл в хранилище
- * напрямую по подписанной форме, а сервер получает только его идентификатор.
- * Порядковый номер тоже не передаётся — его задаёт порядок в массиве.
- */
 export class StickerInputDto {
 	@IsUUID()
 	fileId: string
+
+	@Transform(({ value }) => normalizeStickerEmojis(value))
+	@IsArray()
+	@ArrayMinSize(MIN_EMOJIS_PER_STICKER)
+	@ArrayMaxSize(MAX_EMOJIS_PER_STICKER)
+	@ArrayUnique()
+	@IsString({ each: true })
+	@Matches(STICKER_EMOJI_PATTERN, { each: true })
+	emojis: string[]
 }

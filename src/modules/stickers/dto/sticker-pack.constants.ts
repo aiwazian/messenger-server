@@ -5,3 +5,6 @@ export const MAX_STICKER_PACK_USERNAME_LENGTH = 32
 export const STICKER_PACK_USERNAME_PATTERN = /^[a-zA-Z0-9_]+$/
 
 export const MAX_STICKERS_PER_PACK = 120
+
+export const MIN_EMOJIS_PER_STICKER = 1
+export const MAX_EMOJIS_PER_STICKER = 10

@@ -37,11 +37,11 @@ type PackRow = {
 type StickerRow = {
 	id: bigint
 	fileId: string
+	emojis: string[]
 	sortOrder: number
 	file: { path: string }
 }
 
-/** То, чего нет в самом наборе и что зависит от спрашивающего. */
 type PackView = {
 	stickerCount: number
 	isOwned: boolean
@@ -56,12 +56,6 @@ export class StickersService {
 		private readonly storage: StorageService
 	) {}
 
-	/**
-	 * Наборы, созданные самим пользователем.
-	 *
-	 * Сами стикеры не грузятся: списку нужны только название и счётчик,
-	 * а пара десятков наборов целиком — это уже тысячи ссылок в ответе.
-	 */
 	async getCreatedPacks(userId: UserId): Promise<StickerPackResponseDto[]> {
 		const packs = await this.prisma.stickerPack.findMany({
 			where: { ownerId: userId },
@@ -82,7 +76,6 @@ export class StickersService {
 		)
 	}
 
-	/** Наборы, добавленные по ссылке, в порядке панели стикеров. */
 	async getAddedPacks(userId: UserId): Promise<StickerPackResponseDto[]> {
 		const installs = await this.prisma.userStickerPack.findMany({
 			where: { userId },
@@ -102,31 +95,14 @@ export class StickersService {
 		)
 	}
 
-	/**
-	 * Один набор целиком — со стикерами и готовыми ссылками.
-	 *
-	 * Виден любому, кто знает идентификатор: набор распространяется
-	 * ссылкой, а картинки и так лежат в публичном бакете. Право на правку
-	 * проверяется отдельно в updatePack и deletePack.
-	 */
 	getPack(userId: UserId, packId: StickerPackId): Promise<StickerPackResponseDto> {
 		return this.findPackDetail(userId, { id: packId })
 	}
 
-	/** То же самое, но по имени из ссылки на добавление. */
 	getPackByUsername(userId: UserId, username: string): Promise<StickerPackResponseDto> {
 		return this.findPackDetail(userId, { username: this.normalizeUsername(username) })
 	}
 
-	/**
-	 * Проверка имени для подсказки под полем ввода.
-	 *
-	 * packId передаётся при редактировании: своё же имя не должно
-	 * считаться занятым, иначе набор нельзя было бы сохранить, не меняя имя.
-	 *
-	 * Неверный формат — тоже «недоступно», а не ошибка: поле проверяется
-	 * на каждом символе, и недонабранное имя не повод показывать ошибку.
-	 */
 	async checkUsername(
 		username: string,
 		packId?: StickerPackId
@@ -147,13 +123,6 @@ export class StickersService {
 		return plainToInstance(StickerPackUsernameAvailabilityDto, { available })
 	}
 
-	/**
-	 * Создание набора целиком: название, имя и сразу все стикеры.
-	 *
-	 * Набор появляется только в момент сохранения, а не по вводу названия:
-	 * иначе брошенный на полпути экран оставлял бы пустые наборы и занимал
-	 * имена.
-	 */
 	async createPack(userId: UserId, dto: CreateStickerPackDto): Promise<StickerPackResponseDto> {
 		const fileIds = dto.stickers.map(sticker => sticker.fileId)
 
@@ -172,8 +141,9 @@ export class StickersService {
 					ownerId: userId,
 					createdAt: now,
 					stickers: {
-						create: fileIds.map((fileId, index) => ({
-							fileId,
+						create: dto.stickers.map((sticker, index) => ({
+							fileId: sticker.fileId,
+							emojis: sticker.emojis,
 							sortOrder: index,
 							createdAt: now
 						}))
@@ -187,14 +157,6 @@ export class StickersService {
 		return this.getPack(userId, packId)
 	}
 
-	/**
-	 * Изменение набора: название, имя и состав стикеров.
-	 *
-	 * Состав приходит полным списком, поэтому выпавшие стикеры удаляются,
-	 * оставшиеся только перенумеровываются, а новые добавляются в конец.
-	 * Пересоздавать все строки нельзя: у стикера есть идентификатор, на который
-	 * ссылаются уже отправленные сообщения.
-	 */
 	async updatePack(
 		userId: UserId,
 		packId: StickerPackId,
@@ -217,7 +179,8 @@ export class StickersService {
 			await this.assertUsernameFree(dto.username)
 		}
 
-		const desiredFileIds = dto.stickers?.map(sticker => sticker.fileId)
+		const desiredStickers = dto.stickers
+		const desiredFileIds = desiredStickers?.map(sticker => sticker.fileId)
 
 		if (desiredFileIds) {
 			await this.assertStickerFilesUsable(desiredFileIds)
@@ -236,7 +199,7 @@ export class StickersService {
 					data: { name: dto.name, username: dto.username }
 				})
 
-				if (!desiredFileIds) {
+				if (!desiredStickers || !desiredFileIds) {
 					return
 				}
 
@@ -249,20 +212,26 @@ export class StickersService {
 					pack.stickers.map(sticker => [sticker.fileId, sticker.id])
 				)
 
-				for (const [index, fileId] of desiredFileIds.entries()) {
-					const existingId = existingByFileId.get(fileId)
+				for (const [index, sticker] of desiredStickers.entries()) {
+					const existingId = existingByFileId.get(sticker.fileId)
 
 					if (existingId !== undefined) {
 						await tx.sticker.update({
 							where: { id: existingId },
-							data: { sortOrder: index }
+							data: { sortOrder: index, emojis: sticker.emojis }
 						})
 
 						continue
 					}
 
 					await tx.sticker.create({
-						data: { packId, fileId, sortOrder: index, createdAt: now }
+						data: {
+							packId,
+							fileId: sticker.fileId,
+							emojis: sticker.emojis,
+							sortOrder: index,
+							createdAt: now
+						}
 					})
 				}
 			})
@@ -270,11 +239,6 @@ export class StickersService {
 			throw this.mapUsernameConflict(error)
 		}
 
-		/*
-		 * Файлы отпускаются после транзакции, а не внутри: удаление в хранилище
-		 * нельзя откатить вместе с базой. release сам считает ссылки: картинка
-		 * могла остаться в другом наборе.
-		 */
 		for (const fileId of removedFileIds) {
 			await this.storage.releaseFile(fileId)
 		}
@@ -282,12 +246,6 @@ export class StickersService {
 		return this.getPack(userId, packId)
 	}
 
-	/**
-	 * Удаление набора у всех.
-	 *
-	 * Стикеры и установки уходят каскадом, поэтому список файлов читается
-	 * заранее: после удаления узнать, что было в наборе, уже негде.
-	 */
 	async deletePack(userId: UserId, packId: StickerPackId): Promise<void> {
 		const pack = await this.prisma.stickerPack.findUnique({
 			where: { id: packId },
@@ -309,12 +267,6 @@ export class StickersService {
 		}
 	}
 
-	/**
-	 * Добавление набора себе.
-	 *
-	 * upsert, а не create: по ссылке можно перейти дважды, и второе добавление
-	 * должно молча ничего не менять, а не отвечать ошибкой.
-	 */
 	async installPack(userId: UserId, packId: StickerPackId): Promise<void> {
 		const pack = await this.prisma.stickerPack.findUnique({
 			where: { id: packId },
@@ -343,23 +295,10 @@ export class StickersService {
 		})
 	}
 
-	/**
-	 * Удаление набора только у себя.
-	 *
-	 * deleteMany вместо delete: повторное удаление и удаление того, чего не
-	 * было, — не ошибка, а уже достигнутый результат.
-	 */
 	async uninstallPack(userId: UserId, packId: StickerPackId): Promise<void> {
 		await this.prisma.userStickerPack.deleteMany({ where: { userId, packId } })
 	}
 
-	/**
-	 * Форма для загрузки картинки стикера.
-	 *
-	 * Каталог и категорию задаёт сервер, а не клиент: иначе по этому
-	 * эндпоинту можно было бы получить форму в приватный каталог или с чужим
-	 * пределом размера.
-	 */
 	initStickerUpload(dto: FileInitDto): Promise<InitUploadDto> {
 		return this.storage.initUpload({
 			name: dto.name,
@@ -388,6 +327,7 @@ export class StickersService {
 					select: {
 						id: true,
 						fileId: true,
+						emojis: true,
 						sortOrder: true,
 						file: { select: { path: true } }
 					}
@@ -408,13 +348,6 @@ export class StickersService {
 		})
 	}
 
-	/**
-	 * Проверка файлов перед тем, как они станут стикерами.
-	 *
-	 * Самое важное здесь — каталог: ссылка на стикер собирается как публичная,
-	 * и файл из приватного бакета просто не открылся бы у получателя — и
-	 * выяснилось бы это уже после отправки набора в чат.
-	 */
 	private async assertStickerFilesUsable(fileIds: string[]): Promise<void> {
 		const uniqueIds = new Set(fileIds)
 
@@ -469,13 +402,6 @@ export class StickersService {
 		)
 	}
 
-	/**
-	 * Гонка за именем: проверка занятости и вставка не атомарны.
-	 *
-	 * Два пользователя могут сохранить набор с одним именем одновременно:
-	 * первый пройдёт, второй упрётся в уникальный индекс. Без этого разбора
-	 * он получил бы 500 вместо понятного «имя занято».
-	 */
 	private mapUsernameConflict(error: unknown): unknown {
 		const code = (error as { code?: string } | null)?.code
 
@@ -499,6 +425,7 @@ export class StickersService {
 				id: sticker.id.toString(),
 				fileId: sticker.fileId,
 				url: this.storage.getPublicUrl(sticker.file.path),
+				emojis: sticker.emojis,
 				sortOrder: sticker.sortOrder
 			}))
 		})
