@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common'
 import { MessagesService } from './messages.service'
 import { TextMessageDto } from './dto/text-message.dto'
+import { StickerMessageDto } from './dto/sticker-message.dto'
 import { DeleteMessageDto } from './dto/delete-message.dto'
 import { ClearHistoryDto } from './dto/clear-history.dto'
 import { FileInitDto } from './dto/file-init.dto'
@@ -28,6 +29,7 @@ import { CanEditMessageGuard } from '../../common/guards/can-edit-message.guard'
 import { CanClearHistoryGuard } from '../../common/guards/can-clear-history.guard'
 import { EditMessageDto } from './dto/edit-message.dto'
 import { SendMessageUseCase } from './use-cases/send-message.use-case'
+import { SendStickerMessageUseCase } from './use-cases/send-sticker-message.use-case'
 import { GetMessagesWindowUseCase } from './use-cases/get-messages-window.use-case'
 import { SearchChatMessagesUseCase } from './use-cases/search-chat-messages.use-case'
 import { GetMessagesWindowDto } from './dto/get-messages-window.dto'
@@ -42,6 +44,7 @@ export class MessagesController {
 	constructor(
 		private readonly messagesService: MessagesService,
 		private readonly sendMessageUseCase: SendMessageUseCase,
+		private readonly sendStickerMessageUseCase: SendStickerMessageUseCase,
 		private readonly getMessagesWindowUseCase: GetMessagesWindowUseCase,
 		private readonly searchChatMessagesUseCase: SearchChatMessagesUseCase,
 		private readonly forwardMessageUseCase: ForwardMessageUseCase,
@@ -57,6 +60,17 @@ export class MessagesController {
 		@Headers('x-socket-id') socketId: string
 	) {
 		return this.sendMessageUseCase.execute(userId, chatId, dto, socketId)
+	}
+
+	@Post('stickers')
+	@UseGuards(CanSendMessageGuard)
+	sendStickerMessage(
+		@Param('chatId', ParseChatIdPipe) chatId: ChatId,
+		@Body() dto: StickerMessageDto,
+		@CurrentUserId() userId: UserId,
+		@Headers('x-socket-id') socketId: string
+	) {
+		return this.sendStickerMessageUseCase.execute(userId, chatId, dto, socketId)
 	}
 
 	@Post('files/init')
@@ -102,14 +116,6 @@ export class MessagesController {
 		return this.messagesService.getAll(userId, chatId, limit, offset)
 	}
 
-	/**
-	 * Окно истории для прыжков по сообщениям.
-	 *
-	 * GET .../messages/window?limit=50                  — последние сообщения (открытие чата, FAB вниз)
-	 * GET .../messages/window?anchorId=283&limit=25      — окно вокруг сообщения (reply, закреп, поиск)
-	 * GET .../messages/window?beforeId=250&limit=50      — страница старше (скролл вверх)
-	 * GET .../messages/window?afterId=300&limit=50       — страница новее (скролл вниз)
-	 */
 	@Get('window')
 	@UseGuards(CanReadChatGuard)
 	getMessagesWindow(
@@ -120,7 +126,6 @@ export class MessagesController {
 		return this.getMessagesWindowUseCase.execute(userId, chatId, dto)
 	}
 
-	/** Поиск по сообщениям внутри чата. Клиент берёт id из результата и дергает /window?anchorId=. */
 	@Get('search')
 	@UseGuards(CanReadChatGuard)
 	searchMessages(
@@ -131,12 +136,6 @@ export class MessagesController {
 		return this.searchChatMessagesUseCase.execute(userId, chatId, dto)
 	}
 
-	/**
-	 * Пересылка сообщения в один или несколько чатов.
-	 *
-	 * Гард проверяет доступ к чату-источнику, права на запись в каждый чат-получатель
-	 * проверяются внутри use-case.
-	 */
 	@Post(':messageId/forward')
 	@UseGuards(CanReadChatGuard)
 	forwardMessage(
@@ -149,12 +148,6 @@ export class MessagesController {
 		return this.forwardMessageUseCase.execute(userId, chatId, messageId, dto, socketId)
 	}
 
-	/**
-	 * Прочитано всё до :messageId включительно.
-	 *
-	 * Клиент присылает максимальный id из тех, что реально показались на экране
-	 * больше чем наполовину. Возвращает актуальный счётчик непрочитанных.
-	 */
 	@Post(':messageId/read')
 	@UseGuards(CanReadChatGuard)
 	markRead(
@@ -165,7 +158,6 @@ export class MessagesController {
 		return this.chatReadStateService.markReadUpTo(userId, chatId, BigInt(messageId))
 	}
 
-	/** Прочитан весь чат либо всё до upToMessageId: кнопка «вниз» в конец истории. */
 	@Post('read')
 	@UseGuards(CanReadChatGuard)
 	markAllRead(
