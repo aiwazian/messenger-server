@@ -24,11 +24,6 @@ import { StickerPackUsernameAvailabilityDto } from './dto/sticker-pack-username-
 import { UpdateStickerPackDto } from './dto/update-sticker-pack.dto'
 import { StickersService } from './stickers.service'
 
-/*
- * Порядок методов здесь значим: Nest сопоставляет маршруты в порядке
- * объявления, поэтому все точные пути идут до packs/:packId. Иначе слово
- * created уехало бы в :packId, а разбор идентификатора вернул бы 400.
- */
 @Controller('stickers')
 export class StickersController {
 	constructor(private readonly stickersService: StickersService) {}
@@ -53,7 +48,6 @@ export class StickersController {
 		)
 	}
 
-	/** Набор по имени из ссылки на добавление. */
 	@Get('packs/by-username/:username')
 	async getPackByUsername(
 		@CurrentUserId() userId: UserId,
@@ -114,11 +108,6 @@ export class StickersController {
 		await this.stickersService.uninstallPack(userId, packId)
 	}
 
-	/*
-	 * Загрузка картинки идёт до создания набора и потому не зависит от него:
-	 * клиент получает форму, кладёт файл в хранилище напрямую и присылает
-	 * только fileId, когда нажмёт сохранение набора.
-	 */
 	@Post('upload/init')
 	async initStickerUpload(@Body() dto: FileInitDto): Promise<InitUploadDto> {
 		return this.stickersService.initStickerUpload(dto)
