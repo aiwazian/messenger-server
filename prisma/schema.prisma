@@ -47,10 +47,6 @@ enum AttachmentType {
   FILE
 }
 
-/// Динамическая категория чатов внутри папки.
-///
-/// Категория хранится вместо перечисления конкретных чатов: новый чат
-/// подходящего типа попадает в папку сам, без пересохранения папки.
 enum ChatFolderCategory {
   PRIVATE_CHATS
   CHANNELS
@@ -67,9 +63,6 @@ model User {
   password    String
   dateOfBirth BigInt?
 
-  /// Почта используется для восстановления доступа, поэтому она уникальна:
-  /// иначе один адрес позволил бы сбрасывать пароль сразу нескольким аккаунтам.
-  /// В Postgres уникальный индекс не мешает нескольким NULL: почта необязательна.
   email       String? @unique
 
   profileChannelId BigInt?
@@ -127,18 +120,8 @@ model Session {
   id     Int    @id @default(autoincrement())
   userId BigInt
 
-  /// SHA-256 токена сессии в hex: сам токен на сервере не хранится.
-  ///
-  /// Токен бессрочный и лежит на устройстве, поэтому доступ к базе не должен
-  /// давать возможность войти в аккаунт: восстановить токен из хэша нельзя.
-  /// Совпадение хэша и есть проверка подлинности, отдельной подписи нет.
   tokenHash String @unique
 
-  /// Firebase Installation ID устройства: адресат пуша в новом API FCM.
-  ///
-  /// null — штатное состояние: сессия создаётся в момент входа, когда FID
-  /// ещё неизвестен — он приходит отдельным запросом после onRegistered.
-  /// Сюда же возвращаемся, когда FCM ответил, что установки больше нет.
   installationId String?
 
   deviceModel String
@@ -172,17 +155,11 @@ model Chat {
   @@index([chatId])
 }
 
-/// Пользовательская папка чатов.
-///
-/// Папка «Все чаты» не хранится: клиент рисует её сам первой вкладкой,
-/// поэтому в базе лежат только созданные пользователем папки.
 model ChatFolder {
   id     Int    @id @default(autoincrement())
   userId BigInt
   name   String
 
-  /// Позиция вкладки на главном экране. Задел под ручную сортировку папок:
-  /// пока проставляется по порядку создания.
   sortOrder Int @default(0)
 
   createdAt BigInt
@@ -195,18 +172,11 @@ model ChatFolder {
   @@index([userId])
 }
 
-/// Чат, добавленный в папку поимённо.
-///
-/// Закрепление живёт здесь, а не в Chat: один и тот же чат может быть
-/// закреплён в одной папке и не закреплён в другой.
 model ChatFolderChat {
   id       Int    @id @default(autoincrement())
   folderId Int
   chatId   BigInt
 
-  /// Чат входит в состав папки поимённо. false означает, что строка заведена
-  /// только ради закрепления чата, который попал в папку через категорию:
-  /// при удалении категории такой чат из папки исчезает.
   isIncluded Boolean @default(true)
 
   isPinned  Boolean @default(false)
@@ -219,10 +189,6 @@ model ChatFolderChat {
   @@index([chatId])
 }
 
-/// Категория, включённая в папку целиком.
-///
-/// Хранится отдельной строкой, а не массивом в ChatFolder: так категория
-/// индексируется и не требует чтения всей папки при проверке.
 model ChatFolderCategoryFilter {
   id       Int                @id @default(autoincrement())
   folderId Int
@@ -252,11 +218,6 @@ model Message {
   text        String?
   sendTime    BigInt
 
-  /// Сообщение редактировали.
-  ///
-  /// Здесь только сам факт: подпись «изменено» должна оставаться на сообщении
-  /// всегда. Точное время правки живёт трое суток в Redis (MessageEditsStore) —
-  /// «изменено в 14:42» интересно у свежих сообщений, а не через год.
   isEdited    Boolean     @default(false)
   messageType MessageType
 
@@ -266,16 +227,15 @@ model Message {
   senderId BigInt
   sender   User   @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
+  stickerId BigInt?
+  sticker   Sticker? @relation(fields: [stickerId], references: [id], onDelete: SetNull)
+
   replyToId BigInt?
   replyTo   Message?  @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
   replies   Message[] @relation("MessageReplies")
 
-  /// Чат цитируемого сообщения: ответить можно на сообщение из другого чата.
   replyToChatId BigInt?
 
-  /// Источник пересылки: автор контента (userId) либо группа/канал.
-  /// Дата пересылки и id исходного сообщения не хранятся осознанно.
-  /// При пересылке уже пересланного источник наследуется: посредники не записываются.
   forwardedFromChatId BigInt?
 
   attachments      MessageAttachment[]
@@ -284,7 +244,6 @@ model Message {
   messageReactions MessageReaction[]
 
   @@index([chatId, sendTime])
-  // курсорная пагинация и окно вокруг сообщения идут по (chatId, id)
   @@index([chatId, id])
   @@index([replyToId])
   @@index([forwardedFromChatId])
@@ -292,6 +251,7 @@ model Message {
   @@index([chatId])
   @@index([chatId, messageType])
   @@index([encryptionKeyVersion])
+  @@index([stickerId])
 }
 
 model SystemMessageEvent {
@@ -304,27 +264,17 @@ model SystemMessageEvent {
   @@index([eventType])
 }
 
-/// Состояние прочтения чата для одного пользователя.
-///
-/// Единственное долговременное хранилище прочтения: подробности «кто и когда»
-/// живут трое суток в Redis (MessageReadsStore), а курсор и счётчик остаются
-/// здесь навсегда, поэтому галочка у старого сообщения никуда не девается.
 model ChatReadState {
   id     Int    @id @default(autoincrement())
   userId BigInt
   chatId BigInt
 
-  /// Максимальный id прочитанного сообщения: всё до него считается прочитанным.
   lastReadMessageId BigInt?
 
-  /// На этом сообщении клиент открывает чат, если есть непрочитанное.
   firstUnreadMessageId BigInt?
 
   unreadCount Int    @default(0)
 
-  /// Пользователь сам пометил чат непрочитанным через меню списка чатов.
-  /// Непрочитанных сообщений при этом может не быть вовсе: клиент рисует
-  /// пустой бейдж. Сбрасывается при прочтении и при новом сообщении.
   isManuallyUnread Boolean @default(false)
 
   updatedAt   BigInt
@@ -336,13 +286,6 @@ model ChatReadState {
   @@index([chatId])
 }
 
-/// Категории чатов, от которых пользователь хочет получать уведомления.
-///
-/// Отдельная таблица, а не поля в PrivacySettings: это настройка доставки,
-/// а не приватности, и читается она на каждом исходящем пуше.
-///
-/// Строки может не быть вовсе — это штатное состояние «всё включено»:
-/// заводить запись каждому пользователю ради трёх true незачем.
 model NotificationSettings {
   id     Int    @id @default(autoincrement())
   userId BigInt @unique
@@ -356,26 +299,11 @@ model NotificationSettings {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-/// Уведомления по одному чату: исключение из настройки его категории.
-///
-/// Категории (NotificationSettings) задают правило по умолчанию, а строка
-/// здесь перекрывает его для конкретного чата: канал звучит, когда все каналы
-/// выключены, и молчит, когда все каналы включены.
-///
-/// Строка существует только у чатов, которые пользователь тронул руками, —
-/// это и есть список исключений для отдельного экрана. Хранится и
-/// «принудительно включён», и «принудительно выключен»: без первого чат
-/// нельзя было бы вернуть в исключения, не трогая категорию целиком.
-/// Удаление строки возвращает чат к настройке его категории.
 model ChatNotificationSetting {
   id     Int    @id @default(autoincrement())
   userId BigInt
   chatId BigInt
 
-  /// Уведомления по этому чату включены.
-  ///
-  /// Значение перекрывает категорию целиком: false — чат молчит даже при
-  /// включённой категории, true — звучит даже при выключенной.
   enabled Boolean
 
   updatedAt BigInt
@@ -424,15 +352,6 @@ model File {
   status    FileStatus @default(PENDING)
   createdAt BigInt
 
-  /// Ширина и высота кадра в пикселях — только у фото и видео.
-  ///
-  /// Нужны получателю до скачивания файла: по ним чат рисует карточку
-  /// вложения нужной формы и держит под неё место, пока картинка грузится.
-  /// Без них место пришлось бы занимать одним и тем же прямоугольником на все
-  /// случаи, и лента дёргалась бы на каждой загруженной картинке.
-  ///
-  /// Пусты у всего, что не фото и не видео, а также у файлов, загруженных
-  /// старыми клиентами: кадр измеряет отправитель, сервер сам файл не открывает.
   width     Int?
   height    Int?
 
@@ -449,8 +368,6 @@ model File {
 model MessageAttachment {
   id        Int            @id @default(autoincrement())
   messageId BigInt
-  /// Без @unique: пересланная копия ссылается на тот же File, а не дублирует его.
-  /// Физическое удаление файла — только когда исчезла последняя ссылка.
   fileId    String
   type      AttachmentType
   sortOrder Int            @default(0)
@@ -494,6 +411,8 @@ model Sticker {
   pack StickerPack @relation(fields: [packId], references: [id], onDelete: Cascade)
   file File        @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
+  messages Message[]
+
   @@index([packId, sortOrder])
   @@index([fileId])
 }
@@ -523,8 +442,6 @@ model Channel {
   channelType ChannelType @default(PRIVATE)
   username    String?     @unique
 
-  /// Запрет копирования: копирование текста, пересылка и сохранение медиа
-  /// недоступны всем участникам, включая владельца.
   noCopy Boolean @default(false)
 
   owner User @relation("OwnedChannels", fields: [ownerId], references: [id], onDelete: Cascade)
@@ -575,23 +492,15 @@ model ChannelBlackList {
   @@unique([userId, channelId])
 }
 
-/// Права администратора канала.
-///
-/// Строка существует только для администраторов: владелец каналом управляет
-/// без записи в этой таблице и всегда имеет все права.
 model ChannelAdminPermission {
   id        Int    @id @default(autoincrement())
   channelId BigInt
   userId    BigInt
 
-  /// Пригласительные ссылки: создание и удаление ссылок канала.
   canManageInviteLinks Boolean @default(false)
 
-  /// Изменение профиля канала: название, описание и фотографии профиля.
   canEditProfile Boolean @default(false)
 
-  /// Управление администраторами: назначение, снятие и изменение прав других
-  /// администраторов канала. Права выше своих выдать нельзя.
   canManageAdmins Boolean @default(false)
 
   grantedBy BigInt?
@@ -612,8 +521,6 @@ model Group {
   bio       String?
   groupType GroupType @default(PRIVATE)
 
-  /// Запрет копирования: копирование текста, пересылка и сохранение медиа
-  /// недоступны всем участникам, включая владельца.
   noCopy Boolean @default(false)
 
   owner        User                   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
@@ -661,27 +568,17 @@ model GroupBlackList {
   @@unique([userId, groupId])
 }
 
-/// Права администратора группы.
-///
-/// Строка существует только для администраторов: владелец группой управляет
-/// без записи в этой таблице и всегда имеет все права.
 model GroupAdminPermission {
   id      Int    @id @default(autoincrement())
   groupId BigInt
   userId  BigInt
 
-  /// Пригласительные ссылки: создание и удаление ссылок группы.
   canManageInviteLinks Boolean @default(false)
 
-  /// Изменение профиля группы: название, описание и фотографии профиля.
   canEditProfile Boolean @default(false)
 
-  /// Управление администраторами: назначение, снятие и изменение прав других
-  /// администраторов группы. Права выше своих выдать нельзя.
   canManageAdmins Boolean @default(false)
 
-  /// Тег участника: подпись рядом с именем отправителя в сообщениях группы.
-  /// Доступен только в группах, в каналах тега нет.
   tag String?
 
   grantedBy BigInt?
@@ -765,7 +662,6 @@ model PrivacySettings {
   invites      PrivacyRule @default(EVERYBODY)
   profilePhoto PrivacyRule @default(EVERYBODY)
 
-  /// Кто может открыть профиль по заголовку «Переслано от».
   forwardedProfile PrivacyRule @default(EVERYBODY)
 
   deleteAfterDays Int @default(365)
