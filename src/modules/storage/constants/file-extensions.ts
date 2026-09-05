@@ -1,63 +1,78 @@
-/**
- * Расширения для ключей объектов.
- *
- * Самому хранилищу расширение не нужно: тип объекта берётся из Content-Type,
- * записанного при загрузке. Но публичные файлы раздаёт CDN, а он путь без
- * расширения считает каталогом и отвечает 403, даже не обращаясь к бакету.
- * Поэтому ключ всегда заканчивается расширением.
- */
 const EXTENSION_BY_MIME_TYPE: Record<string, string> = {
-	'image/webp': 'webp',
 	'image/jpeg': 'jpg',
+	'image/jpg': 'jpg',
 	'image/png': 'png',
+	'image/webp': 'webp',
 	'image/gif': 'gif',
+	'image/bmp': 'bmp',
+	'image/tiff': 'tiff',
 	'image/heic': 'heic',
 	'image/heif': 'heif',
 	'image/avif': 'avif',
 	'image/svg+xml': 'svg',
+	'image/x-icon': 'ico',
+	'image/vnd.microsoft.icon': 'ico',
 	'video/mp4': 'mp4',
 	'video/webm': 'webm',
 	'video/quicktime': 'mov',
+	'video/x-matroska': 'mkv',
+	'video/x-msvideo': 'avi',
+	'video/x-ms-wmv': 'wmv',
+	'video/mpeg': 'mpeg',
+	'video/3gpp': '3gp',
 	'audio/mpeg': 'mp3',
 	'audio/mp4': 'm4a',
+	'audio/x-m4a': 'm4a',
 	'audio/aac': 'aac',
 	'audio/ogg': 'ogg',
 	'audio/opus': 'opus',
+	'audio/webm': 'weba',
 	'audio/wav': 'wav',
+	'audio/x-wav': 'wav',
+	'audio/flac': 'flac',
+	'audio/amr': 'amr',
+	'audio/3gpp': '3gp',
 	'application/pdf': 'pdf',
-	'application/zip': 'zip'
+	'application/msword': 'doc',
+	'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+	'application/vnd.ms-excel': 'xls',
+	'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+	'application/vnd.ms-powerpoint': 'ppt',
+	'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+	'application/vnd.oasis.opendocument.text': 'odt',
+	'application/vnd.oasis.opendocument.spreadsheet': 'ods',
+	'application/vnd.oasis.opendocument.presentation': 'odp',
+	'application/rtf': 'rtf',
+	'application/json': 'json',
+	'application/xml': 'xml',
+	'application/epub+zip': 'epub',
+	'application/zip': 'zip',
+	'application/vnd.rar': 'rar',
+	'application/x-rar-compressed': 'rar',
+	'application/x-7z-compressed': '7z',
+	'application/x-tar': 'tar',
+	'application/gzip': 'gz',
+	'application/x-bzip2': 'bz2',
+	'application/vnd.android.package-archive': 'apk',
+	'text/plain': 'txt',
+	'text/csv': 'csv',
+	'text/html': 'html',
+	'text/markdown': 'md',
+	'text/xml': 'xml'
 }
 
-/** Расширение, когда тип не опознан: ключ всё равно не должен выглядеть каталогом. */
 const FALLBACK_EXTENSION = 'bin'
 
-/** Расширения длиннее этого в именах файлов не встречаются и выглядят как мусор. */
 const MAX_NAME_EXTENSION_LENGTH = 8
 
-/**
- * Расширение для ключа в бакете.
- *
- * Заявленный тип надёжнее имени файла, поэтому сначала ищем по нему. Имя
- * нужно для документов и архивов: их типов слишком много, чтобы держать
- * полный список, зато расширение у них почти всегда на месте.
- *
- * Возвращается вместе с точкой, чтобы вызывающий код просто дописывал
- * результат к идентификатору.
- */
 export function resolveFileExtension(mimeType: string, fileName?: string): string {
-	const normalizedMime = mimeType.trim().toLowerCase().split(';')[0]
+	const normalizedMime = mimeType.trim().toLowerCase().split(';')[0].trim()
 	const byMime = EXTENSION_BY_MIME_TYPE[normalizedMime]
 	if (byMime) return `.${byMime}`
 
 	return `.${extractExtensionFromName(fileName) ?? FALLBACK_EXTENSION}`
 }
 
-/**
- * Расширение из имени файла.
- *
- * Имя приходит от клиента и в ключ попадает как есть, поэтому пропускаем
- * только буквы и цифры: точки, слэши и прочее сломали бы путь в бакете.
- */
 function extractExtensionFromName(fileName?: string): string | undefined {
 	if (!fileName) return undefined
 
