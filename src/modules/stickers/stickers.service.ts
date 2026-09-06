@@ -154,6 +154,8 @@ export class StickersService {
 			throw this.mapUsernameConflict(error)
 		}
 
+		await this.installPack(userId, packId)
+
 		return this.getPack(userId, packId)
 	}
 

@@ -94,6 +94,11 @@ export class MessageReplyPreviewDto {
 	@Expose()
 	@OmitNull()
 	attachmentTypes?: AttachmentType[]
+
+	@Expose()
+	@OmitNull()
+	@Transform(({ obj, value }) => value ?? obj?.sticker?.emojis?.[0])
+	stickerEmoji?: string
 }
 
 @Exclude()

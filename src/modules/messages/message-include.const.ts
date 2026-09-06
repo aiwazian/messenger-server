@@ -20,6 +20,7 @@ export const MESSAGE_INCLUDE = {
 			encryptionKeyVersion: true,
 			messageType: true,
 			sender: { select: { firstName: true, lastName: true } },
+			sticker: { select: { emojis: true } },
 			attachments: { select: { type: true }, orderBy: { sortOrder: 'asc' } }
 		}
 	}
