@@ -13,18 +13,6 @@ import { MESSAGE_INCLUDE } from '../message-include.const'
 import { MessageResponseDto } from '../dto/message-response.dto'
 import { ForwardMessageDto } from '../dto/forward-message.dto'
 
-/**
- * Пересылка сообщения в один или несколько чатов.
- *
- * В базе хранится только чат-источник (`forwardedFromChatId`) — без даты пересылки
- * и без id исходного сообщения. При пересылке уже пересланного сообщения
- * источник наследуется, то есть атрибуция всегда указывает на автора контента,
- * а не на посредников.
- *
- * Файлы не дублируются: новые MessageAttachment ссылаются на те же File.
- * Физическое удаление файла происходит только когда на него больше нет ссылок
- * (см. MessagesService.releaseFiles).
- */
 @Injectable()
 export class ForwardMessageUseCase {
 	constructor(
@@ -77,12 +65,6 @@ export class ForwardMessageUseCase {
 		return results
 	}
 
-	/**
-	 * Чат-источник контента.
-	 *
-	 * В личном чате `chatId` — это получатель, а не автор, поэтому берём senderId.
-	 * В группе и канале источник — сама группа/канал.
-	 */
 	private resolveOriginChatId(source: {
 		chatId: bigint
 		senderId: bigint
@@ -95,7 +77,6 @@ export class ForwardMessageUseCase {
 			: source.chatId
 	}
 
-	/** Те же правила, что в CanSendMessageGuard: гард висит на чате-источнике, цели проверяем сами. */
 	private async assertCanSend(userId: UserId, targetChatId: ChatId): Promise<void> {
 		const chatType = detectChatType(targetChatId)
 
@@ -143,7 +124,11 @@ export class ForwardMessageUseCase {
 	private async copyToChat(
 		userId: UserId,
 		targetChatId: ChatId,
-		source: { attachments: Array<{ fileId: string; type: any; sortOrder: number }> },
+		source: {
+			messageType: MessageType
+			stickerId: bigint | null
+			attachments: Array<{ fileId: string; type: any; sortOrder: number }>
+		},
 		originChatId: bigint,
 		plainText: string | null,
 		excludeSocketId: string
@@ -168,7 +153,8 @@ export class ForwardMessageUseCase {
 				senderId: userId,
 				text: encryptedText?.encrypted ?? null,
 				sendTime: Date.now(),
-				messageType: MessageType.TEXT,
+				messageType: source.messageType,
+				stickerId: source.stickerId,
 				encryptionKeyVersion: encryptedText?.version ?? this.encryption.currentVersion,
 				forwardedFromChatId: originChatId,
 				attachments: {

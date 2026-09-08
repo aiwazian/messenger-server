@@ -6,6 +6,7 @@ import { PushModule } from '../push/push.module'
 import { ChatsModule } from '../chats/chats.module'
 import { StorageModule } from '../storage/storage.module'
 import { SendMessageUseCase } from './use-cases/send-message.use-case'
+import { SendStickerMessageUseCase } from './use-cases/send-sticker-message.use-case'
 import { GetMessagesWindowUseCase } from './use-cases/get-messages-window.use-case'
 import { SearchChatMessagesUseCase } from './use-cases/search-chat-messages.use-case'
 import { ForwardMessageUseCase } from './use-cases/forward-message.use-case'
@@ -26,6 +27,7 @@ import { EncryptionModule } from '../encryption/encryption.module'
 	providers: [
 		MessagesService,
 		SendMessageUseCase,
+		SendStickerMessageUseCase,
 		GetMessagesWindowUseCase,
 		SearchChatMessagesUseCase,
 		ForwardMessageUseCase,

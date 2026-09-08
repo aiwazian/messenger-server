@@ -18,6 +18,7 @@ import { RedisModule } from './providers/redis/redis.module'
 import { SearchModule } from './modules/search/search.module'
 import { PushModule } from './modules/push/push.module'
 import { StorageModule } from './modules/storage/storage.module'
+import { StickersModule } from './modules/stickers/stickers.module'
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
 import { APP_GUARD } from '@nestjs/core'
 import { ScheduleModule } from '@nestjs/schedule'
@@ -51,6 +52,24 @@ import { NotificationSettingsModule } from './modules/notification-settings/noti
 				S3_END_POINT: Joi.string().uri().required(),
 				S3_BUCKET_NAME: Joi.string().required(),
 				S3_REGION: Joi.string().required(),
+
+				/*
+				 * Публичная раздача стикеров.
+				 *
+				 * Стикеры отдаются без подписи, поэтому к их каталогу нужен
+				 * открытый доступ на чтение: либо политикой бакета на префикс
+				 * stickers/, либо отдельным публичным бакетом.
+				 *
+				 * S3_PUBLIC_BUCKET_NAME нужна только во втором случае. Если её нет,
+				 * стикеры лежат в том же бакете, что и остальные файлы.
+				 *
+				 * CDN_PUBLIC_BASE_URL — домен перед этим каталогом. Отдаётся клиенту
+				 * готовой ссылкой, а не собирается на клиенте, чтобы смена CDN не
+				 * требовала новой версии приложения. Пока CDN не подключён, сюда
+				 * можно вписать адрес самого бакета: форма ссылок не изменится.
+				 */
+				S3_PUBLIC_BUCKET_NAME: Joi.string().optional(),
+				CDN_PUBLIC_BASE_URL: Joi.string().uri().required(),
 
 				/*
 				 * Ключ шифрования читается как hex в 32 байта: строка другой длины или с
@@ -103,6 +122,7 @@ import { NotificationSettingsModule } from './modules/notification-settings/noti
 		NotificationSettingsModule,
 		PushModule,
 		StorageModule,
+		StickersModule,
 		ChatReadStateModule
 	],
 	controllers: [AppController],

@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto'
 import { PrismaService } from '../../../providers/prisma/prisma.service'
 import { FileStatus } from '../../../generated/prisma/enums'
 import { FileType } from '../../../common/enums/file-type.enum'
+import { resolveFileExtension } from '../constants/file-extensions'
 
 export interface CreatePendingFileInput {
 	name: string
@@ -28,12 +29,20 @@ export class FileRegistryService {
 	 * Запись создаётся до загрузки: путь в бакете строится из её идентификатора,
 	 * а он же подписывается в политике, поэтому клиент не может выбрать ключ сам.
 	 *
+	 * К идентификатору дописывается расширение: CDN считает путь без расширения
+	 * каталогом и отвечает 403, не обращаясь к бакету. Берётся оно из заявленного
+	 * типа, потому что настоящий тип известен только после загрузки, а ключ нужен
+	 * уже сейчас — для формы. Расхождение не опасно: у категорий с единственным
+	 * форматом заявленный тип проверяется до выдачи формы, а у остальных
+	 * расширение ни на что не влияет, так как они раздаются по подписи.
+	 *
 	 * Размеры кадра пишутся сразу здесь, а не при подтверждении: подтверждение
 	 * знает только о самом объекте в бакете, а измерил кадр отправитель ещё до
 	 * загрузки.
 	 */
 	async createPending(input: CreatePendingFileInput) {
 		const id = randomUUID()
+		const extension = resolveFileExtension(input.mimeType, input.name)
 
 		return this.prisma.file.create({
 			data: {
@@ -41,7 +50,7 @@ export class FileRegistryService {
 				name: input.name,
 				size: input.size,
 				mimeType: input.mimeType,
-				path: `${input.directory}/${id}`,
+				path: `${input.directory}/${id}${extension}`,
 				status: FileStatus.PENDING,
 				createdAt: Date.now(),
 				width: input.width ?? null,
@@ -94,18 +103,23 @@ export class FileRegistryService {
 	 * Удаляет файл, только если на него не осталось ни одной ссылки.
 	 *
 	 * Один и тот же File может быть и аватаром, и вложением пересланного
-	 * сообщения: безусловное удаление ломало бы чужой контент.
+	 * сообщения, и стикером сразу в двух наборах: безусловное удаление ломало
+	 * бы чужой контент.
 	 */
 	async release(fileId: string): Promise<void> {
-		const [attachments, userPhotos, channelPhotos, groupPhotos, wallpapers] = await Promise.all([
-			this.prisma.messageAttachment.count({ where: { fileId } }),
-			this.prisma.userPhoto.count({ where: { fileId } }),
-			this.prisma.channelPhoto.count({ where: { fileId } }),
-			this.prisma.groupPhoto.count({ where: { fileId } }),
-			this.prisma.wallpaper.count({ where: { fileId } })
-		])
+		const [attachments, userPhotos, channelPhotos, groupPhotos, wallpapers, stickers] =
+			await Promise.all([
+				this.prisma.messageAttachment.count({ where: { fileId } }),
+				this.prisma.userPhoto.count({ where: { fileId } }),
+				this.prisma.channelPhoto.count({ where: { fileId } }),
+				this.prisma.groupPhoto.count({ where: { fileId } }),
+				this.prisma.wallpaper.count({ where: { fileId } }),
+				this.prisma.sticker.count({ where: { fileId } })
+			])
 
-		if (attachments + userPhotos + channelPhotos + groupPhotos + wallpapers > 0) return
+		if (attachments + userPhotos + channelPhotos + groupPhotos + wallpapers + stickers > 0) {
+			return
+		}
 
 		await this.scheduleDeletion(fileId)
 	}
