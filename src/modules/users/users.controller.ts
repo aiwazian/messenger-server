@@ -89,10 +89,6 @@ export class UsersController {
 		return this.usersService.updatePrivacySettings(userId, dto)
 	}
 
-	/**
-	 * Категорию здесь назначает сервер, а не клиент: аватар может быть только
-	 * картинкой, и объявить для неё FILE, чтобы обойти проверку типа, нельзя.
-	 */
 	@Post('me/avatar/init')
 	initFileUpload(@Body() dto: FileInitDto): Promise<InitUploadDto> {
 		return this.storage.initUpload({
@@ -113,13 +109,6 @@ export class UsersController {
 		return this.usersService.deleteAvatar(userId, fileId)
 	}
 
-	/**
-	 * Ссылка на аватар.
-	 *
-	 * Проверяется, кому этот файл виден: раньше хватало знать fileId, и
-	 * скачать фото мог любой авторизованный пользователь — включая того, кого
-	 * владелец заблокировал или от кого закрыл фото настройками приватности.
-	 */
 	@Get('avatars/:fileId')
 	getAvatarDownloadUrl(
 		@CurrentUserId() userId: UserId,
@@ -147,15 +136,23 @@ export class UsersController {
 			response.avatars = []
 			response.lastSeen = undefined
 			response.profileChannelId = undefined
-		} else if (req.privacy) {
-			if (!req.privacy.canSeeBio) {
-				response.bio = undefined
+		}
+
+		if (req.privacy) {
+			if (!response.isBlockedByThem) {
+				if (!req.privacy.canSeeBio) {
+					response.bio = undefined
+				}
+				if (!req.privacy.canSeeDateOfBirth) {
+					response.dateOfBirth = undefined
+				}
+				if (!req.privacy.canSeeProfilePhoto) {
+					response.avatars = []
+				}
 			}
-			if (!req.privacy.canSeeDateOfBirth) {
-				response.dateOfBirth = undefined
-			}
-			if (!req.privacy.canSeeProfilePhoto) {
-				response.avatars = []
+
+			if (!req.privacy.canForwardAndCopy) {
+				response.canForwardAndCopy = false
 			}
 		}
 
