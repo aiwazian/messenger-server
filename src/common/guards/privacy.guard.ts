@@ -27,7 +27,8 @@ export class PrivacyGuard implements CanActivate {
 			request.privacy = {
 				canSeeBio: true,
 				canSeeDateOfBirth: true,
-				canSeeProfilePhoto: true
+				canSeeProfilePhoto: true,
+				canForwardAndCopy: await this.allowsForwardAndCopy(currentUserId)
 			}
 			return true
 		}
@@ -36,7 +37,8 @@ export class PrivacyGuard implements CanActivate {
 			request.privacy = {
 				canSeeBio: true,
 				canSeeDateOfBirth: true,
-				canSeeProfilePhoto: true
+				canSeeProfilePhoto: true,
+				canForwardAndCopy: true
 			}
 			return true
 		}
@@ -44,9 +46,23 @@ export class PrivacyGuard implements CanActivate {
 		request.privacy = {
 			canSeeBio: settings.bio === PrivacyRule.EVERYBODY,
 			canSeeDateOfBirth: settings.dateOfBirth === PrivacyRule.EVERYBODY,
-			canSeeProfilePhoto: settings.profilePhoto === PrivacyRule.EVERYBODY
+			canSeeProfilePhoto: settings.profilePhoto === PrivacyRule.EVERYBODY,
+			canForwardAndCopy:
+				settings.forwardAndCopy === PrivacyRule.EVERYBODY &&
+				(await this.allowsForwardAndCopy(currentUserId))
 		}
 
 		return true
+	}
+
+	private async allowsForwardAndCopy(userId?: string | bigint | number): Promise<boolean> {
+		if (!userId) return true
+
+		const settings = await this.prisma.privacySettings.findUnique({
+			where: { userId: UserId(userId) },
+			select: { forwardAndCopy: true }
+		})
+
+		return settings?.forwardAndCopy !== PrivacyRule.NOBODY
 	}
 }

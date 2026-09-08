@@ -8,7 +8,7 @@ import { UserId } from '../../../common/types/user-id.type'
 import { ChatId } from '../../../common/types/chat-id.type'
 import { ChatType } from '../../../common/enums/chat-type.enum'
 import { detectChatType } from '../../../common/utils/detect-chat-type.util'
-import { MessageType } from '../../../generated/prisma/enums'
+import { MessageType, PrivacyRule } from '../../../generated/prisma/enums'
 import { MESSAGE_INCLUDE } from '../message-include.const'
 import { MessageResponseDto } from '../dto/message-response.dto'
 import { ForwardMessageDto } from '../dto/forward-message.dto'
@@ -42,6 +42,8 @@ export class ForwardMessageUseCase {
 			throw new ForbiddenException('System messages cannot be forwarded')
 		}
 
+		await this.assertSourceForwardable(userId, sourceChatId)
+
 		const originChatId = this.resolveOriginChatId(source)
 		const plainText = this.messagesService.decryptText(source.text, source.encryptionKeyVersion)
 
@@ -63,6 +65,51 @@ export class ForwardMessageUseCase {
 		}
 
 		return results
+	}
+
+	private async assertSourceForwardable(userId: UserId, sourceChatId: ChatId): Promise<void> {
+		const chatType = detectChatType(sourceChatId)
+
+		if (chatType === ChatType.GROUP) {
+			const group = await this.prisma.group.findUnique({
+				where: { id: sourceChatId },
+				select: { noCopy: true }
+			})
+
+			if (group?.noCopy) {
+				throw new ForbiddenException('Forwarding is restricted in this chat')
+			}
+
+			return
+		}
+
+		if (chatType === ChatType.CHANNEL) {
+			const channel = await this.prisma.channel.findUnique({
+				where: { id: sourceChatId },
+				select: { noCopy: true }
+			})
+
+			if (channel?.noCopy) {
+				throw new ForbiddenException('Forwarding is restricted in this chat')
+			}
+
+			return
+		}
+
+		if (chatType !== ChatType.PRIVATE) return
+		if (BigInt(sourceChatId) === BigInt(userId)) return
+
+		const restricted = await this.prisma.privacySettings.findFirst({
+			where: {
+				userId: { in: [UserId(userId), UserId(sourceChatId)] },
+				forwardAndCopy: PrivacyRule.NOBODY
+			},
+			select: { userId: true }
+		})
+
+		if (restricted) {
+			throw new ForbiddenException('Forwarding is restricted in this chat')
+		}
 	}
 
 	private resolveOriginChatId(source: {

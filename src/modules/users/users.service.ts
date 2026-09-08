@@ -203,6 +203,7 @@ export class UsersService {
 
 		const response = plainToInstance(UserResponseDto, user)
 		response.avatars = user.photos.map((p) => ({ fileId: p.fileId, sortOrder: p.sortOrder }))
+		response.canForwardAndCopy = true
 
 		if (user.profileChannelId) {
 			response.profileChannelId = user.profileChannelId.toString()
@@ -242,6 +243,9 @@ export class UsersService {
 				} else if (lastSeenVal) {
 					response.lastSeen = lastSeenVal
 				}
+				if (privacy.forwardAndCopy === PrivacyRule.NOBODY) {
+					response.canForwardAndCopy = false
+				}
 			}
 		} else if (lastSeenVal) {
 			response.lastSeen = lastSeenVal
@@ -274,7 +278,10 @@ export class UsersService {
 				bio: dto.bio,
 				dateOfBirth: dto.dateOfBirth,
 				invites: dto.invites,
-				profilePhoto: dto.profilePhoto
+				profilePhoto: dto.profilePhoto,
+				forwardedProfile: dto.forwardedProfile,
+				forwardAndCopy: dto.forwardAndCopy,
+				deleteAfterDays: dto.deleteAfterDays
 			}
 		})
 
@@ -507,11 +514,6 @@ export class UsersService {
 		const user = await this.prisma.user.findUnique({ where: { id: userId } })
 		if (!user) throw new NotFoundException('User not found')
 
-		/*
-		 * Занятый адрес отсекается до отправки письма: почта уникальна на уровне базы,
-		 * поэтому иначе пользователь получил бы код, а подтверждение упало бы на
-		 * уникальном индексе уже после ввода кода.
-		 */
 		const existing = await this.prisma.user.findUnique({ where: { email } })
 		if (existing && existing.id !== userId) {
 			throw new ConflictException('Email is already in use')
@@ -537,10 +539,6 @@ export class UsersService {
 				data: { email: result.email }
 			})
 		} catch (error) {
-			/*
-			 * Адрес мог занять другой аккаунт, пока код ждал подтверждения: уникальный
-			 * индекс ловит эту гонку, и ответом должен быть конфликт, а не 500.
-			 */
 			if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
 				throw new ConflictException('Email is already in use')
 			}
