@@ -31,6 +31,10 @@ export class UpdatePrivacySettingsDto {
 	forwardedProfile?: PrivacyRule
 
 	@IsOptional()
+	@IsEnum(PrivacyRule)
+	forwardAndCopy?: PrivacyRule
+
+	@IsOptional()
 	@IsNumber()
 	@IsIn([30, 90, 180, 365])
 	deleteAfterDays?: number

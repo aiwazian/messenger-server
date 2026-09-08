@@ -664,6 +664,8 @@ model PrivacySettings {
 
   forwardedProfile PrivacyRule @default(EVERYBODY)
 
+  forwardAndCopy PrivacyRule @default(EVERYBODY)
+
   deleteAfterDays Int @default(365)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

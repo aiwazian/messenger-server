@@ -27,7 +27,8 @@ export class PrivacyGuard implements CanActivate {
 			request.privacy = {
 				canSeeBio: true,
 				canSeeDateOfBirth: true,
-				canSeeProfilePhoto: true
+				canSeeProfilePhoto: true,
+				canForwardAndCopy: true
 			}
 			return true
 		}
@@ -36,7 +37,8 @@ export class PrivacyGuard implements CanActivate {
 			request.privacy = {
 				canSeeBio: true,
 				canSeeDateOfBirth: true,
-				canSeeProfilePhoto: true
+				canSeeProfilePhoto: true,
+				canForwardAndCopy: true
 			}
 			return true
 		}
@@ -44,7 +46,8 @@ export class PrivacyGuard implements CanActivate {
 		request.privacy = {
 			canSeeBio: settings.bio === PrivacyRule.EVERYBODY,
 			canSeeDateOfBirth: settings.dateOfBirth === PrivacyRule.EVERYBODY,
-			canSeeProfilePhoto: settings.profilePhoto === PrivacyRule.EVERYBODY
+			canSeeProfilePhoto: settings.profilePhoto === PrivacyRule.EVERYBODY,
+			canForwardAndCopy: settings.forwardAndCopy === PrivacyRule.EVERYBODY
 		}
 
 		return true

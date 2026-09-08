@@ -46,4 +46,7 @@ export class UserResponseDto {
 
 	@Expose()
 	isBlockedByThem?: boolean
+
+	@Expose()
+	canForwardAndCopy?: boolean
 }
