@@ -26,36 +26,17 @@ export interface InitUploadInput {
 	name: string
 	size: number
 	mimeType: string
-	/** Что именно загружает пользователь. Без неё действует общий режим FILE. */
 	category?: UploadCategory
-	/**
-	 * Каталог в бакете: вложение чата, аватар пользователя, канала, группы,
-	 * стикер. Каталог задаёт и бакет: стикеры лежат в публичном, всё
-	 * остальное — в приватном.
-	 */
 	directory: FileType
-	/**
-	 * Размеры кадра в пикселях: есть только у фото и видео.
-	 *
-	 * Хранилище ими не пользуется и не проверяет их по файлу — они просто
-	 * доезжают до записи File, чтобы получатель узнал форму вложения до
-	 * скачивания.
-	 */
+	subdirectory?: string
 	width?: number
 	height?: number
 }
 
-/**
- * Фасад загрузки и скачивания.
- *
- * Сам ничего не делает: собирает сценарий из правил (UploadPolicyService),
- * учёта файлов (FileRegistryService) и хранилища (ObjectStoragePort).
- */
 @Injectable()
 export class StorageService implements OnModuleInit {
 	private readonly logger = new Logger(StorageService.name)
 
-	/** Домен раздачи публичных файлов без завершающего слэша. */
 	private readonly publicBaseUrl: string
 
 	constructor(
@@ -67,21 +48,6 @@ export class StorageService implements OnModuleInit {
 		this.publicBaseUrl = config.get<string>('CDN_PUBLIC_BASE_URL')!.replace(/\/+$/, '')
 	}
 
-	/**
-	 * Открытие доступа к публичным каталогам на старте.
-	 *
-	 * Настройка живёт в коде, а не в ручном шаге развёртывания: список публичных
-	 * каталогов и права на них берутся из одного источника, поэтому новый
-	 * публичный каталог нельзя добавить и забыть открыть.
-	 *
-	 * Операция идемпотентная: политика заменяется целиком одним и тем же
-	 * документом, так что перезапуски ничего не накапливают.
-	 *
-	 * Ошибка не роняет сервер: без политики перестают открываться только
-	 * стикеры, а переписка, звонки и аватары работают через подписанные
-	 * ссылки и от неё не зависят. Причина пишется в лог целиком: чаще всего
-	 * это отсутствие права s3:PutBucketPolicy у ключа доступа.
-	 */
 	async onModuleInit(): Promise<void> {
 		try {
 			await this.objectStorage.applyPublicReadPolicy({
@@ -109,6 +75,7 @@ export class StorageService implements OnModuleInit {
 			size: input.size,
 			mimeType: input.mimeType,
 			directory: input.directory,
+			subdirectory: input.subdirectory,
 			width: input.width,
 			height: input.height
 		})
@@ -130,13 +97,6 @@ export class StorageService implements OnModuleInit {
 		})
 	}
 
-	/**
-	 * Подтверждение загрузки.
-	 *
-	 * Раньше несовпадение типа молча исправлялось перезаписью заголовка, то есть
-	 * файл принимался в любом случае. Теперь это отказ: объект удаляется, а
-	 * вызывающий получает ошибку и не создаёт ни вложение, ни аватар.
-	 */
 	async confirmUpload(fileId: string): Promise<FileDto> {
 		const file = await this.files.findByIdOrFail(fileId)
 
@@ -153,10 +113,6 @@ export class StorageService implements OnModuleInit {
 			)
 			detectedMime = (await fileTypeFromBuffer(head))?.mime
 		} catch {
-			/*
-			 * Объекта нет: форму получили, а файл не отправили либо S3 отклонил его
-			 * по политике. Запись оставляем — её через сутки уберёт уборщик.
-			 */
 			throw new ConflictException('File was not uploaded')
 		}
 
@@ -175,17 +131,6 @@ export class StorageService implements OnModuleInit {
 		return plainToInstance(FileDto, updated)
 	}
 
-	/**
-	 * Ссылка на скачивание.
-	 *
-	 * Права здесь не проверяются осознанно: хранилище не знает ни о чатах, ни о
-	 * профилях. Вызывать этот метод можно только после проверки доступа —
-	 * для аватаров это AvatarAccessService, для вложений MessagesService.
-	 *
-	 * У публичных файлов возвращается постоянная ссылка, а не подписанная:
-	 * подписывать то, что и так открыто по ссылке, смысла нет, а меняющаяся
-	 * подпись сбивала бы кэш на клиенте.
-	 */
 	async getDownloadUrl(fileId: string): Promise<FileDownloadDto> {
 		const file = await this.files.findByIdOrFail(fileId)
 
@@ -210,17 +155,6 @@ export class StorageService implements OnModuleInit {
 		})
 	}
 
-	/**
-	 * Постоянная ссылка на публичный файл по его пути в бакете.
-	 *
-	 * Без запроса к хранилищу и без подписи: такую ссылку можно отдавать
-	 * сразу сотнями в одном ответе — именно так отдаются наборы стикеров.
-	 * У ссылки нет query-параметров и срока жизни, поэтому она годится в качестве
-	 * ключа кэша и не заставляет скачивать один и тот же файл заново.
-	 *
-	 * Домен подставляет сервер, а не собирает клиент: CDN можно сменить,
-	 * не выпуская новую версию приложения.
-	 */
 	getPublicUrl(path: string): string {
 		if (resolveBucketForKey(path) !== StorageBucket.PUBLIC) {
 			throw new ConflictException('File is not publicly available')
@@ -229,12 +163,10 @@ export class StorageService implements OnModuleInit {
 		return this.buildPublicUrl(path)
 	}
 
-	/** Безусловное удаление. Вызывающий сам убедился, что ссылок не осталось. */
 	deleteFile(fileId: string): Promise<void> {
 		return this.files.scheduleDeletion(fileId)
 	}
 
-	/** Удаление с проверкой ссылок: файл может использоваться где-то ещё. */
 	releaseFile(fileId: string): Promise<void> {
 		return this.files.release(fileId)
 	}
