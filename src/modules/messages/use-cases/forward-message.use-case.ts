@@ -42,7 +42,7 @@ export class ForwardMessageUseCase {
 			throw new ForbiddenException('System messages cannot be forwarded')
 		}
 
-		await this.assertSourceForwardable(userId, sourceChatId, source)
+		await this.assertSourceForwardable(userId, sourceChatId)
 
 		const originChatId = this.resolveOriginChatId(source)
 		const plainText = this.messagesService.decryptText(source.text, source.encryptionKeyVersion)
@@ -67,11 +67,7 @@ export class ForwardMessageUseCase {
 		return results
 	}
 
-	private async assertSourceForwardable(
-		userId: UserId,
-		sourceChatId: ChatId,
-		source: { senderId: bigint }
-	): Promise<void> {
+	private async assertSourceForwardable(userId: UserId, sourceChatId: ChatId): Promise<void> {
 		const chatType = detectChatType(sourceChatId)
 
 		if (chatType === ChatType.GROUP) {
@@ -101,14 +97,17 @@ export class ForwardMessageUseCase {
 		}
 
 		if (chatType !== ChatType.PRIVATE) return
-		if (BigInt(source.senderId) === BigInt(userId)) return
+		if (BigInt(sourceChatId) === BigInt(userId)) return
 
-		const settings = await this.prisma.privacySettings.findUnique({
-			where: { userId: UserId(source.senderId) },
-			select: { forwardAndCopy: true }
+		const restricted = await this.prisma.privacySettings.findFirst({
+			where: {
+				userId: { in: [UserId(userId), UserId(sourceChatId)] },
+				forwardAndCopy: PrivacyRule.NOBODY
+			},
+			select: { userId: true }
 		})
 
-		if (settings?.forwardAndCopy === PrivacyRule.NOBODY) {
+		if (restricted) {
 			throw new ForbiddenException('Forwarding is restricted in this chat')
 		}
 	}
