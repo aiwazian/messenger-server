@@ -12,12 +12,12 @@ import { UserId } from '../../common/types/user-id.type'
 import { generateStickerPackId } from '../../common/utils/id-generator.util'
 import { FileStatus } from '../../generated/prisma/enums'
 import { PrismaService } from '../../providers/prisma/prisma.service'
-import { FileInitDto } from '../messages/dto/file-init.dto'
 import { STICKER_MIME_TYPE } from '../storage/constants/upload.constants'
 import { FileDto } from '../storage/dto/file.dto'
 import { InitUploadDto } from '../storage/dto/init-upload.dto'
 import { StorageService } from '../storage/storage.service'
 import { CreateStickerPackDto } from './dto/create-sticker-pack.dto'
+import { StickerPackIdDto } from './dto/sticker-pack-id.dto'
 import { StickerPackResponseDto } from './dto/sticker-pack-response.dto'
 import { StickerPackUsernameAvailabilityDto } from './dto/sticker-pack-username-availability.dto'
 import {
@@ -25,6 +25,7 @@ import {
 	MIN_STICKER_PACK_USERNAME_LENGTH,
 	STICKER_PACK_USERNAME_PATTERN
 } from './dto/sticker-pack.constants'
+import { StickerUploadInitDto } from './dto/sticker-upload-init.dto'
 import { UpdateStickerPackDto } from './dto/update-sticker-pack.dto'
 
 type PackRow = {
@@ -32,6 +33,8 @@ type PackRow = {
 	name: string
 	username: string
 	ownerId: bigint
+	coverFileId: string | null
+	cover?: { path: string } | null
 }
 
 type StickerRow = {
@@ -62,6 +65,7 @@ export class StickersService {
 			orderBy: { createdAt: 'desc' },
 			include: {
 				_count: { select: { stickers: true } },
+				cover: { select: { path: true } },
 				installs: { where: { userId }, select: { id: true } }
 			}
 		})
@@ -76,12 +80,53 @@ export class StickersService {
 		)
 	}
 
-	async getAddedPacks(userId: UserId): Promise<StickerPackResponseDto[]> {
+	async getAddedPacks(
+		userId: UserId,
+		includeStickers = false
+	): Promise<StickerPackResponseDto[]> {
+		if (includeStickers) {
+			const detailed = await this.prisma.userStickerPack.findMany({
+				where: { userId },
+				orderBy: { sortOrder: 'asc' },
+				include: {
+					pack: {
+						include: {
+							cover: { select: { path: true } },
+							stickers: {
+								orderBy: { sortOrder: 'asc' },
+								select: {
+									id: true,
+									fileId: true,
+									emojis: true,
+									sortOrder: true,
+									file: { select: { path: true } }
+								}
+							}
+						}
+					}
+				}
+			})
+
+			return detailed.map(install =>
+				this.toPackDto(install.pack, {
+					stickerCount: install.pack.stickers.length,
+					isOwned: install.pack.ownerId === userId,
+					isInstalled: true,
+					stickers: install.pack.stickers
+				})
+			)
+		}
+
 		const installs = await this.prisma.userStickerPack.findMany({
 			where: { userId },
 			orderBy: { sortOrder: 'asc' },
 			include: {
-				pack: { include: { _count: { select: { stickers: true } } } }
+				pack: {
+					include: {
+						_count: { select: { stickers: true } },
+						cover: { select: { path: true } }
+					}
+				}
 			}
 		})
 
@@ -101,6 +146,12 @@ export class StickersService {
 
 	getPackByUsername(userId: UserId, username: string): Promise<StickerPackResponseDto> {
 		return this.findPackDetail(userId, { username: this.normalizeUsername(username) })
+	}
+
+	reservePackId(): StickerPackIdDto {
+		return plainToInstance(StickerPackIdDto, {
+			packId: generateStickerPackId().toString()
+		})
 	}
 
 	async checkUsername(
@@ -127,10 +178,17 @@ export class StickersService {
 		const fileIds = dto.stickers.map(sticker => sticker.fileId)
 
 		await this.assertStickerFilesUsable(fileIds)
+
+		if (dto.coverFileId) {
+			await this.assertStickerFileUsable(dto.coverFileId)
+		}
+
 		await this.assertUsernameFree(dto.username)
 
 		const now = BigInt(Date.now())
-		const packId = generateStickerPackId()
+		const packId = dto.id === undefined ? generateStickerPackId() : StickerPackId(dto.id)
+
+		await this.assertPackIdFree(packId)
 
 		try {
 			await this.prisma.stickerPack.create({
@@ -140,6 +198,7 @@ export class StickersService {
 					username: dto.username,
 					ownerId: userId,
 					createdAt: now,
+					coverFileId: dto.coverFileId ?? null,
 					stickers: {
 						create: dto.stickers.map((sticker, index) => ({
 							fileId: sticker.fileId,
@@ -181,6 +240,11 @@ export class StickersService {
 			await this.assertUsernameFree(dto.username)
 		}
 
+		if (dto.coverFileId) {
+			await this.assertStickerFileUsable(dto.coverFileId)
+		}
+
+		const previousCoverFileId = pack.coverFileId
 		const desiredStickers = dto.stickers
 		const desiredFileIds = desiredStickers?.map(sticker => sticker.fileId)
 
@@ -198,7 +262,11 @@ export class StickersService {
 			await this.prisma.$transaction(async tx => {
 				await tx.stickerPack.update({
 					where: { id: packId },
-					data: { name: dto.name, username: dto.username }
+					data: {
+						name: dto.name,
+						username: dto.username,
+						coverFileId: dto.coverFileId
+					}
 				})
 
 				if (!desiredStickers || !desiredFileIds) {
@@ -245,6 +313,14 @@ export class StickersService {
 			await this.storage.releaseFile(fileId)
 		}
 
+		if (
+			dto.coverFileId !== undefined &&
+			previousCoverFileId &&
+			previousCoverFileId !== dto.coverFileId
+		) {
+			await this.storage.releaseFile(previousCoverFileId)
+		}
+
 		return this.getPack(userId, packId)
 	}
 
@@ -262,10 +338,16 @@ export class StickersService {
 			throw new ForbiddenException('Only the owner can delete a sticker pack')
 		}
 
+		const coverFileId = pack.coverFileId
+
 		await this.prisma.stickerPack.delete({ where: { id: packId } })
 
 		for (const sticker of pack.stickers) {
 			await this.storage.releaseFile(sticker.fileId)
+		}
+
+		if (coverFileId) {
+			await this.storage.releaseFile(coverFileId)
 		}
 	}
 
@@ -301,13 +383,16 @@ export class StickersService {
 		await this.prisma.userStickerPack.deleteMany({ where: { userId, packId } })
 	}
 
-	initStickerUpload(dto: FileInitDto): Promise<InitUploadDto> {
+	initStickerUpload(dto: StickerUploadInitDto): Promise<InitUploadDto> {
+		const packId = StickerPackId(dto.packId)
+
 		return this.storage.initUpload({
 			name: dto.name,
 			size: dto.size,
 			mimeType: dto.mimeType,
 			category: UploadCategory.STICKER,
 			directory: FileType.STICKER,
+			subdirectory: packId.toString(),
 			width: dto.width,
 			height: dto.height
 		})
@@ -324,6 +409,7 @@ export class StickersService {
 		const pack = await this.prisma.stickerPack.findUnique({
 			where,
 			include: {
+				cover: { select: { path: true } },
 				stickers: {
 					orderBy: { sortOrder: 'asc' },
 					select: {
@@ -348,6 +434,21 @@ export class StickersService {
 			isInstalled: pack.installs.length > 0,
 			stickers: pack.stickers
 		})
+	}
+
+	private async assertPackIdFree(packId: StickerPackId): Promise<void> {
+		const existing = await this.prisma.stickerPack.findUnique({
+			where: { id: packId },
+			select: { id: true }
+		})
+
+		if (existing) {
+			throw new ConflictException('Sticker pack already exists')
+		}
+	}
+
+	private async assertStickerFileUsable(fileId: string): Promise<void> {
+		await this.assertStickerFilesUsable([fileId])
 	}
 
 	private async assertStickerFilesUsable(fileIds: string[]): Promise<void> {
@@ -420,6 +521,8 @@ export class StickersService {
 			name: pack.name,
 			username: pack.username,
 			ownerId: pack.ownerId.toString(),
+			coverFileId: pack.coverFileId ?? undefined,
+			coverUrl: pack.cover ? this.storage.getPublicUrl(pack.cover.path) : undefined,
 			stickerCount: view.stickerCount,
 			isOwned: view.isOwned,
 			isInstalled: view.isInstalled,
