@@ -362,6 +362,8 @@ model File {
   wallpapers    Wallpaper[]
   stickers      Sticker[]
 
+  stickerPackCovers StickerPack[] @relation("StickerPackCover")
+
   @@index([status])
 }
 
@@ -389,11 +391,15 @@ model StickerPack {
   ownerId   BigInt
   createdAt BigInt
 
+  coverFileId String?
+
   owner    User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  cover    File?             @relation("StickerPackCover", fields: [coverFileId], references: [id], onDelete: SetNull)
   stickers Sticker[]
   installs UserStickerPack[]
 
   @@index([ownerId])
+  @@index([coverFileId])
 }
 
 model Sticker {

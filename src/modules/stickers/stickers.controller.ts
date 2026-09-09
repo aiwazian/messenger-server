@@ -14,13 +14,15 @@ import { CurrentUserId } from '../../common/decorators/user-id.decorator'
 import { ParseStickerPackIdPipe } from '../../common/pipes/parse-sticker-pack-id.pipe'
 import { StickerPackId } from '../../common/types/sticker-pack-id.type'
 import { UserId } from '../../common/types/user-id.type'
-import { FileInitDto } from '../messages/dto/file-init.dto'
 import { FileDto } from '../storage/dto/file.dto'
 import { InitUploadDto } from '../storage/dto/init-upload.dto'
 import { CheckStickerPackUsernameDto } from './dto/check-sticker-pack-username.dto'
 import { CreateStickerPackDto } from './dto/create-sticker-pack.dto'
+import { GetStickerPacksDto } from './dto/get-sticker-packs.dto'
+import { StickerPackIdDto } from './dto/sticker-pack-id.dto'
 import { StickerPackResponseDto } from './dto/sticker-pack-response.dto'
 import { StickerPackUsernameAvailabilityDto } from './dto/sticker-pack-username-availability.dto'
+import { StickerUploadInitDto } from './dto/sticker-upload-init.dto'
 import { UpdateStickerPackDto } from './dto/update-sticker-pack.dto'
 import { StickersService } from './stickers.service'
 
@@ -34,8 +36,11 @@ export class StickersController {
 	}
 
 	@Get('packs/added')
-	async getAddedPacks(@CurrentUserId() userId: UserId): Promise<StickerPackResponseDto[]> {
-		return this.stickersService.getAddedPacks(userId)
+	async getAddedPacks(
+		@CurrentUserId() userId: UserId,
+		@Query() dto: GetStickerPacksDto
+	): Promise<StickerPackResponseDto[]> {
+		return this.stickersService.getAddedPacks(userId, dto.includeStickers === true)
 	}
 
 	@Get('packs/username-available')
@@ -62,6 +67,11 @@ export class StickersController {
 		@Param('packId', ParseStickerPackIdPipe) packId: StickerPackId
 	): Promise<StickerPackResponseDto> {
 		return this.stickersService.getPack(userId, packId)
+	}
+
+	@Post('packs/reserve')
+	reservePackId(): StickerPackIdDto {
+		return this.stickersService.reservePackId()
 	}
 
 	@Post('packs')
@@ -109,7 +119,7 @@ export class StickersController {
 	}
 
 	@Post('upload/init')
-	async initStickerUpload(@Body() dto: FileInitDto): Promise<InitUploadDto> {
+	async initStickerUpload(@Body() dto: StickerUploadInitDto): Promise<InitUploadDto> {
 		return this.stickersService.initStickerUpload(dto)
 	}
 

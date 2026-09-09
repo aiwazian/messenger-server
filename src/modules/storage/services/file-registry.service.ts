@@ -10,39 +10,21 @@ export interface CreatePendingFileInput {
 	size: number
 	mimeType: string
 	directory: FileType
-	/** Размеры кадра в пикселях. Есть только у фото и видео. */
+	subdirectory?: string
 	width?: number
 	height?: number
 }
 
-/**
- * Учёт файлов в базе.
- *
- * Отделён от работы с хранилищем: здесь только записи File и FileCleanupTask,
- * ни одного вызова S3.
- */
 @Injectable()
 export class FileRegistryService {
 	constructor(private readonly prisma: PrismaService) {}
 
-	/**
-	 * Запись создаётся до загрузки: путь в бакете строится из её идентификатора,
-	 * а он же подписывается в политике, поэтому клиент не может выбрать ключ сам.
-	 *
-	 * К идентификатору дописывается расширение: CDN считает путь без расширения
-	 * каталогом и отвечает 403, не обращаясь к бакету. Берётся оно из заявленного
-	 * типа, потому что настоящий тип известен только после загрузки, а ключ нужен
-	 * уже сейчас — для формы. Расхождение не опасно: у категорий с единственным
-	 * форматом заявленный тип проверяется до выдачи формы, а у остальных
-	 * расширение ни на что не влияет, так как они раздаются по подписи.
-	 *
-	 * Размеры кадра пишутся сразу здесь, а не при подтверждении: подтверждение
-	 * знает только о самом объекте в бакете, а измерил кадр отправитель ещё до
-	 * загрузки.
-	 */
 	async createPending(input: CreatePendingFileInput) {
 		const id = randomUUID()
 		const extension = resolveFileExtension(input.mimeType, input.name)
+		const folder = input.subdirectory
+			? `${input.directory}/${input.subdirectory}`
+			: input.directory
 
 		return this.prisma.file.create({
 			data: {
@@ -50,7 +32,7 @@ export class FileRegistryService {
 				name: input.name,
 				size: input.size,
 				mimeType: input.mimeType,
-				path: `${input.directory}/${id}${extension}`,
+				path: `${folder}/${id}${extension}`,
 				status: FileStatus.PENDING,
 				createdAt: Date.now(),
 				width: input.width ?? null,
@@ -76,12 +58,6 @@ export class FileRegistryService {
 		})
 	}
 
-	/**
-	 * Ставит объект в очередь на удаление и убирает запись.
-	 *
-	 * Удаление в бакете может не пройти с первого раза, поэтому задача
-	 * переживает перезапуск: сначала пишем её, потом удаляем строку.
-	 */
 	async scheduleDeletion(fileId: string): Promise<void> {
 		const file = await this.prisma.file.findUnique({ where: { id: fileId } })
 		if (!file) return
@@ -99,25 +75,35 @@ export class FileRegistryService {
 		await this.prisma.file.delete({ where: { id: fileId } })
 	}
 
-	/**
-	 * Удаляет файл, только если на него не осталось ни одной ссылки.
-	 *
-	 * Один и тот же File может быть и аватаром, и вложением пересланного
-	 * сообщения, и стикером сразу в двух наборах: безусловное удаление ломало
-	 * бы чужой контент.
-	 */
 	async release(fileId: string): Promise<void> {
-		const [attachments, userPhotos, channelPhotos, groupPhotos, wallpapers, stickers] =
-			await Promise.all([
-				this.prisma.messageAttachment.count({ where: { fileId } }),
-				this.prisma.userPhoto.count({ where: { fileId } }),
-				this.prisma.channelPhoto.count({ where: { fileId } }),
-				this.prisma.groupPhoto.count({ where: { fileId } }),
-				this.prisma.wallpaper.count({ where: { fileId } }),
-				this.prisma.sticker.count({ where: { fileId } })
-			])
+		const [
+			attachments,
+			userPhotos,
+			channelPhotos,
+			groupPhotos,
+			wallpapers,
+			stickers,
+			stickerPackCovers
+		] = await Promise.all([
+			this.prisma.messageAttachment.count({ where: { fileId } }),
+			this.prisma.userPhoto.count({ where: { fileId } }),
+			this.prisma.channelPhoto.count({ where: { fileId } }),
+			this.prisma.groupPhoto.count({ where: { fileId } }),
+			this.prisma.wallpaper.count({ where: { fileId } }),
+			this.prisma.sticker.count({ where: { fileId } }),
+			this.prisma.stickerPack.count({ where: { coverFileId: fileId } })
+		])
 
-		if (attachments + userPhotos + channelPhotos + groupPhotos + wallpapers + stickers > 0) {
+		const references =
+			attachments +
+			userPhotos +
+			channelPhotos +
+			groupPhotos +
+			wallpapers +
+			stickers +
+			stickerPackCovers
+
+		if (references > 0) {
 			return
 		}
 

@@ -5,6 +5,7 @@ import {
 	IsArray,
 	IsOptional,
 	IsString,
+	IsUUID,
 	Matches,
 	MaxLength,
 	MinLength,
@@ -19,12 +20,6 @@ import {
 	STICKER_PACK_USERNAME_PATTERN
 } from './sticker-pack.constants'
 
-/**
- * Изменение существующего набора.
- *
- * Переданные поля меняются, остальные остаются как были: экран редактора
- * сохраняет всё одной кнопкой, но пользователь мог тронуть только название.
- */
 export class UpdateStickerPackDto {
 	@IsOptional()
 	@Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
@@ -41,13 +36,10 @@ export class UpdateStickerPackDto {
 	@Matches(STICKER_PACK_USERNAME_PATTERN)
 	username?: string
 
-	/*
-	 * Состав передаётся целиком, а не добавлением и удалением по одному.
-	 *
-	 * Клиент и так держит всю сетку на экране, а замена целиком даёт
-	 * идемпотентность: повторное нажатие кнопки после обрыва связи не
-	 * продублирует стикеры и не собьёт порядок.
-	 */
+	@IsOptional()
+	@IsUUID()
+	coverFileId?: string | null
+
 	@IsOptional()
 	@IsArray()
 	@ArrayMinSize(1)

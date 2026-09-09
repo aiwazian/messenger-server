@@ -93,7 +93,7 @@ export class UsersController {
 	initFileUpload(@Body() dto: FileInitDto): Promise<InitUploadDto> {
 		return this.storage.initUpload({
 			...dto,
-			category: UploadCategory.IMAGE,
+			category: UploadCategory.AVATAR,
 			directory: FileType.USER_AVATAR
 		})
 	}
