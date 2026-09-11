@@ -36,13 +36,11 @@ export class SearchService {
 		private readonly config: ConfigService,
 		private readonly prisma: PrismaService,
 		private readonly moderation: ContentModerationService
-	) {}
+	) { }
 
 	async isUsernameAvailable(username: string): Promise<{ available: boolean }> {
-		if (this.config.get('NODE_ENV') === 'production') {
-			const isAllowed = await this.moderation.isAllowed(username)
-			if (!isAllowed) return { available: false }
-		}
+		const isAllowed = await this.moderation.isAllowed(username)
+		if (!isAllowed) return { available: false }
 
 		const userExists = await this.prisma.user.findFirst({
 			where: { username },

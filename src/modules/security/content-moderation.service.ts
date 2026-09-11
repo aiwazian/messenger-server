@@ -18,9 +18,7 @@ RULES:
 - Do NOT reject usernames where a prohibited substring is coincidental inside an unrelated word, real name, or place: Essex, Middlesex, Sexton, Drugstore, Analytics, Assange.
 - When genuinely ambiguous, allow the username.
 OUTPUT:
-Respond ONLY in JSON.
-If the username is safe, set "is_allowed" to true.
-If it violates a rule, set "is_allowed" to false.`
+Respond ONLY with the exact boolean value: "true" if the username is safe, or "false" if it violates a rule. Do not include any other text, markdown, or explanation.`
 
 @Injectable()
 export class ContentModerationService {
@@ -48,38 +46,17 @@ export class ContentModerationService {
 						content: `<username>${text}</username>`
 					}
 				],
-				response_format: {
-					type: 'json_schema',
-					json_schema: {
-						name: 'ModerationResult',
-						strict: true,
-						schema: {
-							type: 'object',
-							properties: {
-								is_allowed: {
-									type: 'boolean',
-									description: 'Whether the message is allowed'
-								}
-							},
-							required: ['is_allowed'],
-							additionalProperties: false
-						}
-					}
-				},
 				stream: false
 			})
 
-			const content = response.choices[0].message.content
-			if (!content) {
-				this.logger.error(`No response from AI: ${content}`)
-				return false
-			}
+			const content = response.choices[0].message.content?.trim().toLowerCase()
 
-			try {
-				const data = JSON.parse(content)
-				return data.is_allowed === true
-			} catch (e) {
-				this.logger.error(`Invalid JSON from AI: ${content}`)
+			if (content === 'true') {
+				return true
+			} else if (content === 'false') {
+				return false
+			} else {
+				this.logger.error(`Unexpected response from AI: ${content}`)
 				return false
 			}
 		} catch (error) {
