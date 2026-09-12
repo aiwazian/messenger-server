@@ -1,5 +1,6 @@
 import { randomInt } from 'crypto'
 import { ChannelId } from '../types/channel-id.type'
+import { EmojiPackId } from '../types/emoji-pack-id.type'
 import { GroupId } from '../types/group-id.type'
 import { StickerPackId } from '../types/sticker-pack-id.type'
 import { UserId } from '../types/user-id.type'
@@ -8,7 +9,8 @@ const prefixes = {
 	user: 1,
 	channel: 2,
 	group: 3,
-	stickerPack: 4
+	stickerPack: 4,
+	emojiPack: 5
 }
 
 export function generateUserId(): UserId {
@@ -25,6 +27,10 @@ export function generateGroupId(): GroupId {
 
 export function generateStickerPackId(): StickerPackId {
 	return generateUniqueId<StickerPackId>(prefixes.stickerPack)
+}
+
+export function generateEmojiPackId(): EmojiPackId {
+	return generateUniqueId<EmojiPackId>(prefixes.emojiPack)
 }
 
 function generateUniqueId<T>(prefix: number): T {

@@ -1,7 +1,9 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
 import { UploadCategory } from '../../../common/enums/upload-category.enum'
 import {
+	EMOJI_MIME_TYPE,
 	MAX_AVATAR_SIZE_BYTES,
+	MAX_EMOJI_SIZE_BYTES,
 	MAX_STICKER_SIZE_BYTES,
 	MAX_UPLOAD_SIZE_BYTES,
 	MIN_UPLOAD_SIZE_BYTES,
@@ -14,15 +16,18 @@ const CATEGORY_MIME_PREFIX: Record<UploadCategory, string | null> = {
 	[UploadCategory.VOICE]: 'audio/',
 	[UploadCategory.FILE]: null,
 	[UploadCategory.STICKER]: 'image/',
+	[UploadCategory.EMOJI]: 'image/',
 	[UploadCategory.AVATAR]: 'image/'
 }
 
 const CATEGORY_EXACT_MIME: Partial<Record<UploadCategory, string[]>> = {
-	[UploadCategory.STICKER]: [STICKER_MIME_TYPE]
+	[UploadCategory.STICKER]: [STICKER_MIME_TYPE],
+	[UploadCategory.EMOJI]: [EMOJI_MIME_TYPE]
 }
 
 const CATEGORY_MAX_SIZE_BYTES: Partial<Record<UploadCategory, number>> = {
 	[UploadCategory.STICKER]: MAX_STICKER_SIZE_BYTES,
+	[UploadCategory.EMOJI]: MAX_EMOJI_SIZE_BYTES,
 	[UploadCategory.AVATAR]: MAX_AVATAR_SIZE_BYTES
 }
 
