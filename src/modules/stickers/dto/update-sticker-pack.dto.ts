@@ -3,6 +3,7 @@ import {
 	ArrayMaxSize,
 	ArrayMinSize,
 	IsArray,
+	IsBoolean,
 	IsOptional,
 	IsString,
 	IsUUID,
@@ -39,6 +40,10 @@ export class UpdateStickerPackDto {
 	@IsOptional()
 	@IsUUID()
 	coverFileId?: string | null
+
+	@IsOptional()
+	@IsBoolean()
+	removeCover?: boolean
 
 	@IsOptional()
 	@IsArray()

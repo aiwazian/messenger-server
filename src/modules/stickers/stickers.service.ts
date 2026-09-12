@@ -28,6 +28,12 @@ import {
 import { StickerUploadInitDto } from './dto/sticker-upload-init.dto'
 import { UpdateStickerPackDto } from './dto/update-sticker-pack.dto'
 
+const COVER_STICKER_SELECT = {
+	orderBy: { sortOrder: 'asc' },
+	take: 1,
+	select: { fileId: true, file: { select: { path: true } } }
+} as const
+
 type PackRow = {
 	id: bigint
 	name: string
@@ -35,6 +41,11 @@ type PackRow = {
 	ownerId: bigint
 	coverFileId: string | null
 	cover?: { path: string } | null
+}
+
+type CoverStickerRow = {
+	fileId: string
+	file: { path: string }
 }
 
 type StickerRow = {
@@ -50,7 +61,7 @@ type PackView = {
 	isOwned: boolean
 	isInstalled: boolean
 	stickers: StickerRow[]
-	coverFallbackPath?: string | null
+	coverFallback?: CoverStickerRow | null
 }
 
 @Injectable()
@@ -67,11 +78,7 @@ export class StickersService {
 			include: {
 				_count: { select: { stickers: true } },
 				cover: { select: { path: true } },
-				stickers: {
-					take: 1,
-					orderBy: { sortOrder: 'asc' },
-					select: { file: { select: { path: true } } }
-				},
+				stickers: COVER_STICKER_SELECT,
 				installs: { where: { userId }, select: { id: true } }
 			}
 		})
@@ -82,7 +89,7 @@ export class StickersService {
 				isOwned: true,
 				isInstalled: pack.installs.length > 0,
 				stickers: [],
-				coverFallbackPath: pack.stickers[0]?.file.path
+				coverFallback: pack.stickers[0] ?? null
 			})
 		)
 	}
@@ -132,11 +139,7 @@ export class StickersService {
 					include: {
 						_count: { select: { stickers: true } },
 						cover: { select: { path: true } },
-						stickers: {
-							take: 1,
-							orderBy: { sortOrder: 'asc' },
-							select: { file: { select: { path: true } } }
-						}
+						stickers: COVER_STICKER_SELECT
 					}
 				}
 			}
@@ -148,7 +151,7 @@ export class StickersService {
 				isOwned: install.pack.ownerId === userId,
 				isInstalled: true,
 				stickers: [],
-				coverFallbackPath: install.pack.stickers[0]?.file.path
+				coverFallback: install.pack.stickers[0] ?? null
 			})
 		)
 	}
@@ -253,8 +256,10 @@ export class StickersService {
 			await this.assertUsernameFree(dto.username)
 		}
 
-		if (dto.coverFileId) {
-			await this.assertStickerFileUsable(dto.coverFileId)
+		const desiredCoverFileId = dto.removeCover === true ? null : dto.coverFileId
+
+		if (desiredCoverFileId) {
+			await this.assertStickerFileUsable(desiredCoverFileId)
 		}
 
 		const previousCoverFileId = pack.coverFileId
@@ -278,7 +283,7 @@ export class StickersService {
 					data: {
 						name: dto.name,
 						username: dto.username,
-						coverFileId: dto.coverFileId
+						coverFileId: desiredCoverFileId
 					}
 				})
 
@@ -327,9 +332,9 @@ export class StickersService {
 		}
 
 		if (
-			dto.coverFileId !== undefined &&
+			desiredCoverFileId !== undefined &&
 			previousCoverFileId &&
-			previousCoverFileId !== dto.coverFileId
+			previousCoverFileId !== desiredCoverFileId
 		) {
 			await this.storage.releaseFile(previousCoverFileId)
 		}
@@ -527,8 +532,8 @@ export class StickersService {
 	}
 
 	private toPackDto(pack: PackRow, view: PackView): StickerPackResponseDto {
-		const coverPath =
-			pack.cover?.path ?? view.stickers[0]?.file.path ?? view.coverFallbackPath ?? null
+		const fallback = view.coverFallback ?? view.stickers[0] ?? null
+		const coverPath = pack.cover?.path ?? fallback?.file.path ?? null
 
 		return plainToInstance(StickerPackResponseDto, {
 			id: pack.id.toString(),
