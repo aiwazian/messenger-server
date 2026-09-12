@@ -396,6 +396,8 @@ model StickerPack {
   ownerId   BigInt
   createdAt BigInt
 
+  deletedAt BigInt?
+
   coverFileId String?
 
   owner    User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
@@ -405,6 +407,7 @@ model StickerPack {
 
   @@index([ownerId])
   @@index([coverFileId])
+  @@index([deletedAt])
 }
 
 model Sticker {
@@ -454,6 +457,8 @@ model EmojiPack {
   ownerId   BigInt
   createdAt BigInt
 
+  deletedAt BigInt?
+
   coverFileId String?
 
   owner    User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
@@ -463,6 +468,7 @@ model EmojiPack {
 
   @@index([ownerId])
   @@index([coverFileId])
+  @@index([deletedAt])
 }
 
 model Emoji {
