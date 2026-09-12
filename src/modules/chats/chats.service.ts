@@ -41,11 +41,6 @@ export class ChatsService {
 			return []
 		}
 
-		/*
-		 * Непрочитанные и выключенные чаты считаются одним заходом на весь список, как
-		 * и раньше с ChatReadState: поиск исключения на каждую карточку дал бы запрос
-		 * на чат, а список открывается при каждом запуске.
-		 */
 		const [readStates, mutedChatIds] = await Promise.all([
 			this.chatReadState.getStates(userId),
 			this.notificationSettings.getMutedChatIds(
@@ -373,7 +368,6 @@ export class ChatsService {
 			.map((chat) => chat.chatId.toString())
 	}
 
-	/** Бейдж и точка открытия для одного чата из уже загруженной карты состояний. */
 	private unreadFields(
 		states: Map<string, ChatReadStateDto>,
 		chatId: bigint
@@ -406,25 +400,23 @@ export class ChatsService {
 			where: messageWhere,
 			include: {
 				attachments: { include: { file: true } },
-				systemEvent: true
+				systemEvent: true,
+				sticker: {
+					select: {
+						id: true,
+						packId: true,
+						fileId: true,
+						emojis: true
+					}
+				}
 			},
 			orderBy: { sendTime: 'desc' }
 		})
 
 		if (message == null) return null
 
-		/*
-		 * Галочка в списке чатов берётся из курсора ChatReadState, а не из отметок:
-		 * подробности «кто и когда» живут в Redis трое суток, а старый чат всё равно должен
-		 * показывать «прочитано», а не сбрасываться в одну галочку через три дня.
-		 */
 		const isRead = await this.chatReadState.isMessageRead(userId, chatId, message)
 
-		/*
-		 * Расшифровываем той версией ключа, которой сообщение шифровали, а не текущей:
-		 * после ротации ключа старые строки читались бы новым ключом, и весь список чатов
-		 * снова падал бы из-за одного сообщения.
-		 */
 		const keyVersion = message.encryptionKeyVersion ?? this.encryption.currentVersion
 
 		return plainToInstance(MessageResponseDto, {
