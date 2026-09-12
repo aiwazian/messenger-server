@@ -6,16 +6,16 @@ import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
 import { ChatType } from '../../common/enums/chat-type.enum'
+import {
+	extractCustomEmojiIds,
+	replaceCustomEmojiTokens
+} from '../../common/utils/custom-emoji.util'
 import { detectChatType } from '../../common/utils/detect-chat-type.util'
 import { PushNotificationPayload } from './push.types'
 import { NotificationSettingsService } from '../notification-settings/notification-settings.service'
 
 const FCM_BATCH_SIZE = 500
 
-/**
- * Коды, после которых установку нужно убрать из базы: приложение удалено
- * или его данные очищены, и этот FID больше никому не принадлежит.
- */
 const STALE_INSTALLATION_ID_ERROR_CODES = [
 	'messaging/installation-id-not-registered',
 	'messaging/invalid-argument'
@@ -56,14 +56,6 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 		this.messaging = null
 	}
 
-	/**
-	 * Отправка уведомлений пачкой получателей.
-	 *
-	 * Настройки уведомлений проверяются здесь, а не в вызывающем коде: через этот
-	 * метод уходят все пуши приложения, поэтому правило не потеряется в новом
-	 * сценарии отправки. Проверяется и категория чата, и исключение по самому
-	 * чату: выключенный в меню чат молчит, даже когда его категория включена.
-	 */
 	async sendToUsers(userIds: UserId[], payload: PushNotificationPayload): Promise<void> {
 		if (userIds.length === 0) return
 
@@ -87,12 +79,8 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 			select: { userId: true, installationId: true }
 		})
 
-		/*
-		 * Если время отправки не передали, берём текущее: это всё равно ближе
-		 * к правде, чем момент доставки на устройстве, и data у FCM принимает
-		 * только строки — undefined уронил бы отправку.
-		 */
 		const sendTime = payload.sendTime ?? Date.now().toString()
+		const body = await this.resolveBody(payload.body)
 
 		const staleInstallationIds: string[] = []
 
@@ -107,7 +95,7 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 						data: {
 							userId,
 							title: payload.title,
-							body: payload.body,
+							body,
 							chatId: payload.chatId,
 							sendTime
 						}
@@ -135,19 +123,39 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 		await this.clearStaleInstallationIds(staleInstallationIds)
 	}
 
-	/** Запасной вариант для вызовов, где тип чата явно не передан. */
+	private async resolveBody(body: string): Promise<string> {
+		const emojiIds = extractCustomEmojiIds(body)
+
+		if (emojiIds.length === 0) return body
+
+		const symbols = new Map<string, string>()
+
+		try {
+			const emojis = await this.prisma.emoji.findMany({
+				where: { id: { in: emojiIds } },
+				select: { id: true, emojis: true }
+			})
+
+			for (const emoji of emojis) {
+				const symbol = emoji.emojis[0]
+
+				if (symbol) {
+					symbols.set(emoji.id.toString(), symbol)
+				}
+			}
+		} catch (e) {
+			this.logger.error('Error resolving custom emoji for push notification', e)
+		}
+
+		return replaceCustomEmojiTokens(body, symbols)
+	}
+
 	private detectChatType(chatId: string): ChatType {
 		const parsed = this.toChatId(chatId)
 
 		return parsed ? detectChatType(parsed) : ChatType.UNKNOWN
 	}
 
-	/**
-	 * Разбор id из payload.
-	 *
-	 * id приходит строкой, и некорректное значение не должно ронять отправку:
-	 * без id просто не будет проверки исключения.
-	 */
 	private toChatId(chatId: string): ChatId | undefined {
 		try {
 			return ChatId(chatId)
@@ -156,14 +164,6 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 		}
 	}
 
-	/**
-	 * Группирует FID по получателю: id получателя уезжает в payload, чтобы клиент
-	 * с несколькими аккаунтами показал уведомление только активному. Разбивка
-	 * не добавляет стоимости: sendEachForMulticast всё равно шлёт по запросу на адресата.
-	 *
-	 * Один и тот же FID встретится дважды, если у пользователя две сессии на одном
-	 * устройстве, поэтому внутри группы нужен Set.
-	 */
 	private groupByRecipient(
 		sessions: { userId: bigint; installationId: string | null }[]
 	): Map<string, string[]> {

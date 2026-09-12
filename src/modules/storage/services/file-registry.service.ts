@@ -83,7 +83,9 @@ export class FileRegistryService {
 			groupPhotos,
 			wallpapers,
 			stickers,
-			stickerPackCovers
+			stickerPackCovers,
+			emojis,
+			emojiPackCovers
 		] = await Promise.all([
 			this.prisma.messageAttachment.count({ where: { fileId } }),
 			this.prisma.userPhoto.count({ where: { fileId } }),
@@ -91,7 +93,9 @@ export class FileRegistryService {
 			this.prisma.groupPhoto.count({ where: { fileId } }),
 			this.prisma.wallpaper.count({ where: { fileId } }),
 			this.prisma.sticker.count({ where: { fileId } }),
-			this.prisma.stickerPack.count({ where: { coverFileId: fileId } })
+			this.prisma.stickerPack.count({ where: { coverFileId: fileId } }),
+			this.prisma.emoji.count({ where: { fileId } }),
+			this.prisma.emojiPack.count({ where: { coverFileId: fileId } })
 		])
 
 		const references =
@@ -101,7 +105,9 @@ export class FileRegistryService {
 			groupPhotos +
 			wallpapers +
 			stickers +
-			stickerPackCovers
+			stickerPackCovers +
+			emojis +
+			emojiPackCovers
 
 		if (references > 0) {
 			return

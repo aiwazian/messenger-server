@@ -1,0 +1,10 @@
+export const MAX_EMOJI_PACK_NAME_LENGTH = 20
+
+export const MIN_EMOJI_PACK_USERNAME_LENGTH = 3
+export const MAX_EMOJI_PACK_USERNAME_LENGTH = 32
+export const EMOJI_PACK_USERNAME_PATTERN = /^[a-zA-Z0-9_]+$/
+
+export const MAX_EMOJI_PER_PACK = 120
+
+export const MIN_SYMBOLS_PER_EMOJI = 1
+export const MAX_SYMBOLS_PER_EMOJI = 10

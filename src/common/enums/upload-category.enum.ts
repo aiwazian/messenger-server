@@ -4,5 +4,6 @@ export enum UploadCategory {
 	VOICE = 'VOICE',
 	FILE = 'FILE',
 	STICKER = 'STICKER',
+	EMOJI = 'EMOJI',
 	AVATAR = 'AVATAR'
 }
