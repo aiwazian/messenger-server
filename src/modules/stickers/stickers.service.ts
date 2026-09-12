@@ -50,6 +50,7 @@ type PackView = {
 	isOwned: boolean
 	isInstalled: boolean
 	stickers: StickerRow[]
+	coverFallbackPath?: string | null
 }
 
 @Injectable()
@@ -61,11 +62,16 @@ export class StickersService {
 
 	async getCreatedPacks(userId: UserId): Promise<StickerPackResponseDto[]> {
 		const packs = await this.prisma.stickerPack.findMany({
-			where: { ownerId: userId },
+			where: { ownerId: userId, deletedAt: null },
 			orderBy: { createdAt: 'desc' },
 			include: {
 				_count: { select: { stickers: true } },
 				cover: { select: { path: true } },
+				stickers: {
+					take: 1,
+					orderBy: { sortOrder: 'asc' },
+					select: { file: { select: { path: true } } }
+				},
 				installs: { where: { userId }, select: { id: true } }
 			}
 		})
@@ -75,7 +81,8 @@ export class StickersService {
 				stickerCount: pack._count.stickers,
 				isOwned: true,
 				isInstalled: pack.installs.length > 0,
-				stickers: []
+				stickers: [],
+				coverFallbackPath: pack.stickers[0]?.file.path
 			})
 		)
 	}
@@ -86,7 +93,7 @@ export class StickersService {
 	): Promise<StickerPackResponseDto[]> {
 		if (includeStickers) {
 			const detailed = await this.prisma.userStickerPack.findMany({
-				where: { userId },
+				where: { userId, pack: { deletedAt: null } },
 				orderBy: { sortOrder: 'asc' },
 				include: {
 					pack: {
@@ -118,13 +125,18 @@ export class StickersService {
 		}
 
 		const installs = await this.prisma.userStickerPack.findMany({
-			where: { userId },
+			where: { userId, pack: { deletedAt: null } },
 			orderBy: { sortOrder: 'asc' },
 			include: {
 				pack: {
 					include: {
 						_count: { select: { stickers: true } },
-						cover: { select: { path: true } }
+						cover: { select: { path: true } },
+						stickers: {
+							take: 1,
+							orderBy: { sortOrder: 'asc' },
+							select: { file: { select: { path: true } } }
+						}
 					}
 				}
 			}
@@ -135,13 +147,14 @@ export class StickersService {
 				stickerCount: install.pack._count.stickers,
 				isOwned: install.pack.ownerId === userId,
 				isInstalled: true,
-				stickers: []
+				stickers: [],
+				coverFallbackPath: install.pack.stickers[0]?.file.path
 			})
 		)
 	}
 
 	getPack(userId: UserId, packId: StickerPackId): Promise<StickerPackResponseDto> {
-		return this.findPackDetail(userId, { id: packId })
+		return this.findPackDetail(userId, { id: packId }, true)
 	}
 
 	getPackByUsername(userId: UserId, username: string): Promise<StickerPackResponseDto> {
@@ -228,7 +241,7 @@ export class StickersService {
 			include: { stickers: { select: { id: true, fileId: true } } }
 		})
 
-		if (!pack) {
+		if (!pack || pack.deletedAt !== null) {
 			throw new NotFoundException('Sticker pack not found')
 		}
 
@@ -327,10 +340,10 @@ export class StickersService {
 	async deletePack(userId: UserId, packId: StickerPackId): Promise<void> {
 		const pack = await this.prisma.stickerPack.findUnique({
 			where: { id: packId },
-			include: { stickers: { select: { fileId: true } } }
+			select: { ownerId: true, deletedAt: true }
 		})
 
-		if (!pack) {
+		if (!pack || pack.deletedAt !== null) {
 			throw new NotFoundException('Sticker pack not found')
 		}
 
@@ -338,26 +351,23 @@ export class StickersService {
 			throw new ForbiddenException('Only the owner can delete a sticker pack')
 		}
 
-		const coverFileId = pack.coverFileId
+		await this.prisma.$transaction(async tx => {
+			await tx.userStickerPack.deleteMany({ where: { packId } })
 
-		await this.prisma.stickerPack.delete({ where: { id: packId } })
-
-		for (const sticker of pack.stickers) {
-			await this.storage.releaseFile(sticker.fileId)
-		}
-
-		if (coverFileId) {
-			await this.storage.releaseFile(coverFileId)
-		}
+			await tx.stickerPack.update({
+				where: { id: packId },
+				data: { deletedAt: BigInt(Date.now()) }
+			})
+		})
 	}
 
 	async installPack(userId: UserId, packId: StickerPackId): Promise<void> {
 		const pack = await this.prisma.stickerPack.findUnique({
 			where: { id: packId },
-			select: { id: true }
+			select: { id: true, deletedAt: true }
 		})
 
-		if (!pack) {
+		if (!pack || pack.deletedAt !== null) {
 			throw new NotFoundException('Sticker pack not found')
 		}
 
@@ -404,7 +414,8 @@ export class StickersService {
 
 	private async findPackDetail(
 		userId: UserId,
-		where: { id: bigint } | { username: string }
+		where: { id: bigint } | { username: string },
+		allowDeleted = false
 	): Promise<StickerPackResponseDto> {
 		const pack = await this.prisma.stickerPack.findUnique({
 			where,
@@ -424,7 +435,7 @@ export class StickersService {
 			}
 		})
 
-		if (!pack) {
+		if (!pack || (pack.deletedAt !== null && !allowDeleted)) {
 			throw new NotFoundException('Sticker pack not found')
 		}
 
@@ -516,13 +527,16 @@ export class StickersService {
 	}
 
 	private toPackDto(pack: PackRow, view: PackView): StickerPackResponseDto {
+		const coverPath =
+			pack.cover?.path ?? view.stickers[0]?.file.path ?? view.coverFallbackPath ?? null
+
 		return plainToInstance(StickerPackResponseDto, {
 			id: pack.id.toString(),
 			name: pack.name,
 			username: pack.username,
 			ownerId: pack.ownerId.toString(),
 			coverFileId: pack.coverFileId ?? undefined,
-			coverUrl: pack.cover ? this.storage.getPublicUrl(pack.cover.path) : undefined,
+			coverUrl: coverPath ? this.storage.getPublicUrl(coverPath) : undefined,
 			stickerCount: view.stickerCount,
 			isOwned: view.isOwned,
 			isInstalled: view.isInstalled,

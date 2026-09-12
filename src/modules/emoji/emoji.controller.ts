@@ -18,10 +18,12 @@ import { FileDto } from '../storage/dto/file.dto'
 import { InitUploadDto } from '../storage/dto/init-upload.dto'
 import { CheckEmojiPackUsernameDto } from './dto/check-emoji-pack-username.dto'
 import { CreateEmojiPackDto } from './dto/create-emoji-pack.dto'
+import { EmojiItemResponseDto } from './dto/emoji-item-response.dto'
 import { EmojiPackIdDto } from './dto/emoji-pack-id.dto'
 import { EmojiPackResponseDto } from './dto/emoji-pack-response.dto'
 import { EmojiPackUsernameAvailabilityDto } from './dto/emoji-pack-username-availability.dto'
 import { EmojiUploadInitDto } from './dto/emoji-upload-init.dto'
+import { GetEmojiItemsDto } from './dto/get-emoji-items.dto'
 import { GetEmojiPacksDto } from './dto/get-emoji-packs.dto'
 import { UpdateEmojiPackDto } from './dto/update-emoji-pack.dto'
 import { EmojiService } from './emoji.service'
@@ -29,6 +31,11 @@ import { EmojiService } from './emoji.service'
 @Controller('emoji')
 export class EmojiController {
 	constructor(private readonly emojiService: EmojiService) {}
+
+	@Get('items')
+	async getEmojiItems(@Query() dto: GetEmojiItemsDto): Promise<EmojiItemResponseDto[]> {
+		return this.emojiService.getEmojiItems(dto.ids.map(id => BigInt(id)))
+	}
 
 	@Get('packs/created')
 	async getCreatedPacks(@CurrentUserId() userId: UserId): Promise<EmojiPackResponseDto[]> {

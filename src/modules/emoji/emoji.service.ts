@@ -17,6 +17,7 @@ import { FileDto } from '../storage/dto/file.dto'
 import { InitUploadDto } from '../storage/dto/init-upload.dto'
 import { StorageService } from '../storage/storage.service'
 import { CreateEmojiPackDto } from './dto/create-emoji-pack.dto'
+import { EmojiItemResponseDto } from './dto/emoji-item-response.dto'
 import { EmojiPackIdDto } from './dto/emoji-pack-id.dto'
 import { EmojiPackResponseDto } from './dto/emoji-pack-response.dto'
 import { EmojiPackUsernameAvailabilityDto } from './dto/emoji-pack-username-availability.dto'
@@ -50,6 +51,7 @@ type PackView = {
 	isOwned: boolean
 	isInstalled: boolean
 	emojis: EmojiRow[]
+	coverFallbackPath?: string | null
 }
 
 @Injectable()
@@ -61,11 +63,16 @@ export class EmojiService {
 
 	async getCreatedPacks(userId: UserId): Promise<EmojiPackResponseDto[]> {
 		const packs = await this.prisma.emojiPack.findMany({
-			where: { ownerId: userId },
+			where: { ownerId: userId, deletedAt: null },
 			orderBy: { createdAt: 'desc' },
 			include: {
 				_count: { select: { emojis: true } },
 				cover: { select: { path: true } },
+				emojis: {
+					take: 1,
+					orderBy: { sortOrder: 'asc' },
+					select: { file: { select: { path: true } } }
+				},
 				installs: { where: { userId }, select: { id: true } }
 			}
 		})
@@ -75,7 +82,8 @@ export class EmojiService {
 				emojiCount: pack._count.emojis,
 				isOwned: true,
 				isInstalled: pack.installs.length > 0,
-				emojis: []
+				emojis: [],
+				coverFallbackPath: pack.emojis[0]?.file.path
 			})
 		)
 	}
@@ -83,7 +91,7 @@ export class EmojiService {
 	async getAddedPacks(userId: UserId, includeEmojis = false): Promise<EmojiPackResponseDto[]> {
 		if (includeEmojis) {
 			const detailed = await this.prisma.userEmojiPack.findMany({
-				where: { userId },
+				where: { userId, pack: { deletedAt: null } },
 				orderBy: { sortOrder: 'asc' },
 				include: {
 					pack: {
@@ -115,13 +123,18 @@ export class EmojiService {
 		}
 
 		const installs = await this.prisma.userEmojiPack.findMany({
-			where: { userId },
+			where: { userId, pack: { deletedAt: null } },
 			orderBy: { sortOrder: 'asc' },
 			include: {
 				pack: {
 					include: {
 						_count: { select: { emojis: true } },
-						cover: { select: { path: true } }
+						cover: { select: { path: true } },
+						emojis: {
+							take: 1,
+							orderBy: { sortOrder: 'asc' },
+							select: { file: { select: { path: true } } }
+						}
 					}
 				}
 			}
@@ -132,13 +145,44 @@ export class EmojiService {
 				emojiCount: install.pack._count.emojis,
 				isOwned: install.pack.ownerId === userId,
 				isInstalled: true,
-				emojis: []
+				emojis: [],
+				coverFallbackPath: install.pack.emojis[0]?.file.path
+			})
+		)
+	}
+
+	async getEmojiItems(ids: bigint[]): Promise<EmojiItemResponseDto[]> {
+		if (ids.length === 0) {
+			return []
+		}
+
+		const emojis = await this.prisma.emoji.findMany({
+			where: { id: { in: ids } },
+			orderBy: { sortOrder: 'asc' },
+			select: {
+				id: true,
+				packId: true,
+				fileId: true,
+				emojis: true,
+				sortOrder: true,
+				file: { select: { path: true } }
+			}
+		})
+
+		return emojis.map(emoji =>
+			plainToInstance(EmojiItemResponseDto, {
+				id: emoji.id.toString(),
+				packId: emoji.packId.toString(),
+				fileId: emoji.fileId,
+				url: this.storage.getPublicUrl(emoji.file.path),
+				emojis: emoji.emojis,
+				sortOrder: emoji.sortOrder
 			})
 		)
 	}
 
 	getPack(userId: UserId, packId: EmojiPackId): Promise<EmojiPackResponseDto> {
-		return this.findPackDetail(userId, { id: packId })
+		return this.findPackDetail(userId, { id: packId }, true)
 	}
 
 	getPackByUsername(userId: UserId, username: string): Promise<EmojiPackResponseDto> {
@@ -225,7 +269,7 @@ export class EmojiService {
 			include: { emojis: { select: { id: true, fileId: true } } }
 		})
 
-		if (!pack) {
+		if (!pack || pack.deletedAt !== null) {
 			throw new NotFoundException('Emoji pack not found')
 		}
 
@@ -323,10 +367,10 @@ export class EmojiService {
 	async deletePack(userId: UserId, packId: EmojiPackId): Promise<void> {
 		const pack = await this.prisma.emojiPack.findUnique({
 			where: { id: packId },
-			include: { emojis: { select: { fileId: true } } }
+			select: { ownerId: true, deletedAt: true }
 		})
 
-		if (!pack) {
+		if (!pack || pack.deletedAt !== null) {
 			throw new NotFoundException('Emoji pack not found')
 		}
 
@@ -334,26 +378,23 @@ export class EmojiService {
 			throw new ForbiddenException('Only the owner can delete an emoji pack')
 		}
 
-		const coverFileId = pack.coverFileId
+		await this.prisma.$transaction(async tx => {
+			await tx.userEmojiPack.deleteMany({ where: { packId } })
 
-		await this.prisma.emojiPack.delete({ where: { id: packId } })
-
-		for (const emoji of pack.emojis) {
-			await this.storage.releaseFile(emoji.fileId)
-		}
-
-		if (coverFileId) {
-			await this.storage.releaseFile(coverFileId)
-		}
+			await tx.emojiPack.update({
+				where: { id: packId },
+				data: { deletedAt: BigInt(Date.now()) }
+			})
+		})
 	}
 
 	async installPack(userId: UserId, packId: EmojiPackId): Promise<void> {
 		const pack = await this.prisma.emojiPack.findUnique({
 			where: { id: packId },
-			select: { id: true }
+			select: { id: true, deletedAt: true }
 		})
 
-		if (!pack) {
+		if (!pack || pack.deletedAt !== null) {
 			throw new NotFoundException('Emoji pack not found')
 		}
 
@@ -400,7 +441,8 @@ export class EmojiService {
 
 	private async findPackDetail(
 		userId: UserId,
-		where: { id: bigint } | { username: string }
+		where: { id: bigint } | { username: string },
+		allowDeleted = false
 	): Promise<EmojiPackResponseDto> {
 		const pack = await this.prisma.emojiPack.findUnique({
 			where,
@@ -420,7 +462,7 @@ export class EmojiService {
 			}
 		})
 
-		if (!pack) {
+		if (!pack || (pack.deletedAt !== null && !allowDeleted)) {
 			throw new NotFoundException('Emoji pack not found')
 		}
 
@@ -512,13 +554,16 @@ export class EmojiService {
 	}
 
 	private toPackDto(pack: PackRow, view: PackView): EmojiPackResponseDto {
+		const coverPath =
+			pack.cover?.path ?? view.emojis[0]?.file.path ?? view.coverFallbackPath ?? null
+
 		return plainToInstance(EmojiPackResponseDto, {
 			id: pack.id.toString(),
 			name: pack.name,
 			username: pack.username,
 			ownerId: pack.ownerId.toString(),
 			coverFileId: pack.coverFileId ?? undefined,
-			coverUrl: pack.cover ? this.storage.getPublicUrl(pack.cover.path) : undefined,
+			coverUrl: coverPath ? this.storage.getPublicUrl(coverPath) : undefined,
 			emojiCount: view.emojiCount,
 			isOwned: view.isOwned,
 			isInstalled: view.isInstalled,
