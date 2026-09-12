@@ -101,6 +101,9 @@ model User {
 
   stickerPacks          StickerPack[]
   installedStickerPacks UserStickerPack[]
+
+  emojiPacks          EmojiPack[]
+  installedEmojiPacks UserEmojiPack[]
 }
 
 model UserPhoto {
@@ -361,8 +364,10 @@ model File {
   groupPhotos   GroupPhoto[]
   wallpapers    Wallpaper[]
   stickers      Sticker[]
+  emojis        Emoji[]
 
   stickerPackCovers StickerPack[] @relation("StickerPackCover")
+  emojiPackCovers   EmojiPack[]   @relation("EmojiPackCover")
 
   @@index([status])
 }
@@ -434,6 +439,62 @@ model UserStickerPack {
 
   user User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   pack StickerPack @relation(fields: [packId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, packId])
+  @@index([userId, sortOrder])
+  @@index([packId])
+}
+
+model EmojiPack {
+  id   BigInt @id
+  name String
+
+  username String @unique
+
+  ownerId   BigInt
+  createdAt BigInt
+
+  coverFileId String?
+
+  owner    User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  cover    File?           @relation("EmojiPackCover", fields: [coverFileId], references: [id], onDelete: SetNull)
+  emojis   Emoji[]
+  installs UserEmojiPack[]
+
+  @@index([ownerId])
+  @@index([coverFileId])
+}
+
+model Emoji {
+  id     BigInt @id @default(autoincrement())
+  packId BigInt
+
+  fileId String
+
+  emojis String[]
+
+  sortOrder Int @default(0)
+
+  createdAt BigInt
+
+  pack EmojiPack @relation(fields: [packId], references: [id], onDelete: Cascade)
+  file File      @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([packId, sortOrder])
+  @@index([fileId])
+}
+
+model UserEmojiPack {
+  id     Int    @id @default(autoincrement())
+  userId BigInt
+  packId BigInt
+
+  sortOrder Int @default(0)
+
+  addedAt BigInt
+
+  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pack EmojiPack @relation(fields: [packId], references: [id], onDelete: Cascade)
 
   @@unique([userId, packId])
   @@index([userId, sortOrder])
