@@ -1,4 +1,9 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
+import {
+	BadRequestException,
+	ForbiddenException,
+	Injectable,
+	NotFoundException
+} from '@nestjs/common'
 import { PrismaService } from '../../../providers/prisma/prisma.service'
 import { EncryptionService } from '../../encryption/encryption.service'
 import { ChatsService } from '../../chats/chats.service'
@@ -8,8 +13,9 @@ import { UserId } from '../../../common/types/user-id.type'
 import { ChatId } from '../../../common/types/chat-id.type'
 import { ChatType } from '../../../common/enums/chat-type.enum'
 import { detectChatType } from '../../../common/utils/detect-chat-type.util'
-import { MessageType, PrivacyRule } from '../../../generated/prisma/enums'
+import { MessageType, PrivacyRule, AttachmentType } from '../../../generated/prisma/enums'
 import { MESSAGE_INCLUDE } from '../message-include.const'
+import { MAX_MEDIA_ATTACHMENTS_PER_MESSAGE, MEDIA_ATTACHMENT_TYPES } from '../message-limits.const'
 import { MessageResponseDto } from '../dto/message-response.dto'
 import { ForwardMessageDto } from '../dto/forward-message.dto'
 
@@ -42,6 +48,8 @@ export class ForwardMessageUseCase {
 			throw new ForbiddenException('System messages cannot be forwarded')
 		}
 
+		this.assertMediaAttachmentsLimit(source.attachments.map((att) => att.type))
+
 		await this.assertSourceForwardable(userId, sourceChatId)
 
 		const originChatId = this.resolveOriginChatId(source)
@@ -65,6 +73,16 @@ export class ForwardMessageUseCase {
 		}
 
 		return results
+	}
+
+	private assertMediaAttachmentsLimit(types: AttachmentType[]): void {
+		const mediaCount = types.filter((type) => MEDIA_ATTACHMENT_TYPES.includes(type)).length
+
+		if (mediaCount > MAX_MEDIA_ATTACHMENTS_PER_MESSAGE) {
+			throw new BadRequestException(
+				`A message can contain at most ${MAX_MEDIA_ATTACHMENTS_PER_MESSAGE} media attachments`
+			)
+		}
 	}
 
 	private async assertSourceForwardable(userId: UserId, sourceChatId: ChatId): Promise<void> {
