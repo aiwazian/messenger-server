@@ -425,7 +425,7 @@ export class ChatsService {
 			isRead,
 			systemEventType: message.systemEvent?.eventType,
 			attachments: message.attachments.map((f) =>
-				plainToInstance(MessageAttachmentDto, { ...f.file, type: f.type, fileId: f.fileId })
+				plainToInstance(MessageAttachmentDto, { ...f.file, type: f.type, fileId: f.fileId, sortOrder: f.sortOrder })
 			),
 			senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
 			messageType: message.messageType

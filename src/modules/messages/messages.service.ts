@@ -437,7 +437,7 @@ export class MessagesService {
 			editedAt: context?.edits.get(message.id.toString()),
 			systemEventType: message.systemEvent?.eventType,
 			attachments: message.attachments.map((f) =>
-				plainToInstance(MessageAttachmentDto, { ...f.file, fileId: f.fileId, type: f.type })
+				plainToInstance(MessageAttachmentDto, { ...f.file, fileId: f.fileId, type: f.type, sortOrder: f.sortOrder })
 			),
 			senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
 			messageType: message.messageType,
@@ -596,7 +596,7 @@ export class MessagesService {
 			isEdited: true,
 			editedAt: now,
 			attachments: message.attachments.map((f) =>
-				plainToInstance(MessageAttachmentDto, { ...f.file, fileId: f.fileId, type: f.type })
+				plainToInstance(MessageAttachmentDto, { ...f.file, fileId: f.fileId, type: f.type, sortOrder: f.sortOrder })
 			),
 			senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
 			messageType: message.messageType
