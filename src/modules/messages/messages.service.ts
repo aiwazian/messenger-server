@@ -1,4 +1,5 @@
 import {
+	BadRequestException,
 	ForbiddenException,
 	forwardRef,
 	Inject,
@@ -32,6 +33,7 @@ import { EncryptionService } from '../encryption/encryption.service'
 import { DeleteMessageDto } from './dto/delete-message.dto'
 import { EditMessageDto } from './dto/edit-message.dto'
 import { MESSAGE_INCLUDE, MessageWithRelations } from './message-include.const'
+import { MAX_MEDIA_ATTACHMENTS_PER_MESSAGE, MEDIA_ATTACHMENT_TYPES } from './message-limits.const'
 import { ChatSourceMap, ChatSourceResolver } from './chat-source.resolver'
 import { ForwardSourceAccess } from '../../common/enums/forward-source-access.enum'
 import { ChatReadStateService } from '../chat-read-state/chat-read-state.service'
@@ -105,6 +107,8 @@ export class MessagesService {
 		excludeSocketId: string
 	): Promise<MessageResponseDto> {
 		await this.chatsService.create(userId, chatId)
+
+		this.assertMediaAttachmentsLimit(dto.attachments.map((att) => att.type))
 
 		let replyToId: bigint | null = null
 		if (dto.replyToId) {
@@ -182,6 +186,16 @@ export class MessagesService {
 		this.notifyRecipients(userId, chatId, messageInstance, excludeSocketId)
 
 		return messageInstance
+	}
+
+	private assertMediaAttachmentsLimit(types: AttachmentType[]): void {
+		const mediaCount = types.filter((type) => MEDIA_ATTACHMENT_TYPES.includes(type)).length
+
+		if (mediaCount > MAX_MEDIA_ATTACHMENTS_PER_MESSAGE) {
+			throw new BadRequestException(
+				`A message can contain at most ${MAX_MEDIA_ATTACHMENTS_PER_MESSAGE} media attachments`
+			)
+		}
 	}
 
 	async getFileDownloadUrl(
@@ -423,7 +437,7 @@ export class MessagesService {
 			editedAt: context?.edits.get(message.id.toString()),
 			systemEventType: message.systemEvent?.eventType,
 			attachments: message.attachments.map((f) =>
-				plainToInstance(MessageAttachmentDto, { ...f.file, fileId: f.fileId, type: f.type })
+				plainToInstance(MessageAttachmentDto, { ...f.file, fileId: f.fileId, type: f.type, sortOrder: f.sortOrder })
 			),
 			senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
 			messageType: message.messageType,
@@ -582,7 +596,7 @@ export class MessagesService {
 			isEdited: true,
 			editedAt: now,
 			attachments: message.attachments.map((f) =>
-				plainToInstance(MessageAttachmentDto, { ...f.file, fileId: f.fileId, type: f.type })
+				plainToInstance(MessageAttachmentDto, { ...f.file, fileId: f.fileId, type: f.type, sortOrder: f.sortOrder })
 			),
 			senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
 			messageType: message.messageType
