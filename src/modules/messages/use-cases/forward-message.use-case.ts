@@ -48,12 +48,18 @@ export class ForwardMessageUseCase {
 			throw new ForbiddenException('System messages cannot be forwarded')
 		}
 
+		if (dto.hideCaption && source.attachments.length === 0) {
+			throw new BadRequestException('Caption can only be hidden for messages with attachments')
+		}
+
 		this.assertMediaAttachmentsLimit(source.attachments.map((att) => att.type))
 
 		await this.assertSourceForwardable(userId, sourceChatId)
 
-		const originChatId = this.resolveOriginChatId(source)
-		const plainText = this.messagesService.decryptText(source.text, source.encryptionKeyVersion)
+		const originChatId = dto.hideAuthor || dto.hideCaption ? null : this.resolveOriginChatId(source)
+		const plainText = dto.hideCaption
+			? null
+			: this.messagesService.decryptText(source.text, source.encryptionKeyVersion)
 
 		const targetIds = Array.from(new Set(dto.targetChatIds)).map((id) => ChatId(id))
 		const results: MessageResponseDto[] = []
@@ -194,7 +200,7 @@ export class ForwardMessageUseCase {
 			stickerId: bigint | null
 			attachments: Array<{ fileId: string; type: any; sortOrder: number }>
 		},
-		originChatId: bigint,
+		originChatId: bigint | null,
 		plainText: string | null,
 		excludeSocketId: string
 	): Promise<MessageResponseDto> {
@@ -236,7 +242,10 @@ export class ForwardMessageUseCase {
 		})
 
 		const chatType = detectChatType(targetChatId)
-		const sources = await this.chatSourceResolver.resolve(userId, [originChatId])
+		const sources = await this.chatSourceResolver.resolve(
+			userId,
+			originChatId !== null ? [originChatId] : []
+		)
 		const dto = this.messagesService.mapMessageToDto(created, userId, chatType, sources)
 
 		this.messagesService.notifyRecipients(userId, targetChatId, dto, excludeSocketId)
