@@ -9,26 +9,20 @@ import { MessagesService } from '../messages/messages.service'
 import { ChatMediaQueryDto } from './dto/chat-media-query.dto'
 import { ChatMediaCountsResponseDto, ChatMediaResponseDto } from './dto/chat-media-response.dto'
 
-/** Фото и видео: то, что открывается во весь экран, а не скачивается документом. */
 const MEDIA_TYPES: AttachmentType[] = [AttachmentType.IMAGE, AttachmentType.VIDEO]
 
-/** Документы. Голосовые сюда не попадают: у них своя вкладка и свой список. */
 const FILE_TYPES: AttachmentType[] = [AttachmentType.FILE]
 
-/** Голосовые сообщения чата. */
 const VOICE_TYPES: AttachmentType[] = [AttachmentType.VOICE]
 
-/**
- * Вложения чата отдельным списком, без загрузки самой переписки.
- *
- * Выборка идёт по MessageAttachment, а не по Message: одно сообщение может
- * нести десять фото, и лист из сообщений пришлось бы разворачивать на клиенте,
- * теряя постраничность.
- *
- * Видимость считается тем же условием, что и история чата
- * ([MessagesService.buildChatMessagesWhere]): удалённое лично для пользователя
- * сообщение не должно всплыть в галерее.
- */
+const MUSIC_EXTENSIONS = ['mp3', 'wav', 'flac', 'm4a', 'aac', 'wma', 'amr']
+
+const MUSIC_NAME_FILTERS: Prisma.FileWhereInput[] = MUSIC_EXTENSIONS.map((extension) => ({
+	name: { endsWith: `.${extension}`, mode: 'insensitive' }
+}))
+
+const DEFAULT_FILE_WHERE: Prisma.FileWhereInput = { status: { not: FileStatus.FAILED } }
+
 @Injectable()
 export class ChatMediaService {
 	constructor(
@@ -41,32 +35,43 @@ export class ChatMediaService {
 	}
 
 	getFiles(userId: UserId, chatId: ChatId, dto: ChatMediaQueryDto): Promise<ChatMediaResponseDto> {
-		return this.getAttachments(userId, chatId, FILE_TYPES, dto)
+		return this.getAttachments(userId, chatId, FILE_TYPES, dto, {
+			status: { not: FileStatus.FAILED },
+			NOT: { OR: MUSIC_NAME_FILTERS }
+		})
 	}
 
-	/** Голосовые чата, от новых к старым. */
+	getMusic(userId: UserId, chatId: ChatId, dto: ChatMediaQueryDto): Promise<ChatMediaResponseDto> {
+		return this.getAttachments(userId, chatId, FILE_TYPES, dto, {
+			status: { not: FileStatus.FAILED },
+			OR: MUSIC_NAME_FILTERS
+		})
+	}
+
 	getVoices(userId: UserId, chatId: ChatId, dto: ChatMediaQueryDto): Promise<ChatMediaResponseDto> {
 		return this.getAttachments(userId, chatId, VOICE_TYPES, dto)
 	}
 
-	/**
-	 * Счётчики вложений по всему чату.
-	 *
-	 * Один groupBy вместо четырёх count: типов ровно столько, сколько строк в
-	 * ответе, и лишний запрос на каждую вкладку здесь не нужен.
-	 *
-	 * Отсутствующий тип в ответе не приходит вовсе, поэтому нули подставляются
-	 * на месте: пустая вкладка должна давать 0, а не пропуск в подписи.
-	 */
 	async getCounts(userId: UserId, chatId: ChatId): Promise<ChatMediaCountsResponseDto> {
-		const grouped = await this.prisma.messageAttachment.groupBy({
-			by: ['type'],
-			where: {
-				message: this.messagesService.buildChatMessagesWhere(userId, chatId),
-				file: { status: { not: FileStatus.FAILED } }
-			},
-			_count: { _all: true }
-		})
+		const chatMessagesWhere = this.messagesService.buildChatMessagesWhere(userId, chatId)
+
+		const [grouped, musicCount] = await Promise.all([
+			this.prisma.messageAttachment.groupBy({
+				by: ['type'],
+				where: {
+					message: chatMessagesWhere,
+					file: { status: { not: FileStatus.FAILED } }
+				},
+				_count: { _all: true }
+			}),
+			this.prisma.messageAttachment.count({
+				where: {
+					message: chatMessagesWhere,
+					type: AttachmentType.FILE,
+					file: { status: { not: FileStatus.FAILED }, OR: MUSIC_NAME_FILTERS }
+				}
+			})
+		])
 
 		const counts = new Map<AttachmentType, number>()
 		for (const row of grouped) {
@@ -76,7 +81,8 @@ export class ChatMediaService {
 		return plainToInstance(ChatMediaCountsResponseDto, {
 			photos: counts.get(AttachmentType.IMAGE) ?? 0,
 			videos: counts.get(AttachmentType.VIDEO) ?? 0,
-			files: counts.get(AttachmentType.FILE) ?? 0,
+			files: (counts.get(AttachmentType.FILE) ?? 0) - musicCount,
+			music: musicCount,
 			voices: counts.get(AttachmentType.VOICE) ?? 0
 		})
 	}
@@ -85,13 +91,13 @@ export class ChatMediaService {
 		userId: UserId,
 		chatId: ChatId,
 		types: AttachmentType[],
-		dto: ChatMediaQueryDto
+		dto: ChatMediaQueryDto,
+		fileWhere: Prisma.FileWhereInput = DEFAULT_FILE_WHERE
 	): Promise<ChatMediaResponseDto> {
 		const where: Prisma.MessageAttachmentWhereInput = {
 			type: { in: types },
 			message: this.messagesService.buildChatMessagesWhere(userId, chatId),
-			/* Незалившийся файл скачать нечем: показывать его в галерее нечестно. */
-			file: { status: { not: FileStatus.FAILED } }
+			file: fileWhere
 		}
 
 		const rows = await this.prisma.messageAttachment.findMany({
@@ -110,11 +116,6 @@ export class ChatMediaService {
 		const page = rows.slice(0, dto.limit)
 		const hasMore = rows.length > dto.limit
 
-		/*
-		 * BigInt приводится к числу здесь, а не глобальным перехватчиком: тот отдаёт
-		 * строку, и клиенту пришлось бы разбирать её вручную. Идентификаторы, размеры
-		 * и время отправки в безопасный диапазон Number укладываются с запасом.
-		 */
 		return plainToInstance(ChatMediaResponseDto, {
 			items: page.map((row) => ({
 				id: row.id,
