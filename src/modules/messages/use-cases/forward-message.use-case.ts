@@ -18,6 +18,8 @@ import { MESSAGE_INCLUDE } from '../message-include.const'
 import { MAX_MEDIA_ATTACHMENTS_PER_MESSAGE, MEDIA_ATTACHMENT_TYPES } from '../message-limits.const'
 import { MessageResponseDto } from '../dto/message-response.dto'
 import { ForwardMessageDto } from '../dto/forward-message.dto'
+import { PrivacyAccessService } from '../../../common/privacy/privacy-access.service'
+import { PrivacyField } from '../../../generated/prisma/enums'
 
 @Injectable()
 export class ForwardMessageUseCase {
@@ -26,7 +28,8 @@ export class ForwardMessageUseCase {
 		private readonly encryption: EncryptionService,
 		private readonly chatsService: ChatsService,
 		private readonly messagesService: MessagesService,
-		private readonly chatSourceResolver: ChatSourceResolver
+		private readonly chatSourceResolver: ChatSourceResolver,
+		private readonly privacyAccess: PrivacyAccessService
 	) {}
 
 	async execute(
@@ -123,15 +126,28 @@ export class ForwardMessageUseCase {
 		if (chatType !== ChatType.PRIVATE) return
 		if (BigInt(sourceChatId) === BigInt(userId)) return
 
-		const restricted = await this.prisma.privacySettings.findFirst({
-			where: {
-				userId: { in: [UserId(userId), UserId(sourceChatId)] },
-				forwardAndCopy: PrivacyRule.NOBODY
-			},
-			select: { userId: true }
-		})
+		const [viewerSettings, peerSettings, peerExceptions] = await Promise.all([
+			this.prisma.privacySettings.findUnique({
+				where: { userId: UserId(userId) },
+				select: { forwardAndCopy: true }
+			}),
+			this.prisma.privacySettings.findUnique({
+				where: { userId: UserId(sourceChatId) },
+				select: { forwardAndCopy: true }
+			}),
+			this.privacyAccess.getExceptionsForOwner(UserId(sourceChatId), [
+				PrivacyField.FORWARD_AND_COPY
+			])
+		])
 
-		if (restricted) {
+		const viewerAllows = viewerSettings?.forwardAndCopy !== PrivacyRule.NOBODY
+		const peerAllows = this.privacyAccess.isAllowed(
+			peerSettings?.forwardAndCopy ?? PrivacyRule.EVERYBODY,
+			peerExceptions.get(PrivacyField.FORWARD_AND_COPY),
+			userId
+		)
+
+		if (!viewerAllows || !peerAllows) {
 			throw new ForbiddenException('Forwarding is restricted in this chat')
 		}
 	}

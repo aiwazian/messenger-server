@@ -27,6 +27,16 @@ import { SocketEvent } from '../../common/socket/socket-events'
 import { EmailVerificationStore } from './email-verification.store'
 import { EmailResponseDto } from './dto/email-response.dto'
 import { MailService } from '../mail/mail.service'
+import { PrivacyAccessService } from '../../common/privacy/privacy-access.service'
+import {
+	PRIVACY_FIELD_BY_KEY,
+	PRIVACY_FIELD_KEYS,
+	PRIVACY_KEY_BY_FIELD,
+	PrivacyExceptionListsResponseDto,
+	PrivacyExceptionsResponseDto,
+	PrivacyExceptionsUpdateDto
+} from './dto/privacy-exceptions.dto'
+import { PrivacyExceptionKind, PrivacyField } from '../../generated/prisma/enums'
 
 @Injectable()
 export class UsersService {
@@ -40,7 +50,8 @@ export class UsersService {
 		private readonly sessionsService: SessionsService,
 		private readonly realtimeGateway: RealtimeGateway,
 		private readonly emailVerificationStore: EmailVerificationStore,
-		private readonly mailService: MailService
+		private readonly mailService: MailService,
+		private readonly privacyAccess: PrivacyAccessService
 	) {}
 
 	@Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
@@ -228,24 +239,44 @@ export class UsersService {
 			}
 
 			const privacy = user.privacySettings
-			if (privacy) {
-				if (privacy.bio === PrivacyRule.NOBODY) {
-					response.bio = undefined
-				}
-				if (privacy.dateOfBirth === PrivacyRule.NOBODY) {
-					response.dateOfBirth = undefined
-				}
-				if (privacy.profilePhoto === PrivacyRule.NOBODY || response.isBlockedByThem) {
-					response.avatars = []
-				}
-				if (privacy.lastSeen === PrivacyRule.NOBODY || response.isBlockedByThem) {
-					response.lastSeen = undefined
-				} else if (lastSeenVal) {
-					response.lastSeen = lastSeenVal
-				}
-				if (privacy.forwardAndCopy === PrivacyRule.NOBODY) {
-					response.canForwardAndCopy = false
-				}
+			const exceptions = await this.privacyAccess.getExceptionsForOwner(id, [
+				PrivacyField.BIO,
+				PrivacyField.DATE_OF_BIRTH,
+				PrivacyField.PROFILE_PHOTO,
+				PrivacyField.LAST_SEEN,
+				PrivacyField.FORWARD_AND_COPY
+			])
+			const viewerSettings = await this.prisma.privacySettings.findUnique({
+				where: { userId: currentUserId },
+				select: { forwardAndCopy: true }
+			})
+			const viewerAllowsForwardAndCopy = viewerSettings?.forwardAndCopy !== PrivacyRule.NOBODY
+			const canSee = (field: PrivacyField, rule: PrivacyRule | undefined) =>
+				this.privacyAccess.isAllowed(
+					rule ?? PrivacyRule.EVERYBODY,
+					exceptions.get(field),
+					currentUserId
+				)
+
+			if (!canSee(PrivacyField.BIO, privacy?.bio)) {
+				response.bio = undefined
+			}
+			if (!canSee(PrivacyField.DATE_OF_BIRTH, privacy?.dateOfBirth)) {
+				response.dateOfBirth = undefined
+			}
+			if (!canSee(PrivacyField.PROFILE_PHOTO, privacy?.profilePhoto) || response.isBlockedByThem) {
+				response.avatars = []
+			}
+			if (!canSee(PrivacyField.LAST_SEEN, privacy?.lastSeen) || response.isBlockedByThem) {
+				response.lastSeen = undefined
+			} else if (lastSeenVal) {
+				response.lastSeen = lastSeenVal
+			}
+			if (
+				!canSee(PrivacyField.FORWARD_AND_COPY, privacy?.forwardAndCopy) ||
+				!viewerAllowsForwardAndCopy
+			) {
+				response.canForwardAndCopy = false
 			}
 		} else if (lastSeenVal) {
 			response.lastSeen = lastSeenVal
@@ -258,7 +289,9 @@ export class UsersService {
 		const settings = await this.prisma.privacySettings.findUnique({
 			where: { userId }
 		})
-		return plainToInstance(PrivacySettingsDto, settings)
+		const response = plainToInstance(PrivacySettingsDto, settings)
+		response.exceptions = await this.buildExceptionsResponse(userId)
+		return response
 	}
 
 	async updatePrivacySettings(
@@ -270,19 +303,27 @@ export class UsersService {
 			select: { lastSeen: true }
 		})
 
-		const settings = await this.prisma.privacySettings.update({
-			where: { userId },
-			data: {
-				lastSeen: dto.lastSeen,
-				messages: dto.messages,
-				bio: dto.bio,
-				dateOfBirth: dto.dateOfBirth,
-				invites: dto.invites,
-				profilePhoto: dto.profilePhoto,
-				forwardedProfile: dto.forwardedProfile,
-				forwardAndCopy: dto.forwardAndCopy,
-				deleteAfterDays: dto.deleteAfterDays
+		const settings = await this.prisma.$transaction(async (tx) => {
+			const updated = await tx.privacySettings.update({
+				where: { userId },
+				data: {
+					lastSeen: dto.lastSeen,
+					messages: dto.messages,
+					bio: dto.bio,
+					dateOfBirth: dto.dateOfBirth,
+					invites: dto.invites,
+					profilePhoto: dto.profilePhoto,
+					forwardedProfile: dto.forwardedProfile,
+					forwardAndCopy: dto.forwardAndCopy,
+					deleteAfterDays: dto.deleteAfterDays
+				}
+			})
+
+			if (dto.exceptions) {
+				await this.replaceExceptions(tx, userId, dto.exceptions)
 			}
+
+			return updated
 		})
 
 		if (dto.lastSeen !== undefined && dto.lastSeen !== oldSettings?.lastSeen) {
@@ -312,7 +353,89 @@ export class UsersService {
 			}
 		}
 
-		return plainToInstance(PrivacySettingsDto, settings)
+		const response = plainToInstance(PrivacySettingsDto, settings)
+		response.exceptions = await this.buildExceptionsResponse(userId)
+		return response
+	}
+
+	private async replaceExceptions(
+		tx: Prisma.TransactionClient,
+		userId: UserId,
+		exceptions: PrivacyExceptionsUpdateDto
+	): Promise<void> {
+		for (const key of PRIVACY_FIELD_KEYS) {
+			const lists = exceptions[key]
+			if (!lists) continue
+			if (lists.alwaysShow === undefined && lists.alwaysHide === undefined) continue
+
+			const field = PRIVACY_FIELD_BY_KEY[key]
+			const showIds = await this.resolveExceptionTargets(tx, lists.alwaysShow ?? [])
+			const hideIds = await this.resolveExceptionTargets(tx, lists.alwaysHide ?? [])
+
+			await tx.privacyException.deleteMany({
+				where: { ownerId: userId, field }
+			})
+
+			const rows = [
+				...showIds.map((targetId) => ({
+					ownerId: userId,
+					targetId,
+					field,
+					kind: PrivacyExceptionKind.ALWAYS_SHOW
+				})),
+				...hideIds.map((targetId) => ({
+					ownerId: userId,
+					targetId,
+					field,
+					kind: PrivacyExceptionKind.ALWAYS_HIDE
+				}))
+			]
+
+			if (rows.length > 0) {
+				await tx.privacyException.createMany({ data: rows })
+			}
+		}
+	}
+
+	private async resolveExceptionTargets(
+		tx: Prisma.TransactionClient,
+		rawIds: string[]
+	): Promise<bigint[]> {
+		const ids = new Set<string>()
+		for (const raw of rawIds) {
+			try {
+				ids.add(BigInt(raw).toString())
+			} catch {
+				throw new BadRequestException('Invalid user id in privacy exceptions')
+			}
+		}
+
+		if (ids.size === 0) return []
+
+		const parsed = [...ids].map((value) => BigInt(value))
+		const existing = await tx.user.findMany({
+			where: { id: { in: parsed } },
+			select: { id: true }
+		})
+
+		return existing.map((user) => user.id)
+	}
+
+	private async buildExceptionsResponse(userId: UserId): Promise<PrivacyExceptionsResponseDto> {
+		const exceptions = await this.privacyAccess.getExceptionsForOwner(userId, [
+			...Object.values(PrivacyField)
+		])
+		const response = new PrivacyExceptionsResponseDto()
+
+		for (const field of Object.values(PrivacyField)) {
+			const lists = exceptions.get(field)
+			response[PRIVACY_KEY_BY_FIELD[field]] = new PrivacyExceptionListsResponseDto(
+				[...(lists?.alwaysShow ?? [])],
+				[...(lists?.alwaysHide ?? [])]
+			)
+		}
+
+		return response
 	}
 
 	async confirmUploadAvatar(userId: UserId, fileId: string): Promise<void> {

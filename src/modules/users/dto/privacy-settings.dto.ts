@@ -1,5 +1,6 @@
-import { Exclude, Expose } from 'class-transformer'
+import { Exclude, Expose, Type } from 'class-transformer'
 import { PrivacyRule } from '../../../generated/prisma/enums'
+import { PrivacyExceptionsResponseDto } from './privacy-exceptions.dto'
 
 @Exclude()
 export class PrivacySettingsDto {
@@ -29,4 +30,8 @@ export class PrivacySettingsDto {
 
 	@Expose()
 	deleteAfterDays: number
+
+	@Expose()
+	@Type(() => PrivacyExceptionsResponseDto)
+	exceptions: PrivacyExceptionsResponseDto
 }

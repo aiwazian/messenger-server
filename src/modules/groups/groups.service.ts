@@ -15,10 +15,11 @@ import { UserResponseDto } from '../users/dto/user-response.dto'
 import { RealtimeGateway } from '../realtime/realtime.gateway'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
-import { GroupType, PrivacyRule } from '../../generated/prisma/enums'
+import { GroupType, PrivacyField, PrivacyRule } from '../../generated/prisma/enums'
 import { GroupId } from '../../common/types/group-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
 import { Prisma } from '../../generated/prisma/client'
+import { PrivacyAccessService } from '../../common/privacy/privacy-access.service'
 import { SocketEvent } from '../../common/socket/socket-events'
 import { AddMembersDto } from './dto/add-members.dto'
 import { randomBytes } from 'crypto'
@@ -33,7 +34,8 @@ export class GroupsService {
 		private readonly chatsService: ChatsService,
 		private readonly searchService: SearchService,
 		private readonly realtimeGateway: RealtimeGateway,
-		private readonly storageService: StorageService
+		private readonly storageService: StorageService,
+		private readonly privacyAccess: PrivacyAccessService
 	) {}
 
 	async update(id: GroupId, dto: UpdateGroupDto): Promise<GroupResponseDto> {
@@ -318,18 +320,28 @@ export class GroupsService {
 		})
 		const existingMemberIds = new Set(existingMembers.map((m) => m.userId.toString()))
 
-		const availableUsers = await this.prisma.user.findMany({
+		const candidates = await this.prisma.user.findMany({
 			where: {
 				id: { in: chatIds },
-				NOT: { id: ownerId },
-				privacySettings: {
-					invites: PrivacyRule.EVERYBODY
-				}
+				NOT: { id: ownerId }
 			},
 			include: { privacySettings: true }
 		})
 
-		const filtered = availableUsers.filter((u) => !existingMemberIds.has(u.id.toString()))
+		const exceptionsByOwner = await this.privacyAccess.getExceptionsForOwners(
+			candidates.map((u) => u.id),
+			[PrivacyField.INVITES]
+		)
+
+		const filtered = candidates.filter(
+			(u) =>
+				!existingMemberIds.has(u.id.toString()) &&
+				this.privacyAccess.isAllowed(
+					u.privacySettings?.invites ?? PrivacyRule.EVERYBODY,
+					exceptionsByOwner.get(u.id.toString())?.get(PrivacyField.INVITES),
+					ownerId
+				)
+		)
 
 		return plainToInstance(UserResponseDto, filtered)
 	}

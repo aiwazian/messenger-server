@@ -1,5 +1,7 @@
-import { IsEnum, IsIn, IsNumber, IsOptional } from 'class-validator'
+import { IsEnum, IsIn, IsNumber, IsOptional, ValidateNested } from 'class-validator'
+import { Type } from 'class-transformer'
 import { PrivacyRule } from '../../../generated/prisma/enums'
+import { PrivacyExceptionsUpdateDto } from './privacy-exceptions.dto'
 
 export class UpdatePrivacySettingsDto {
 	@IsOptional()
@@ -38,4 +40,9 @@ export class UpdatePrivacySettingsDto {
 	@IsNumber()
 	@IsIn([30, 90, 180, 365])
 	deleteAfterDays?: number
+
+	@IsOptional()
+	@ValidateNested()
+	@Type(() => PrivacyExceptionsUpdateDto)
+	exceptions?: PrivacyExceptionsUpdateDto
 }
