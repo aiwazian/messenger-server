@@ -24,6 +24,9 @@ export class MessageAttachmentDto {
 	type: AttachmentType
 
 	@Expose()
+	sortOrder: number
+
+	@Expose()
 	@OmitNull()
 	width?: number
 
