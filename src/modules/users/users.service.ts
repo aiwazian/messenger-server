@@ -372,12 +372,15 @@ export class UsersService {
 			const showIds = await this.resolveExceptionTargets(tx, lists.alwaysShow ?? [])
 			const hideIds = await this.resolveExceptionTargets(tx, lists.alwaysHide ?? [])
 
+			const hideIdKeys = new Set(hideIds.map((id) => id.toString()))
+			const exclusiveShowIds = showIds.filter((id) => !hideIdKeys.has(id.toString()))
+
 			await tx.privacyException.deleteMany({
 				where: { ownerId: userId, field }
 			})
 
 			const rows = [
-				...showIds.map((targetId) => ({
+				...exclusiveShowIds.map((targetId) => ({
 					ownerId: userId,
 					targetId,
 					field,
