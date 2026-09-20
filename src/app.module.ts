@@ -14,6 +14,7 @@ import { ChatFoldersModule } from './modules/chat-folders/chat-folders.module'
 import { ChatMediaModule } from './modules/chat-media/chat-media.module'
 import { MessagesModule } from './modules/messages/messages.module'
 import { PrismaModule } from './providers/prisma/prisma.module'
+import { PrivacyModule } from './common/privacy/privacy.module'
 import { RedisModule } from './providers/redis/redis.module'
 import { SearchModule } from './modules/search/search.module'
 import { PushModule } from './modules/push/push.module'
@@ -78,6 +79,7 @@ import { NotificationSettingsModule } from './modules/notification-settings/noti
 			}
 		]),
 		PrismaModule,
+		PrivacyModule,
 		RedisModule,
 		UsersModule,
 		ChannelsModule,

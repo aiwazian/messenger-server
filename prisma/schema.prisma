@@ -22,6 +22,22 @@ enum PrivacyRule {
   NOBODY
 }
 
+enum PrivacyField {
+  LAST_SEEN
+  MESSAGES
+  BIO
+  DATE_OF_BIRTH
+  INVITES
+  PROFILE_PHOTO
+  FORWARDED_PROFILE
+  FORWARD_AND_COPY
+}
+
+enum PrivacyExceptionKind {
+  ALWAYS_SHOW
+  ALWAYS_HIDE
+}
+
 enum FileStatus {
   PENDING
   UPLOADED
@@ -104,6 +120,9 @@ model User {
 
   emojiPacks          EmojiPack[]
   installedEmojiPacks UserEmojiPack[]
+
+  privacyExceptionsOwned  PrivacyException[] @relation("PrivacyExceptionOwner")
+  privacyExceptionsTarget PrivacyException[] @relation("PrivacyExceptionTarget")
 }
 
 model UserPhoto {
@@ -742,6 +761,21 @@ model PrivacySettings {
   deleteAfterDays Int @default(365)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PrivacyException {
+  id       Int                  @id @default(autoincrement())
+  ownerId  BigInt
+  targetId BigInt
+  field    PrivacyField
+  kind     PrivacyExceptionKind
+
+  owner  User @relation("PrivacyExceptionOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  target User @relation("PrivacyExceptionTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, targetId, field, kind])
+  @@index([ownerId, field])
+  @@index([targetId])
 }
 
 model ScheduledAccountDeletion {

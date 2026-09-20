@@ -6,6 +6,8 @@ import { ChatType } from '../../common/enums/chat-type.enum'
 import { detectChatType } from '../../common/utils/detect-chat-type.util'
 import { ChannelType, GroupType, PrivacyRule } from '../../generated/prisma/enums'
 import { ForwardSourceAccess } from '../../common/enums/forward-source-access.enum'
+import { PrivacyAccessService } from '../../common/privacy/privacy-access.service'
+import { PrivacyField } from '../../generated/prisma/enums'
 
 export type ChatSourceInfo = {
 	/** Имя пользователя / название группы или канала. */
@@ -29,7 +31,10 @@ type RawId = bigint | number | string | null | undefined
  */
 @Injectable()
 export class ChatSourceResolver {
-	constructor(private readonly prisma: PrismaService) {}
+	constructor(
+		private readonly prisma: PrismaService,
+		private readonly privacyAccess: PrivacyAccessService
+	) {}
 
 	async resolve(viewerId: UserId, rawIds: RawId[]): Promise<ChatSourceMap> {
 		const map: ChatSourceMap = new Map()
@@ -87,20 +92,29 @@ export class ChatSourceResolver {
 	private async resolveUsers(viewerId: UserId, ids: bigint[], map: ChatSourceMap): Promise<void> {
 		if (ids.length === 0) return
 
-		const users = await this.prisma.user.findMany({
-			where: { id: { in: ids } },
-			select: {
-				id: true,
-				firstName: true,
-				lastName: true,
-				privacySettings: { select: { forwardedProfile: true } }
-			}
-		})
+		const [users, exceptionsByOwner] = await Promise.all([
+			this.prisma.user.findMany({
+				where: { id: { in: ids } },
+				select: {
+					id: true,
+					firstName: true,
+					lastName: true,
+					privacySettings: { select: { forwardedProfile: true } }
+				}
+			}),
+			this.privacyAccess.getExceptionsForOwners(ids, [PrivacyField.FORWARDED_PROFILE])
+		])
 
 		for (const user of users) {
 			const isSelf = user.id === viewerId
 			const rule = user.privacySettings?.forwardedProfile ?? PrivacyRule.EVERYBODY
-			const allowed = isSelf || rule === PrivacyRule.EVERYBODY
+			const allowed =
+				isSelf ||
+				this.privacyAccess.isAllowed(
+					rule,
+					exceptionsByOwner.get(user.id.toString())?.get(PrivacyField.FORWARDED_PROFILE),
+					viewerId
+				)
 
 			map.set(user.id.toString(), {
 				name: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim(),
