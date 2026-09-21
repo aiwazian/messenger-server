@@ -6,8 +6,14 @@ import {
 	MAX_EMOJI_SIZE_BYTES,
 	MAX_STICKER_SIZE_BYTES,
 	MAX_UPLOAD_SIZE_BYTES,
+	MAX_VIDEO_AVATAR_SIZE_BYTES,
+	MAX_VIDEO_EMOJI_SIZE_BYTES,
+	MAX_VIDEO_STICKER_SIZE_BYTES,
 	MIN_UPLOAD_SIZE_BYTES,
-	STICKER_MIME_TYPE
+	STICKER_MIME_TYPE,
+	VIDEO_AVATAR_MIME_TYPE,
+	VIDEO_EMOJI_MIME_TYPE,
+	VIDEO_STICKER_MIME_TYPE
 } from '../constants/upload.constants'
 
 const CATEGORY_MIME_PREFIX: Record<UploadCategory, string | null> = {
@@ -17,19 +23,34 @@ const CATEGORY_MIME_PREFIX: Record<UploadCategory, string | null> = {
 	[UploadCategory.FILE]: null,
 	[UploadCategory.STICKER]: 'image/',
 	[UploadCategory.EMOJI]: 'image/',
-	[UploadCategory.AVATAR]: 'image/'
+	[UploadCategory.AVATAR]: 'image/',
+	[UploadCategory.VIDEO_STICKER]: 'video/',
+	[UploadCategory.VIDEO_EMOJI]: 'video/',
+	[UploadCategory.VIDEO_AVATAR]: 'video/'
 }
 
 const CATEGORY_EXACT_MIME: Partial<Record<UploadCategory, string[]>> = {
 	[UploadCategory.STICKER]: [STICKER_MIME_TYPE],
-	[UploadCategory.EMOJI]: [EMOJI_MIME_TYPE]
+	[UploadCategory.EMOJI]: [EMOJI_MIME_TYPE],
+	[UploadCategory.VIDEO_STICKER]: [VIDEO_STICKER_MIME_TYPE],
+	[UploadCategory.VIDEO_EMOJI]: [VIDEO_EMOJI_MIME_TYPE],
+	[UploadCategory.VIDEO_AVATAR]: [VIDEO_AVATAR_MIME_TYPE]
 }
 
 const CATEGORY_MAX_SIZE_BYTES: Partial<Record<UploadCategory, number>> = {
 	[UploadCategory.STICKER]: MAX_STICKER_SIZE_BYTES,
 	[UploadCategory.EMOJI]: MAX_EMOJI_SIZE_BYTES,
-	[UploadCategory.AVATAR]: MAX_AVATAR_SIZE_BYTES
+	[UploadCategory.AVATAR]: MAX_AVATAR_SIZE_BYTES,
+	[UploadCategory.VIDEO_STICKER]: MAX_VIDEO_STICKER_SIZE_BYTES,
+	[UploadCategory.VIDEO_EMOJI]: MAX_VIDEO_EMOJI_SIZE_BYTES,
+	[UploadCategory.VIDEO_AVATAR]: MAX_VIDEO_AVATAR_SIZE_BYTES
 }
+
+const EXACT_SNIFFED_MIME_TYPES = [
+	VIDEO_STICKER_MIME_TYPE,
+	VIDEO_EMOJI_MIME_TYPE,
+	VIDEO_AVATAR_MIME_TYPE
+]
 
 const SNIFFABLE_PREFIXES = ['image/', 'video/', 'audio/']
 
@@ -83,6 +104,16 @@ export class UploadPolicyService {
 			throw new BadRequestException(
 				`Declared ${declaredMime}, but the file content type could not be recognized`
 			)
+		}
+
+		if (EXACT_SNIFFED_MIME_TYPES.includes(declaredMime)) {
+			if (detectedMime !== declaredMime) {
+				throw new BadRequestException(
+					`Declared ${declaredMime}, but the file content is ${detectedMime}`
+				)
+			}
+
+			return
 		}
 
 		if (!detectedMime.startsWith(prefix)) {

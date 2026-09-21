@@ -1,4 +1,5 @@
 import {
+	BadRequestException,
 	ConflictException,
 	ForbiddenException,
 	Injectable,
@@ -12,7 +13,7 @@ import { UserId } from '../../common/types/user-id.type'
 import { generateStickerPackId } from '../../common/utils/id-generator.util'
 import { FileStatus } from '../../generated/prisma/enums'
 import { PrismaService } from '../../providers/prisma/prisma.service'
-import { STICKER_MIME_TYPE } from '../storage/constants/upload.constants'
+import { STICKER_MIME_TYPE, VIDEO_STICKER_MIME_TYPE } from '../storage/constants/upload.constants'
 import { FileDto } from '../storage/dto/file.dto'
 import { InitUploadDto } from '../storage/dto/init-upload.dto'
 import { StorageService } from '../storage/storage.service'
@@ -33,6 +34,11 @@ const COVER_STICKER_SELECT = {
 	take: 1,
 	select: { fileId: true, file: { select: { path: true } } }
 } as const
+
+const STICKER_EXTENSION_BY_MIME_TYPE: Record<string, string> = {
+	[STICKER_MIME_TYPE]: 'webp',
+	[VIDEO_STICKER_MIME_TYPE]: 'webm'
+}
 
 type PackRow = {
 	id: bigint
@@ -400,12 +406,24 @@ export class StickersService {
 
 	initStickerUpload(dto: StickerUploadInitDto): Promise<InitUploadDto> {
 		const packId = StickerPackId(dto.packId)
+		const extension = STICKER_EXTENSION_BY_MIME_TYPE[dto.mimeType]
+
+		if (extension == null) {
+			throw new BadRequestException('Sticker must be a WebP image or WebM video')
+		}
+
+		if (!dto.name.toLowerCase().endsWith(`.${extension}`)) {
+			throw new BadRequestException(`Sticker file name must have the .${extension} extension`)
+		}
 
 		return this.storage.initUpload({
 			name: dto.name,
 			size: dto.size,
 			mimeType: dto.mimeType,
-			category: UploadCategory.STICKER,
+			category:
+				dto.mimeType === VIDEO_STICKER_MIME_TYPE
+					? UploadCategory.VIDEO_STICKER
+					: UploadCategory.STICKER,
 			directory: FileType.STICKER,
 			subdirectory: packId.toString(),
 			width: dto.width,
@@ -492,8 +510,8 @@ export class StickersService {
 				throw new ConflictException('File is not a sticker')
 			}
 
-			if (file.mimeType !== STICKER_MIME_TYPE) {
-				throw new ConflictException('Sticker must be a WebP image')
+			if (file.mimeType !== STICKER_MIME_TYPE && file.mimeType !== VIDEO_STICKER_MIME_TYPE) {
+				throw new ConflictException('Sticker must be a WebP image or WebM video')
 			}
 		}
 	}

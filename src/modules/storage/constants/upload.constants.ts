@@ -12,6 +12,18 @@ export const STICKER_MIME_TYPE = 'image/webp'
 
 export const EMOJI_MIME_TYPE = 'image/webp'
 
+export const VIDEO_STICKER_MIME_TYPE = 'video/webm'
+
+export const VIDEO_EMOJI_MIME_TYPE = 'video/webm'
+
+export const VIDEO_AVATAR_MIME_TYPE = 'video/mp4'
+
+export const MAX_VIDEO_STICKER_SIZE_BYTES = 1024 * 1024
+
+export const MAX_VIDEO_EMOJI_SIZE_BYTES = 256 * 1024
+
+export const MAX_VIDEO_AVATAR_SIZE_BYTES = 5 * 1024 * 1024
+
 export const UPLOAD_URL_TTL_SECONDS = 3600
 
 export const DOWNLOAD_URL_TTL_SECONDS = 3600

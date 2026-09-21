@@ -1,4 +1,5 @@
 import {
+	BadRequestException,
 	ConflictException,
 	ForbiddenException,
 	Injectable,
@@ -12,7 +13,7 @@ import { UserId } from '../../common/types/user-id.type'
 import { generateEmojiPackId } from '../../common/utils/id-generator.util'
 import { FileStatus } from '../../generated/prisma/enums'
 import { PrismaService } from '../../providers/prisma/prisma.service'
-import { EMOJI_MIME_TYPE } from '../storage/constants/upload.constants'
+import { EMOJI_MIME_TYPE, VIDEO_EMOJI_MIME_TYPE } from '../storage/constants/upload.constants'
 import { FileDto } from '../storage/dto/file.dto'
 import { InitUploadDto } from '../storage/dto/init-upload.dto'
 import { StorageService } from '../storage/storage.service'
@@ -28,6 +29,11 @@ import {
 } from './dto/emoji-pack.constants'
 import { EmojiUploadInitDto } from './dto/emoji-upload-init.dto'
 import { UpdateEmojiPackDto } from './dto/update-emoji-pack.dto'
+
+const EMOJI_EXTENSION_BY_MIME_TYPE: Record<string, string> = {
+	[EMOJI_MIME_TYPE]: 'webp',
+	[VIDEO_EMOJI_MIME_TYPE]: 'webm'
+}
 
 type PackRow = {
 	id: bigint
@@ -422,12 +428,21 @@ export class EmojiService {
 
 	initEmojiUpload(dto: EmojiUploadInitDto): Promise<InitUploadDto> {
 		const packId = EmojiPackId(dto.packId)
+		const extension = EMOJI_EXTENSION_BY_MIME_TYPE[dto.mimeType]
+
+		if (extension == null) {
+			throw new BadRequestException('Emoji must be a WebP image or WebM video')
+		}
+
+		if (!dto.name.toLowerCase().endsWith(`.${extension}`)) {
+			throw new BadRequestException(`Emoji file name must have the .${extension} extension`)
+		}
 
 		return this.storage.initUpload({
 			name: dto.name,
 			size: dto.size,
 			mimeType: dto.mimeType,
-			category: UploadCategory.EMOJI,
+			category: dto.mimeType === VIDEO_EMOJI_MIME_TYPE ? UploadCategory.VIDEO_EMOJI : UploadCategory.EMOJI,
 			directory: FileType.EMOJI,
 			subdirectory: packId.toString(),
 			width: dto.width,
@@ -514,8 +529,8 @@ export class EmojiService {
 				throw new ConflictException('File is not an emoji')
 			}
 
-			if (file.mimeType !== EMOJI_MIME_TYPE) {
-				throw new ConflictException('Emoji must be a WebP image')
+			if (file.mimeType !== EMOJI_MIME_TYPE && file.mimeType !== VIDEO_EMOJI_MIME_TYPE) {
+				throw new ConflictException('Emoji must be a WebP image or WebM video')
 			}
 		}
 	}
