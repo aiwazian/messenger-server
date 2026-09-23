@@ -8,6 +8,8 @@ import {
 } from '@nestjs/common'
 import { plainToInstance } from 'class-transformer'
 import { ChatsService } from '../chats/chats.service'
+import { ChannelAdminsService } from '../channels/channel-admins.service'
+import { GroupAdminsService } from '../groups/group-admins.service'
 import {
 	MessageAttachmentDto,
 	MessageReadInfoDto,
@@ -24,6 +26,8 @@ import { FileDownloadDto } from './dto/file-download.dto'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
+import { ChannelId } from '../../common/types/channel-id.type'
+import { GroupId } from '../../common/types/group-id.type'
 import { AttachmentType, MessageType, SystemEventType } from '../../generated/prisma/enums'
 import { ChatType } from '../../common/enums/chat-type.enum'
 import { SocketEvent } from '../../common/socket/socket-events'
@@ -32,6 +36,7 @@ import { detectChatType } from '../../common/utils/detect-chat-type.util'
 import { EncryptionService } from '../encryption/encryption.service'
 import { DeleteMessageDto } from './dto/delete-message.dto'
 import { EditMessageDto } from './dto/edit-message.dto'
+import { MessagePinResponseDto, PinMessageDto } from './dto/pin-message.dto'
 import { MESSAGE_INCLUDE, MessageWithRelations } from './message-include.const'
 import { MAX_MEDIA_ATTACHMENTS_PER_MESSAGE, MEDIA_ATTACHMENT_TYPES } from './message-limits.const'
 import { ChatSourceMap, ChatSourceResolver } from './chat-source.resolver'
@@ -437,7 +442,12 @@ export class MessagesService {
 			editedAt: context?.edits.get(message.id.toString()),
 			systemEventType: message.systemEvent?.eventType,
 			attachments: message.attachments.map((f) =>
-				plainToInstance(MessageAttachmentDto, { ...f.file, fileId: f.fileId, type: f.type, sortOrder: f.sortOrder })
+				plainToInstance(MessageAttachmentDto, {
+					...f.file,
+					fileId: f.fileId,
+					type: f.type,
+					sortOrder: f.sortOrder
+				})
 			),
 			senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
 			messageType: message.messageType,
@@ -596,7 +606,12 @@ export class MessagesService {
 			isEdited: true,
 			editedAt: now,
 			attachments: message.attachments.map((f) =>
-				plainToInstance(MessageAttachmentDto, { ...f.file, fileId: f.fileId, type: f.type, sortOrder: f.sortOrder })
+				plainToInstance(MessageAttachmentDto, {
+					...f.file,
+					fileId: f.fileId,
+					type: f.type,
+					sortOrder: f.sortOrder
+				})
 			),
 			senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
 			messageType: message.messageType
@@ -668,6 +683,281 @@ export class MessagesService {
 
 		if (Date.now() - Number(message.sendTime) > EDIT_WINDOW_MS) {
 			throw new ForbiddenException('Message can be edited within 24 hours after sending')
+		}
+	}
+
+	/**
+	 * Закрепляет сообщение «для себя» или «для всех».
+	 *
+	 * «Для всех» в группе и канале разрешено только владельцу и администраторам
+	 * с правом canPinMessages; обычный участник закрепляет только у себя.
+	 * Повторный запрос с forEveryone = false от пользователя с этим правом
+	 * переводит общее закрепление в личное — это кнопка «Изменить закреп».
+	 */
+	async pinMessage(
+		userId: UserId,
+		chatId: ChatId,
+		messageId: number,
+		dto: PinMessageDto,
+		excludeSocketId: string
+	): Promise<MessagePinResponseDto> {
+		const chatType = detectChatType(chatId)
+
+		const message = await this.prisma.message.findFirst({
+			where: { AND: [this.buildChatMessagesWhere(userId, chatId), { id: messageId }] },
+			include: MESSAGE_INCLUDE
+		})
+		if (!message) throw new NotFoundException('Message not found')
+
+		const now = BigInt(Date.now())
+
+		if (dto.forEveryone) {
+			if (chatType !== ChatType.PRIVATE) {
+				const allowed = await this.hasPinPermission(chatId, chatType, userId)
+				if (!allowed) {
+					throw new ForbiddenException('You are not allowed to pin messages for everyone')
+				}
+			}
+
+			await this.prisma.chatPinnedMessage.upsert({
+				where: { chatId_messageId: { chatId: message.chatId, messageId } },
+				create: { chatId: message.chatId, messageId, pinnedBy: userId, pinnedAt: now },
+				update: { pinnedBy: userId, pinnedAt: now }
+			})
+
+			await this.notifyPinEvent(userId, chatId, messageId, true, now, chatType, excludeSocketId)
+		} else {
+			await this.prisma.messagePin.upsert({
+				where: { messageId_userId: { messageId, userId } },
+				create: { messageId, userId, chatId, pinnedAt: now },
+				update: { chatId, pinnedAt: now }
+			})
+
+			await this.notifyPinEvent(userId, chatId, messageId, false, now, chatType, excludeSocketId)
+
+			if (
+				chatType === ChatType.PRIVATE ||
+				(await this.hasPinPermission(chatId, chatType, userId))
+			) {
+				const dropped = await this.prisma.chatPinnedMessage
+					.delete({ where: { chatId_messageId: { chatId: message.chatId, messageId } } })
+					.catch(() => null)
+
+				if (dropped) {
+					await this.notifyPinEvent(
+						userId,
+						chatId,
+						messageId,
+						true,
+						null,
+						chatType,
+						excludeSocketId
+					)
+				}
+			}
+		}
+
+		return plainToInstance(MessagePinResponseDto, {
+			chatId,
+			messageId,
+			forEveryone: dto.forEveryone,
+			pinnedAt: now
+		})
+	}
+
+	/** Снимает личное закрепление: общее закрепление этим эндпоинтом не трогается. */
+	async unpinMessage(
+		userId: UserId,
+		chatId: ChatId,
+		messageId: number,
+		excludeSocketId: string
+	): Promise<void> {
+		const message = await this.prisma.message.findFirst({
+			where: { AND: [this.buildChatMessagesWhere(userId, chatId), { id: messageId }] },
+			select: { id: true }
+		})
+		if (!message) throw new NotFoundException('Message not found')
+
+		const deleted = await this.prisma.messagePin.deleteMany({ where: { messageId, userId } })
+
+		if (deleted.count > 0) {
+			await this.notifyPinEvent(
+				userId,
+				chatId,
+				messageId,
+				false,
+				null,
+				detectChatType(chatId),
+				excludeSocketId
+			)
+		}
+	}
+
+	/**
+	 * Все закрепления чата для текущего пользователя: личные и общие.
+	 *
+	 * Одно сообщение может быть закреплено и «для себя», и «для всех» — в панели
+	 * остаётся одно, общее имеет приоритет. Список отсортирован от свежих к старым.
+	 */
+	async getPinnedMessages(userId: UserId, chatId: ChatId): Promise<MessagePinResponseDto[]> {
+		const chatType = detectChatType(chatId)
+
+		const selfPins = await this.prisma.messagePin.findMany({
+			where: { userId, chatId },
+			include: { message: { include: MESSAGE_INCLUDE } },
+			orderBy: { pinnedAt: 'desc' }
+		})
+
+		const sharedPins = await this.prisma.chatPinnedMessage.findMany({
+			where: {
+				chatId: chatType === ChatType.PRIVATE ? { in: [userId, chatId] } : chatId,
+				...(chatType === ChatType.PRIVATE
+					? {
+							message: {
+								OR: [
+									{ chatId: chatId, senderId: userId },
+									{ chatId: userId, senderId: chatId }
+								]
+							}
+						}
+					: {})
+			},
+			include: { message: { include: MESSAGE_INCLUDE } },
+			orderBy: { pinnedAt: 'desc' }
+		})
+
+		const pins = [
+			...selfPins.map((pin) => ({
+				messageId: pin.messageId,
+				forEveryone: false,
+				pinnedAt: pin.pinnedAt,
+				message: pin.message
+			})),
+			...sharedPins.map((pin) => ({
+				messageId: pin.messageId,
+				forEveryone: true,
+				pinnedAt: pin.pinnedAt,
+				message: pin.message
+			}))
+		].sort((a, b) => (a.pinnedAt > b.pinnedAt ? -1 : a.pinnedAt < b.pinnedAt ? 1 : 0))
+
+		const unique = new Map<string, (typeof pins)[number]>()
+		for (const pin of pins) {
+			const key = pin.messageId.toString()
+			const existing = unique.get(key)
+			if (!existing || (!existing.forEveryone && pin.forEveryone)) {
+				unique.set(key, pin)
+			}
+		}
+
+		const deduped = [...unique.values()]
+		const sources = await this.resolveSources(
+			userId,
+			deduped.map((pin) => pin.message)
+		)
+
+		return deduped.map((pin) =>
+			plainToInstance(MessagePinResponseDto, {
+				chatId,
+				messageId: pin.messageId,
+				forEveryone: pin.forEveryone,
+				pinnedAt: pin.pinnedAt,
+				message: this.mapMessageToDto(pin.message, userId, chatType, sources)
+			})
+		)
+	}
+
+	/**
+	 * Право закреплять для всех: владелец проходит всегда, у администратора
+	 * читается флаг canPinMessages.
+	 *
+	 * Проверка повторяет логику гвардов RequireAdminPermission — те же запросы
+	 * к таблицам прав: провайдеры ChannelAdminsService и GroupAdminsService
+	 * отсюда недоступны без цикла между модулями.
+	 */
+	private async hasPinPermission(
+		chatId: ChatId,
+		chatType: ChatType,
+		userId: UserId
+	): Promise<boolean> {
+		if (chatType === ChatType.CHANNEL) {
+			const channel = await this.prisma.channel.findUnique({
+				where: { id: ChannelId(chatId) },
+				select: { ownerId: true }
+			})
+			if (!channel) return false
+			if (channel.ownerId === userId) return true
+
+			const admin = await this.prisma.channelAdminPermission.findUnique({
+				where: { channelId_userId: { channelId: ChannelId(chatId), userId } }
+			})
+			return admin?.canPinMessages === true
+		}
+
+		const group = await this.prisma.group.findUnique({
+			where: { id: GroupId(chatId) },
+			select: { ownerId: true }
+		})
+		if (!group) return false
+		if (group.ownerId === userId) return true
+
+		const admin = await this.prisma.groupAdminPermission.findUnique({
+			where: { groupId_userId: { groupId: GroupId(chatId), userId } }
+		})
+		return admin?.canPinMessages === true
+	}
+
+	/**
+	 * Рассылка событий закрепления.
+	 *
+	 * Личное закрепление уходит только в другие сессии автора. Общее — всем
+	 * участникам; в личном чате у каждого своя «сторона» истории, поэтому
+	 * собеседнику payload собирается с его chatId. Свои прочие сессии включены
+	 * в рассылку общего закрепления: чат у них может быть закрыт.
+	 */
+	private async notifyPinEvent(
+		actorId: UserId,
+		chatId: ChatId,
+		messageId: number,
+		forEveryone: boolean,
+		pinnedAt: bigint | null,
+		chatType: ChatType,
+		excludeSocketId: string
+	): Promise<void> {
+		const event = pinnedAt === null ? SocketEvent.MESSAGE_UNPIN : SocketEvent.MESSAGE_PIN
+		const payloadFor = (facingChatId: bigint) => ({
+			chatId: facingChatId.toString(),
+			messageId: messageId.toString(),
+			forEveryone,
+			...(pinnedAt === null ? {} : { pinnedAt: pinnedAt.toString() })
+		})
+
+		if (!forEveryone) {
+			this.realtimeGateway.sendToUser(actorId, event, payloadFor(chatId), excludeSocketId)
+			return
+		}
+
+		if (chatType === ChatType.PRIVATE) {
+			this.realtimeGateway.sendToUser(actorId, event, payloadFor(chatId), excludeSocketId)
+
+			if (BigInt(chatId) !== BigInt(actorId)) {
+				this.realtimeGateway.sendToUser(UserId(chatId), event, payloadFor(actorId))
+			}
+			return
+		}
+
+		this.realtimeGateway.sendToChat(chatId, event, payloadFor(chatId), excludeSocketId)
+
+		const recipients = await this.getRecipients(actorId, chatId, chatType)
+		const audience = recipients.includes(actorId) ? recipients : [...recipients, actorId]
+		if (audience.length > 0) {
+			this.realtimeGateway.sendToUsersExceptChat(
+				audience,
+				chatId,
+				event,
+				payloadFor(chatId),
+				excludeSocketId
+			)
 		}
 	}
 

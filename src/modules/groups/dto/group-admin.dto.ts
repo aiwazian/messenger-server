@@ -26,6 +26,11 @@ export class UpsertGroupAdminDto {
 	@IsBoolean()
 	canManageAdmins?: boolean
 
+	/** Закрепление сообщений: право закреплять и откреплять сообщения для всех участников. */
+	@IsOptional()
+	@IsBoolean()
+	canPinMessages?: boolean
+
 	/** Тег участника: подпись рядом с именем отправителя в сообщениях группы. */
 	@IsOptional()
 	@IsString()
@@ -42,6 +47,7 @@ export class GroupAdminResponseDto {
 	canManageInviteLinks: boolean
 	canEditProfile: boolean
 	canManageAdmins: boolean
+	canPinMessages: boolean
 	tag?: string
 	grantedAt: string
 }
@@ -53,6 +59,7 @@ export class MyGroupPermissionsDto {
 	canManageInviteLinks: boolean
 	canEditProfile: boolean
 	canManageAdmins: boolean
+	canPinMessages: boolean
 	tag?: string
 }
 

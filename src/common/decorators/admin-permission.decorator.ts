@@ -6,7 +6,8 @@ import { SetMetadata } from '@nestjs/common'
  * Названия совпадают с полями ChannelAdminPermission и GroupAdminPermission,
  * поэтому гварды читают нужный флаг напрямую по ключу.
  */
-export type AdminPermission = 'canManageInviteLinks' | 'canEditProfile' | 'canManageAdmins'
+export type AdminPermission =
+	'canManageInviteLinks' | 'canEditProfile' | 'canManageAdmins' | 'canPinMessages'
 
 export const ADMIN_PERMISSION_KEY = 'adminPermission'
 

@@ -109,6 +109,8 @@ model User {
 
   messageReactions MessageReaction[]
 
+  pins             MessagePin[]
+
   blockedUsers UserBlackList[] @relation("Blocker")
   blockedBy    UserBlackList[] @relation("Blocked")
 
@@ -264,6 +266,8 @@ model Message {
   systemEvent      SystemMessageEvent?
   deletedFor       DeletedMessage[]
   messageReactions MessageReaction[]
+  pins             MessagePin[]
+  chatPins         ChatPinnedMessage[]
 
   @@index([chatId, sendTime])
   @@index([chatId, id])
@@ -274,6 +278,46 @@ model Message {
   @@index([chatId, messageType])
   @@index([encryptionKeyVersion])
   @@index([stickerId])
+}
+
+/**
+ * Закрепление сообщения «для себя»: видно только самому пользователю
+ * и синхронизируется между всеми его сессиями.
+ *
+ * chatId хранит «чат» так, как его видит закрепивший: в личном чате это
+ * собеседник, а не получатель из Message.chatId.
+ */
+model MessagePin {
+  id        Int    @id @default(autoincrement())
+  messageId BigInt
+  userId    BigInt
+  chatId    BigInt
+  pinnedAt  BigInt
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId, chatId])
+}
+
+/**
+ * Закрепление сообщения «для всех»: одно на чат.
+ *
+ * chatId совпадает с Message.chatId, поэтому в личном чате закрепление видно
+ * обоим участникам, хотя их «чаты» в терминах UI различаются.
+ */
+model ChatPinnedMessage {
+  id        Int    @id @default(autoincrement())
+  chatId    BigInt
+  messageId BigInt
+  pinnedBy  BigInt
+  pinnedAt  BigInt
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([chatId, messageId])
+  @@index([chatId])
 }
 
 model SystemMessageEvent {
@@ -595,6 +639,8 @@ model ChannelAdminPermission {
 
   canManageAdmins Boolean @default(false)
 
+  canPinMessages Boolean @default(false)
+
   grantedBy BigInt?
   grantedAt BigInt
 
@@ -670,6 +716,8 @@ model GroupAdminPermission {
   canEditProfile Boolean @default(false)
 
   canManageAdmins Boolean @default(false)
+
+  canPinMessages Boolean @default(false)
 
   tag String?
 

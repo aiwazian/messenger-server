@@ -28,6 +28,7 @@ import { CanDeleteMessageGuard } from '../../common/guards/can-delete-message.gu
 import { CanEditMessageGuard } from '../../common/guards/can-edit-message.guard'
 import { CanClearHistoryGuard } from '../../common/guards/can-clear-history.guard'
 import { EditMessageDto } from './dto/edit-message.dto'
+import { PinMessageDto } from './dto/pin-message.dto'
 import { SendMessageUseCase } from './use-cases/send-message.use-case'
 import { SendStickerMessageUseCase } from './use-cases/send-sticker-message.use-case'
 import { GetMessagesWindowUseCase } from './use-cases/get-messages-window.use-case'
@@ -134,6 +135,38 @@ export class MessagesController {
 		@Query() dto: SearchMessagesDto
 	) {
 		return this.searchChatMessagesUseCase.execute(userId, chatId, dto)
+	}
+
+	@Get('pinned')
+	@UseGuards(CanReadChatGuard)
+	getPinnedMessages(
+		@Param('chatId', ParseChatIdPipe) chatId: ChatId,
+		@CurrentUserId() userId: UserId
+	) {
+		return this.messagesService.getPinnedMessages(userId, chatId)
+	}
+
+	@Post(':messageId/pin')
+	@UseGuards(CanReadChatGuard)
+	pinMessage(
+		@Param('chatId', ParseChatIdPipe) chatId: ChatId,
+		@Param('messageId', ParseIntPipe) messageId: number,
+		@CurrentUserId() userId: UserId,
+		@Body() dto: PinMessageDto,
+		@Headers('x-socket-id') socketId: string
+	) {
+		return this.messagesService.pinMessage(userId, chatId, messageId, dto, socketId)
+	}
+
+	@Delete(':messageId/pin')
+	@UseGuards(CanReadChatGuard)
+	unpinMessage(
+		@Param('chatId', ParseChatIdPipe) chatId: ChatId,
+		@Param('messageId', ParseIntPipe) messageId: number,
+		@CurrentUserId() userId: UserId,
+		@Headers('x-socket-id') socketId: string
+	) {
+		return this.messagesService.unpinMessage(userId, chatId, messageId, socketId)
 	}
 
 	@Post(':messageId/forward')
