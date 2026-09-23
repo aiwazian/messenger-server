@@ -8,8 +8,6 @@ import {
 } from '@nestjs/common'
 import { plainToInstance } from 'class-transformer'
 import { ChatsService } from '../chats/chats.service'
-import { ChannelAdminsService } from '../channels/channel-admins.service'
-import { GroupAdminsService } from '../groups/group-admins.service'
 import {
 	MessageAttachmentDto,
 	MessageReadInfoDto,
@@ -765,31 +763,41 @@ export class MessagesService {
 		})
 	}
 
-	/** Снимает личное закрепление: общее закрепление этим эндпоинтом не трогается. */
+	/**
+	 * Снимает закрепление сообщения.
+	 *
+	 * Личное закрепление удаляется всегда. Общее — только если открепляющий
+	 * вправе управлять закреплениями: в личном чате им равноправно владеют оба
+	 * участника, в группе и канале — владелец и администраторы с правом.
+	 */
 	async unpinMessage(
 		userId: UserId,
 		chatId: ChatId,
 		messageId: number,
 		excludeSocketId: string
 	): Promise<void> {
+		const chatType = detectChatType(chatId)
+
 		const message = await this.prisma.message.findFirst({
 			where: { AND: [this.buildChatMessagesWhere(userId, chatId), { id: messageId }] },
-			select: { id: true }
+			select: { id: true, chatId: true }
 		})
 		if (!message) throw new NotFoundException('Message not found')
 
 		const deleted = await this.prisma.messagePin.deleteMany({ where: { messageId, userId } })
 
 		if (deleted.count > 0) {
-			await this.notifyPinEvent(
-				userId,
-				chatId,
-				messageId,
-				false,
-				null,
-				detectChatType(chatId),
-				excludeSocketId
-			)
+			await this.notifyPinEvent(userId, chatId, messageId, false, null, chatType, excludeSocketId)
+		}
+
+		if (chatType === ChatType.PRIVATE || (await this.hasPinPermission(chatId, chatType, userId))) {
+			const dropped = await this.prisma.chatPinnedMessage
+				.delete({ where: { chatId_messageId: { chatId: message.chatId, messageId } } })
+				.catch(() => null)
+
+			if (dropped) {
+				await this.notifyPinEvent(userId, chatId, messageId, true, null, chatType, excludeSocketId)
+			}
 		}
 	}
 
