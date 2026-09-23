@@ -10,7 +10,7 @@ import {
 	MinLength
 } from 'class-validator'
 import {
-	MAX_STICKER_SIZE_BYTES,
+	MAX_VIDEO_STICKER_SIZE_BYTES,
 	MIN_UPLOAD_SIZE_BYTES
 } from '../../storage/constants/upload.constants'
 
@@ -25,7 +25,7 @@ export class StickerUploadInitDto {
 
 	@IsInt()
 	@Min(MIN_UPLOAD_SIZE_BYTES)
-	@Max(MAX_STICKER_SIZE_BYTES)
+	@Max(MAX_VIDEO_STICKER_SIZE_BYTES)
 	size: number
 
 	@IsMimeType()

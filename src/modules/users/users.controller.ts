@@ -32,6 +32,7 @@ import { InitUploadDto } from '../storage/dto/init-upload.dto'
 import { FileDownloadDto } from '../messages/dto/file-download.dto'
 import { FileType } from '../../common/enums/file-type.enum'
 import { UploadCategory } from '../../common/enums/upload-category.enum'
+import { VIDEO_AVATAR_MIME_TYPE } from '../storage/constants/upload.constants'
 import { SetProfileChannelDto } from './dto/set-profile-channel.dto'
 import { SetEmailDto } from './dto/set-email.dto'
 import { VerifyEmailDto } from './dto/verify-email.dto'
@@ -93,7 +94,10 @@ export class UsersController {
 	initFileUpload(@Body() dto: FileInitDto): Promise<InitUploadDto> {
 		return this.storage.initUpload({
 			...dto,
-			category: UploadCategory.AVATAR,
+			category:
+				dto.mimeType === VIDEO_AVATAR_MIME_TYPE
+					? UploadCategory.VIDEO_AVATAR
+					: UploadCategory.AVATAR,
 			directory: FileType.USER_AVATAR
 		})
 	}

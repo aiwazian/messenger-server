@@ -38,6 +38,7 @@ import { AvatarAccessService } from '../storage/services/avatar-access.service'
 import { FileDownloadDto } from '../messages/dto/file-download.dto'
 import { FileType } from '../../common/enums/file-type.enum'
 import { UploadCategory } from '../../common/enums/upload-category.enum'
+import { VIDEO_AVATAR_MIME_TYPE } from '../storage/constants/upload.constants'
 import { GroupAdminsService } from './group-admins.service'
 import { UpsertGroupAdminDto } from './dto/group-admin.dto'
 
@@ -303,7 +304,10 @@ export class GroupsController {
 	initFileUpload(@Body() dto: FileInitDto) {
 		return this.storageService.initUpload({
 			...dto,
-			category: UploadCategory.IMAGE,
+			category:
+				dto.mimeType === VIDEO_AVATAR_MIME_TYPE
+					? UploadCategory.VIDEO_AVATAR
+					: UploadCategory.IMAGE,
 			directory: FileType.GROUP_AVATAR
 		})
 	}

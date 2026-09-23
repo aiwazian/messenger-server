@@ -36,6 +36,7 @@ import { AvatarAccessService } from '../storage/services/avatar-access.service'
 import { FileDownloadDto } from '../messages/dto/file-download.dto'
 import { FileType } from '../../common/enums/file-type.enum'
 import { UploadCategory } from '../../common/enums/upload-category.enum'
+import { VIDEO_AVATAR_MIME_TYPE } from '../storage/constants/upload.constants'
 import { ChannelAdminsService } from './channel-admins.service'
 import { UpsertChannelAdminDto } from './dto/channel-admin.dto'
 
@@ -301,7 +302,10 @@ export class ChannelsController {
 	initFileUpload(@Body() dto: FileInitDto) {
 		return this.storageService.initUpload({
 			...dto,
-			category: UploadCategory.IMAGE,
+			category:
+				dto.mimeType === VIDEO_AVATAR_MIME_TYPE
+					? UploadCategory.VIDEO_AVATAR
+					: UploadCategory.IMAGE,
 			directory: FileType.CHANNEL_AVATAR
 		})
 	}
