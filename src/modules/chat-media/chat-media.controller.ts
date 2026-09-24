@@ -1,5 +1,4 @@
 import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common'
-import { Throttle } from '@nestjs/throttler'
 import { ChatMediaService } from './chat-media.service'
 import { ChatMediaQueryDto } from './dto/chat-media-query.dto'
 import { CanReadChatGuard } from '../../common/guards/can-read-chat.guard'
@@ -10,7 +9,6 @@ import { UserId } from '../../common/types/user-id.type'
 
 @Controller('chats/:chatId')
 @UseGuards(CanReadChatGuard)
-@Throttle({ default: { limit: 30, ttl: 60000 } })
 export class ChatMediaController {
 	constructor(private readonly chatMediaService: ChatMediaService) {}
 

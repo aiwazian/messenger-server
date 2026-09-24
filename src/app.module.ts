@@ -21,10 +21,11 @@ import { PushModule } from './modules/push/push.module'
 import { StorageModule } from './modules/storage/storage.module'
 import { StickersModule } from './modules/stickers/stickers.module'
 import { EmojiModule } from './modules/emoji/emoji.module'
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
+import { ThrottlerModule } from '@nestjs/throttler'
 import { APP_GUARD } from '@nestjs/core'
 import { ScheduleModule } from '@nestjs/schedule'
 import { AuthGuard } from './common/guards/auth.guard'
+import { UserThrottlerGuard } from './common/guards/user-throttler.guard'
 import { ChatReadStateModule } from './modules/chat-read-state/chat-read-state.module'
 import { NotificationSettingsModule } from './modules/notification-settings/notification-settings.module'
 
@@ -75,7 +76,7 @@ import { NotificationSettingsModule } from './modules/notification-settings/noti
 		ThrottlerModule.forRoot([
 			{
 				ttl: 60000,
-				limit: 100
+				limit: 200
 			}
 		]),
 		PrismaModule,
@@ -104,7 +105,7 @@ import { NotificationSettingsModule } from './modules/notification-settings/noti
 		AppService,
 		{
 			provide: APP_GUARD,
-			useClass: ThrottlerGuard
+			useClass: UserThrottlerGuard
 		},
 		{
 			provide: APP_GUARD,
