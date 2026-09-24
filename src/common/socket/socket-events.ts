@@ -6,6 +6,18 @@ export const SocketEvent = {
 	MESSAGE_UPDATE: 'message:update',
 	MESSAGE_DELETE: 'message:delete',
 
+	/**
+	 * Сообщение закрепили.
+	 *
+	 * forEveryone = false: закрепление «для себя» — событие уходит только в другие
+	 * сессии того же пользователя. forEveryone = true: закрепление «для всех» —
+	 * событие получают все участники чата.
+	 */
+	MESSAGE_PIN: 'message:pin',
+
+	/** Сообщение открепили; таргетинг тот же, что у message:pin. */
+	MESSAGE_UNPIN: 'message:unpin',
+
 	CHAT_TYPING: 'chat:typing',
 	CHAT_OPEN: 'chat:open',
 	CHAT_CLOSE: 'chat:close',

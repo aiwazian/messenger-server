@@ -24,6 +24,11 @@ export class UpsertChannelAdminDto {
 	@IsOptional()
 	@IsBoolean()
 	canManageAdmins?: boolean
+
+	/** Закрепление сообщений: право закреплять и откреплять сообщения для всех подписчиков. */
+	@IsOptional()
+	@IsBoolean()
+	canPinMessages?: boolean
 }
 
 /** Администратор канала и его права. */
@@ -35,6 +40,7 @@ export class ChannelAdminResponseDto {
 	canManageInviteLinks: boolean
 	canEditProfile: boolean
 	canManageAdmins: boolean
+	canPinMessages: boolean
 	grantedAt: string
 }
 
@@ -45,4 +51,5 @@ export class MyChannelPermissionsDto {
 	canManageInviteLinks: boolean
 	canEditProfile: boolean
 	canManageAdmins: boolean
+	canPinMessages: boolean
 }

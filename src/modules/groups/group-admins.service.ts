@@ -45,6 +45,7 @@ export class GroupAdminsService {
 			canManageInviteLinks: admin.canManageInviteLinks,
 			canEditProfile: admin.canEditProfile,
 			canManageAdmins: admin.canManageAdmins,
+			canPinMessages: admin.canPinMessages,
 			tag: admin.tag ?? undefined,
 			grantedAt: admin.grantedAt.toString()
 		}))
@@ -141,6 +142,7 @@ export class GroupAdminsService {
 			canManageInviteLinks: dto.canManageInviteLinks ?? false,
 			canEditProfile: dto.canEditProfile ?? false,
 			canManageAdmins: dto.canManageAdmins ?? false,
+			canPinMessages: dto.canPinMessages ?? false,
 			tag: tag ? tag : null
 		}
 
@@ -175,6 +177,7 @@ export class GroupAdminsService {
 			canManageInviteLinks: admin.canManageInviteLinks,
 			canEditProfile: admin.canEditProfile,
 			canManageAdmins: admin.canManageAdmins,
+			canPinMessages: admin.canPinMessages,
 			tag: admin.tag ?? undefined,
 			grantedAt: admin.grantedAt.toString()
 		}
@@ -211,7 +214,8 @@ export class GroupAdminsService {
 				isAdmin: true,
 				canManageInviteLinks: true,
 				canEditProfile: true,
-				canManageAdmins: true
+				canManageAdmins: true,
+				canPinMessages: true
 			}
 		}
 
@@ -225,6 +229,7 @@ export class GroupAdminsService {
 			canManageInviteLinks: admin?.canManageInviteLinks ?? false,
 			canEditProfile: admin?.canEditProfile ?? false,
 			canManageAdmins: admin?.canManageAdmins ?? false,
+			canPinMessages: admin?.canPinMessages ?? false,
 			tag: admin?.tag ?? undefined
 		}
 	}
