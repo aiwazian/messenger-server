@@ -1,6 +1,7 @@
 import { Prisma } from '../../generated/prisma/client'
 
 export const MESSAGE_INCLUDE = {
+	_count: { select: { comments: true } },
 	attachments: { include: { file: true } },
 	systemEvent: { select: { eventType: true } },
 	sticker: {

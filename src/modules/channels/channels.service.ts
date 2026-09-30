@@ -97,6 +97,63 @@ export class ChannelsService {
 		}
 	}
 
+	async setCommentsEnabled(id: ChannelId, commentsEnabled: boolean): Promise<ChannelResponseDto> {
+		const existingChannel = await this.prisma.channel.findUnique({ where: { id } })
+		if (!existingChannel) throw new NotFoundException('Channel not found')
+
+		if (existingChannel.commentsEnabled === commentsEnabled) {
+			return plainToInstance(ChannelResponseDto, existingChannel)
+		}
+
+		const channel = await this.prisma.channel.update({
+			where: { id },
+			data: { commentsEnabled }
+		})
+
+		await this.notifyCommentsSettingsChanged(id, { commentsEnabled: channel.commentsEnabled })
+
+		return plainToInstance(ChannelResponseDto, channel)
+	}
+
+	async setCommentsRestrictedToSubscribers(
+		id: ChannelId,
+		commentsRestrictedToSubscribers: boolean
+	): Promise<ChannelResponseDto> {
+		const existingChannel = await this.prisma.channel.findUnique({ where: { id } })
+		if (!existingChannel) throw new NotFoundException('Channel not found')
+
+		if (existingChannel.commentsRestrictedToSubscribers === commentsRestrictedToSubscribers) {
+			return plainToInstance(ChannelResponseDto, existingChannel)
+		}
+
+		const channel = await this.prisma.channel.update({
+			where: { id },
+			data: { commentsRestrictedToSubscribers }
+		})
+
+		await this.notifyCommentsSettingsChanged(id, {
+			commentsRestrictedToSubscribers: channel.commentsRestrictedToSubscribers
+		})
+
+		return plainToInstance(ChannelResponseDto, channel)
+	}
+
+	private async notifyCommentsSettingsChanged(
+		channelId: ChannelId,
+		payload:
+			| { commentsEnabled: boolean; commentsRestrictedToSubscribers?: never }
+			| { commentsEnabled?: never; commentsRestrictedToSubscribers: boolean }
+	): Promise<void> {
+		const recipients = await this.getChannelAudience(channelId)
+
+		for (const recipient of recipients) {
+			this.realtimeGateway.sendToUser(recipient, SocketEvent.CHAT_UPDATED, {
+				chatId: channelId,
+				...payload
+			})
+		}
+	}
+
 	private async getChannelAudience(channelId: ChannelId): Promise<UserId[]> {
 		const channel = await this.prisma.channel.findUnique({
 			where: { id: channelId },

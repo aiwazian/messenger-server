@@ -6,6 +6,12 @@ export const SocketEvent = {
 	MESSAGE_UPDATE: 'message:update',
 	MESSAGE_DELETE: 'message:delete',
 
+	/** Новый комментарий под постом канала; событие уходит в комнату канала. */
+	COMMENT_NEW: 'comment:new',
+
+	/** Все комментарии канала удалены владельцем. */
+	COMMENTS_CLEARED: 'comments:cleared',
+
 	/**
 	 * Сообщение закрепили.
 	 *

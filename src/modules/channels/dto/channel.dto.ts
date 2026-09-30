@@ -43,6 +43,14 @@ export class ChannelResponseDto {
 	@Expose()
 	noCopy: boolean
 
+	/** Включено ли комментирование постов канала. */
+	@Expose()
+	commentsEnabled: boolean
+
+	/** true — комментировать посты могут только подписчики канала. */
+	@Expose()
+	commentsRestrictedToSubscribers: boolean
+
 	@Expose()
 	@OmitNull()
 	avatars?: { fileId: string }[]
