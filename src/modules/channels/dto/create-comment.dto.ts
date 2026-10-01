@@ -13,4 +13,9 @@ export class CreateCommentDto {
 	@IsOptional()
 	@IsNumberString()
 	stickerId?: string
+
+	/** id комментария, на который отвечаем. Приходит строкой: id — BigInt. */
+	@IsOptional()
+	@IsNumberString()
+	replyToId?: string
 }

@@ -1,4 +1,4 @@
-import { Exclude, Expose, Type } from 'class-transformer'
+import { Exclude, Expose, Transform, Type } from 'class-transformer'
 import { OmitNull } from '../../../common/decorators/omit-null.decorator'
 import { CommentAuthorRole } from '../../../common/enums/comment-author-role.enum'
 import { MessageAttachmentDto, MessageStickerDto } from '../../messages/dto/message-response.dto'
@@ -15,6 +15,31 @@ export class CommentAuthorDto {
 	@Expose()
 	@OmitNull()
 	lastName?: string
+}
+
+@Exclude()
+export class CommentReplyPreviewDto {
+	@Expose()
+	id: number
+
+	@Expose()
+	senderId: number
+
+	@Expose()
+	messageType: MessageType
+
+	@Expose()
+	@OmitNull()
+	text?: string
+
+	@Expose()
+	@OmitNull()
+	senderName?: string
+
+	@Expose()
+	@OmitNull()
+	@Transform(({ obj }) => obj?.sticker?.emojis?.[0])
+	stickerEmoji?: string
 }
 
 @Exclude()
@@ -39,6 +64,14 @@ export class CommentResponseDto {
 	sendTime: number
 
 	@Expose()
+	@OmitNull()
+	isEdited?: boolean
+
+	@Expose()
+	@OmitNull()
+	editedAt?: number
+
+	@Expose()
 	senderRole: CommentAuthorRole
 
 	@Expose()
@@ -49,6 +82,11 @@ export class CommentResponseDto {
 	@Expose()
 	@OmitNull()
 	attachments: MessageAttachmentDto[]
+
+	@Expose()
+	@OmitNull()
+	@Type(() => CommentReplyPreviewDto)
+	replyTo?: CommentReplyPreviewDto
 
 	@Expose()
 	@Type(() => CommentAuthorDto)

@@ -9,6 +9,12 @@ export const SocketEvent = {
 	/** Новый комментарий под постом канала; событие уходит в комнату канала. */
 	COMMENT_NEW: 'comment:new',
 
+	/** Комментарий под постом канала отредактирован. */
+	COMMENT_EDIT: 'comment:edit',
+
+	/** Комментарий под постом канала удалён. */
+	COMMENT_DELETE: 'comment:delete',
+
 	/** Все комментарии канала удалены владельцем. */
 	COMMENTS_CLEARED: 'comments:cleared',
 

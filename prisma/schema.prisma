@@ -613,6 +613,13 @@ model Comment {
   sendTime             BigInt
   encryptionKeyVersion Int
 
+  isEdited Boolean @default(false)
+  editedAt BigInt?
+
+  replyToId BigInt?
+  replyTo   Comment?  @relation("CommentReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   Comment[] @relation("CommentReplies")
+
   sender      User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
   post        Message  @relation(fields: [postId], references: [id], onDelete: Cascade)
   channel     Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
@@ -684,18 +691,20 @@ model ChannelAdminPermission {
 
   canEditProfile Boolean @default(false)
 
-  canManageAdmins Boolean @default(false)
+	canManageAdmins Boolean @default(false)
 
-  canPinMessages Boolean @default(false)
+	canPinMessages Boolean @default(false)
 
-  grantedBy BigInt?
-  grantedAt BigInt
+	canDeleteComments Boolean @default(false)
 
-  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+	grantedBy BigInt?
+	grantedAt BigInt
 
-  @@unique([channelId, userId])
-  @@index([channelId])
+	channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+	user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+	@@unique([channelId, userId])
+	@@index([channelId])
 }
 
 model Group {

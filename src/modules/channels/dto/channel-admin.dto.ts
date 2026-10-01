@@ -29,6 +29,11 @@ export class UpsertChannelAdminDto {
 	@IsOptional()
 	@IsBoolean()
 	canPinMessages?: boolean
+
+	/** Удаление комментариев: право удалять чужие комментарии под постами канала. */
+	@IsOptional()
+	@IsBoolean()
+	canDeleteComments?: boolean
 }
 
 /** Администратор канала и его права. */
@@ -41,6 +46,7 @@ export class ChannelAdminResponseDto {
 	canEditProfile: boolean
 	canManageAdmins: boolean
 	canPinMessages: boolean
+	canDeleteComments: boolean
 	grantedAt: string
 }
 
@@ -52,4 +58,5 @@ export class MyChannelPermissionsDto {
 	canEditProfile: boolean
 	canManageAdmins: boolean
 	canPinMessages: boolean
+	canDeleteComments: boolean
 }

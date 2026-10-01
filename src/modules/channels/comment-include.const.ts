@@ -10,6 +10,17 @@ export const COMMENT_INCLUDE = {
 			emojis: true
 		}
 	},
+	replyTo: {
+		select: {
+			id: true,
+			senderId: true,
+			text: true,
+			messageType: true,
+			encryptionKeyVersion: true,
+			sticker: { select: { emojis: true } },
+			sender: { select: { firstName: true, lastName: true } }
+		}
+	},
 	sender: {
 		select: {
 			id: true,

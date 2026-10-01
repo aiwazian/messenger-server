@@ -1,10 +1,14 @@
 import {
 	Body,
 	Controller,
+	Delete,
 	Get,
 	Headers,
+	HttpCode,
+	HttpStatus,
 	Param,
 	ParseIntPipe,
+	Patch,
 	Post,
 	UseGuards
 } from '@nestjs/common'
@@ -18,6 +22,7 @@ import { ParseChannelIdPipe } from '../../common/pipes/parse-channel-id.pipe'
 import { ChannelId } from '../../common/types/channel-id.type'
 import { CreateCommentDto } from './dto/create-comment.dto'
 import { ConfirmCommentDto } from './dto/confirm-comment.dto'
+import { EditCommentDto } from './dto/edit-comment.dto'
 import { FileInitDto } from '../messages/dto/file-init.dto'
 
 @Controller('channels')
@@ -44,6 +49,32 @@ export class ChannelCommentsController {
 		@Headers('x-socket-id') socketId: string
 	) {
 		return this.channelCommentsService.create(channelId, postId, userId, dto, socketId)
+	}
+
+	@Patch(`:${PARAMS.CHANNEL_ID}/posts/:${PARAMS.MESSAGE_ID}/comments/:commentId`)
+	@UseGuards(ChannelExistsGuard, CanReadChatGuard)
+	edit(
+		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) channelId: ChannelId,
+		@Param(PARAMS.MESSAGE_ID, ParseIntPipe) postId: number,
+		@Param('commentId', ParseIntPipe) commentId: number,
+		@CurrentUserId() userId: UserId,
+		@Body() dto: EditCommentDto,
+		@Headers('x-socket-id') socketId: string
+	) {
+		return this.channelCommentsService.edit(channelId, postId, commentId, userId, dto, socketId)
+	}
+
+	@HttpCode(HttpStatus.NO_CONTENT)
+	@Delete(`:${PARAMS.CHANNEL_ID}/posts/:${PARAMS.MESSAGE_ID}/comments/:commentId`)
+	@UseGuards(ChannelExistsGuard, CanReadChatGuard)
+	delete(
+		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) channelId: ChannelId,
+		@Param(PARAMS.MESSAGE_ID, ParseIntPipe) postId: number,
+		@Param('commentId', ParseIntPipe) commentId: number,
+		@CurrentUserId() userId: UserId,
+		@Headers('x-socket-id') socketId: string
+	) {
+		return this.channelCommentsService.delete(channelId, postId, commentId, userId, socketId)
 	}
 
 	@Post(`:${PARAMS.CHANNEL_ID}/posts/:${PARAMS.MESSAGE_ID}/comments/files/init`)

@@ -7,9 +7,13 @@ import { StorageService } from '../storage/storage.service'
 import { SocketEvent } from '../../common/socket/socket-events'
 import { CommentAuthorRole } from '../../common/enums/comment-author-role.enum'
 import { FileType } from '../../common/enums/file-type.enum'
-import { CommentResponseDto } from './dto/comment-response.dto'
+import {
+	CommentReplyPreviewDto,
+	CommentResponseDto
+} from './dto/comment-response.dto'
 import { CreateCommentDto } from './dto/create-comment.dto'
 import { ConfirmCommentDto } from './dto/confirm-comment.dto'
+import { EditCommentDto } from './dto/edit-comment.dto'
 import { FileInitDto } from '../messages/dto/file-init.dto'
 import { MessageAttachmentDto, MessageStickerDto } from '../messages/dto/message-response.dto'
 import { COMMENT_INCLUDE, CommentWithRelations } from './comment-include.const'
@@ -25,6 +29,7 @@ type ChannelCommentContext = {
 	commentsEnabled: boolean
 	commentsRestrictedToSubscribers: boolean
 	adminUserIds: Set<string>
+	adminCanDeleteComments: Set<string>
 }
 
 @Injectable()
@@ -94,6 +99,18 @@ export class ChannelCommentsService {
 			keyVersion = version
 		}
 
+		let replyToId: bigint | null = null
+
+		if (dto.replyToId) {
+			const target = await this.prisma.comment.findFirst({
+				where: { id: BigInt(dto.replyToId), postId: BigInt(postId) },
+				select: { id: true }
+			})
+			if (!target) throw new NotFoundException('Reply comment not found')
+
+			replyToId = target.id
+		}
+
 		const comment = await this.prisma.comment.create({
 			data: {
 				postId: BigInt(postId),
@@ -103,7 +120,8 @@ export class ChannelCommentsService {
 				messageType,
 				stickerId,
 				sendTime: Date.now(),
-				encryptionKeyVersion: keyVersion
+				encryptionKeyVersion: keyVersion,
+				replyToId
 			},
 			include: COMMENT_INCLUDE
 		})
@@ -201,6 +219,87 @@ export class ChannelCommentsService {
 		return commentDto
 	}
 
+	async edit(
+		channelId: ChannelId,
+		postId: number,
+		commentId: number,
+		userId: UserId,
+		dto: EditCommentDto,
+		excludeSocketId?: string
+	): Promise<CommentResponseDto> {
+		const comment = await this.prisma.comment.findFirst({
+			where: { id: BigInt(commentId), postId: BigInt(postId), channelId }
+		})
+		if (!comment) throw new NotFoundException('Comment not found')
+
+		const channel = await this.getChannelCommentContext(channelId)
+		await this.assertCanComment(channelId, channel, userId)
+
+		if (comment.senderId !== userId) {
+			throw new ForbiddenException('You can edit only your own comments')
+		}
+
+		if (comment.messageType === MessageType.STICKER) {
+			throw new BadRequestException('Sticker comments cannot be edited')
+		}
+
+		const { encrypted, version } = this.encryption.encrypt(dto.text)
+
+		const updated = await this.prisma.comment.update({
+			where: { id: comment.id },
+			data: {
+				text: encrypted,
+				encryptionKeyVersion: version,
+				isEdited: true,
+				editedAt: Date.now()
+			},
+			include: COMMENT_INCLUDE
+		})
+
+		const commentDto = this.mapComment(updated, channel)
+
+		this.realtimeGateway.sendToChat(
+			ChatId(channelId),
+			SocketEvent.COMMENT_EDIT,
+			{ chatId: channelId, postId: BigInt(postId), comment: commentDto },
+			excludeSocketId
+		)
+
+		return commentDto
+	}
+
+	async delete(
+		channelId: ChannelId,
+		postId: number,
+		commentId: number,
+		userId: UserId,
+		excludeSocketId?: string
+	): Promise<void> {
+		const comment = await this.prisma.comment.findFirst({
+			where: { id: BigInt(commentId), postId: BigInt(postId), channelId },
+			select: { id: true, senderId: true }
+		})
+		if (!comment) throw new NotFoundException('Comment not found')
+
+		const channel = await this.getChannelCommentContext(channelId)
+		const isOwn = comment.senderId === userId
+		const canDeleteOthers =
+			channel.ownerId === userId || channel.adminCanDeleteComments.has(userId.toString())
+
+		if (!isOwn && !canDeleteOthers) {
+			throw new ForbiddenException('You can delete only your own comments')
+		}
+
+		await this.prisma.comment.delete({ where: { id: comment.id } })
+
+		this.realtimeGateway.sendToChat(
+			ChatId(channelId),
+			SocketEvent.COMMENT_DELETE,
+			{ chatId: channelId, postId: BigInt(postId), commentId: BigInt(commentId) },
+			excludeSocketId
+		)
+	}
+
 	async initFileUpload(
 		channelId: ChannelId,
 		postId: number,
@@ -262,7 +361,7 @@ export class ChannelCommentsService {
 				ownerId: true,
 				commentsEnabled: true,
 				commentsRestrictedToSubscribers: true,
-				adminPermissions: { select: { userId: true } }
+				adminPermissions: { select: { userId: true, canDeleteComments: true } }
 			}
 		})
 		if (!channel) throw new NotFoundException('Channel not found')
@@ -271,7 +370,10 @@ export class ChannelCommentsService {
 			ownerId: channel.ownerId,
 			commentsEnabled: channel.commentsEnabled,
 			commentsRestrictedToSubscribers: channel.commentsRestrictedToSubscribers,
-			adminUserIds: new Set(channel.adminPermissions.map((a) => a.userId.toString()))
+			adminUserIds: new Set(channel.adminPermissions.map((a) => a.userId.toString())),
+			adminCanDeleteComments: new Set(
+				channel.adminPermissions.filter((a) => a.canDeleteComments).map((a) => a.userId.toString())
+			)
 		}
 	}
 
@@ -322,6 +424,8 @@ export class ChannelCommentsService {
 				? this.encryption.decrypt(comment.text, comment.encryptionKeyVersion)
 				: undefined,
 			sendTime: comment.sendTime,
+			isEdited: comment.isEdited || undefined,
+			editedAt: comment.editedAt || undefined,
 			senderRole,
 			sticker: comment.sticker
 				? plainToInstance(MessageStickerDto, comment.sticker)
@@ -334,6 +438,23 @@ export class ChannelCommentsService {
 					sortOrder: f.sortOrder
 				})
 			),
+			replyTo: comment.replyTo
+				? plainToInstance(CommentReplyPreviewDto, {
+						id: comment.replyTo.id,
+						senderId: comment.replyTo.senderId,
+						messageType: comment.replyTo.messageType,
+						text: comment.replyTo.text
+							? this.encryption.decrypt(
+									comment.replyTo.text,
+									comment.replyTo.encryptionKeyVersion
+								)
+							: undefined,
+						senderName:
+							`${comment.replyTo.sender.firstName ?? ''} ${comment.replyTo.sender.lastName ?? ''}`
+								.trim() || undefined,
+						stickerEmoji: comment.replyTo.sticker?.emojis?.[0]
+					})
+				: undefined,
 			sender: comment.sender
 		})
 	}
