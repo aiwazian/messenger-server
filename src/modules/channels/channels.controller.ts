@@ -29,6 +29,8 @@ import { ParseIntPipe } from '@nestjs/common'
 import { CreateInviteLinkDto } from '../../common/dtos/create-invite-link.dto'
 import { UpdateInviteLinkDto } from '../../common/dtos/update-invite-link.dto'
 import { SetNoCopyDto } from '../../common/dtos/set-no-copy.dto'
+import { SetCommentsEnabledDto } from '../../common/dtos/set-comments-enabled.dto'
+import { SetCommentsRestrictedDto } from '../../common/dtos/set-comments-restricted.dto'
 import { CreateChannelUseCase } from './use-cases/create-channel.use-case'
 import { FileInitDto } from '../messages/dto/file-init.dto'
 import { StorageService } from '../storage/storage.service'
@@ -38,6 +40,7 @@ import { FileType } from '../../common/enums/file-type.enum'
 import { UploadCategory } from '../../common/enums/upload-category.enum'
 import { VIDEO_AVATAR_MIME_TYPE } from '../storage/constants/upload.constants'
 import { ChannelAdminsService } from './channel-admins.service'
+import { ChannelCommentsService } from './channel-comments.service'
 import { UpsertChannelAdminDto } from './dto/channel-admin.dto'
 
 @Controller('channels')
@@ -47,7 +50,8 @@ export class ChannelsController {
 		private readonly createChannelUseCase: CreateChannelUseCase,
 		private readonly storageService: StorageService,
 		private readonly avatarAccess: AvatarAccessService,
-		private readonly channelAdminsService: ChannelAdminsService
+		private readonly channelAdminsService: ChannelAdminsService,
+		private readonly channelCommentsService: ChannelCommentsService
 	) {}
 
 	@Post()
@@ -140,6 +144,34 @@ export class ChannelsController {
 		@Body() dto: SetNoCopyDto
 	) {
 		return this.channelsService.setNoCopy(id, dto.noCopy)
+	}
+
+	@Patch(`:${PARAMS.CHANNEL_ID}/comments-enabled`)
+	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	setCommentsEnabled(
+		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
+		@Body() dto: SetCommentsEnabledDto
+	) {
+		return this.channelsService.setCommentsEnabled(id, dto.commentsEnabled)
+	}
+
+	@Patch(`:${PARAMS.CHANNEL_ID}/comments-restricted`)
+	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	setCommentsRestrictedToSubscribers(
+		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
+		@Body() dto: SetCommentsRestrictedDto
+	) {
+		return this.channelsService.setCommentsRestrictedToSubscribers(
+			id,
+			dto.commentsRestrictedToSubscribers
+		)
+	}
+
+	@HttpCode(HttpStatus.NO_CONTENT)
+	@Delete(`:${PARAMS.CHANNEL_ID}/comments`)
+	@UseGuards(ChannelExistsGuard, ChannelOwnerGuard)
+	deleteAllComments(@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId) {
+		return this.channelCommentsService.deleteAll(id)
 	}
 
 	@Patch(`:${PARAMS.CHANNEL_ID}`)

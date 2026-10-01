@@ -44,6 +44,7 @@ export class ChannelAdminsService {
 			canEditProfile: admin.canEditProfile,
 			canManageAdmins: admin.canManageAdmins,
 			canPinMessages: admin.canPinMessages,
+			canDeleteComments: admin.canDeleteComments,
 			grantedAt: admin.grantedAt.toString()
 		}))
 	}
@@ -120,7 +121,8 @@ export class ChannelAdminsService {
 			canManageInviteLinks: dto.canManageInviteLinks ?? false,
 			canEditProfile: dto.canEditProfile ?? false,
 			canManageAdmins: dto.canManageAdmins ?? false,
-			canPinMessages: dto.canPinMessages ?? false
+			canPinMessages: dto.canPinMessages ?? false,
+			canDeleteComments: dto.canDeleteComments ?? false
 		}
 
 		if (channel.ownerId !== grantedBy) {
@@ -155,6 +157,7 @@ export class ChannelAdminsService {
 			canEditProfile: admin.canEditProfile,
 			canManageAdmins: admin.canManageAdmins,
 			canPinMessages: admin.canPinMessages,
+			canDeleteComments: admin.canDeleteComments,
 			grantedAt: admin.grantedAt.toString()
 		}
 	}
@@ -191,7 +194,8 @@ export class ChannelAdminsService {
 				canManageInviteLinks: true,
 				canEditProfile: true,
 				canManageAdmins: true,
-				canPinMessages: true
+				canPinMessages: true,
+				canDeleteComments: true
 			}
 		}
 
@@ -205,7 +209,8 @@ export class ChannelAdminsService {
 			canManageInviteLinks: admin?.canManageInviteLinks ?? false,
 			canEditProfile: admin?.canEditProfile ?? false,
 			canManageAdmins: admin?.canManageAdmins ?? false,
-			canPinMessages: admin?.canPinMessages ?? false
+			canPinMessages: admin?.canPinMessages ?? false,
+			canDeleteComments: admin?.canDeleteComments ?? false
 		}
 	}
 

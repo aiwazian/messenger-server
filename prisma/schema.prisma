@@ -125,6 +125,8 @@ model User {
 
   privacyExceptionsOwned  PrivacyException[] @relation("PrivacyExceptionOwner")
   privacyExceptionsTarget PrivacyException[] @relation("PrivacyExceptionTarget")
+
+  comments Comment[]
 }
 
 model UserPhoto {
@@ -268,6 +270,7 @@ model Message {
   messageReactions MessageReaction[]
   pins             MessagePin[]
   chatPins         ChatPinnedMessage[]
+  comments         Comment[]
 
   @@index([chatId, sendTime])
   @@index([chatId, id])
@@ -422,6 +425,7 @@ model File {
   height    Int?
 
   attachments   MessageAttachment[]
+  commentAttachments CommentAttachment[]
   userPhotos    UserPhoto[]
   channelPhotos ChannelPhoto[]
   groupPhotos   GroupPhoto[]
@@ -489,6 +493,7 @@ model Sticker {
   file File        @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
   messages Message[]
+  comments Comment[]
 
   @@index([packId, sortOrder])
   @@index([fileId])
@@ -580,6 +585,9 @@ model Channel {
 
   noCopy Boolean @default(false)
 
+  commentsEnabled Boolean @default(false)
+  commentsRestrictedToSubscribers Boolean @default(true)
+
   owner User @relation("OwnedChannels", fields: [ownerId], references: [id], onDelete: Cascade)
 
   profileUsers User[] @relation("UserProfileChannel")
@@ -590,6 +598,52 @@ model Channel {
   adminPermissions ChannelAdminPermission[]
   inviteLinks  ChannelInviteLink[]
   joinRequests ChannelJoinRequest[]
+  comments     Comment[]
+}
+
+model Comment {
+  id        BigInt @id @default(autoincrement())
+  postId    BigInt
+  channelId BigInt
+  senderId  BigInt
+
+  text                 String?
+  messageType          MessageType @default(TEXT)
+  stickerId            BigInt?
+  sendTime             BigInt
+  encryptionKeyVersion Int
+
+  isEdited Boolean @default(false)
+  editedAt BigInt?
+
+  replyToId BigInt?
+  replyTo   Comment?  @relation("CommentReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   Comment[] @relation("CommentReplies")
+
+  sender      User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  post        Message  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  channel     Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  sticker     Sticker? @relation(fields: [stickerId], references: [id], onDelete: SetNull)
+  attachments CommentAttachment[]
+
+  @@index([postId, id])
+  @@index([channelId, id])
+  @@index([senderId])
+}
+
+model CommentAttachment {
+  id        Int            @id @default(autoincrement())
+  commentId BigInt
+  fileId    String
+  type      AttachmentType
+  sortOrder Int            @default(0)
+
+  comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  file    File    @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, fileId])
+  @@index([commentId])
+  @@index([fileId])
 }
 
 model ChannelPhoto {
@@ -637,18 +691,20 @@ model ChannelAdminPermission {
 
   canEditProfile Boolean @default(false)
 
-  canManageAdmins Boolean @default(false)
+	canManageAdmins Boolean @default(false)
 
-  canPinMessages Boolean @default(false)
+	canPinMessages Boolean @default(false)
 
-  grantedBy BigInt?
-  grantedAt BigInt
+	canDeleteComments Boolean @default(false)
 
-  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+	grantedBy BigInt?
+	grantedAt BigInt
 
-  @@unique([channelId, userId])
-  @@index([channelId])
+	channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+	user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+	@@unique([channelId, userId])
+	@@index([channelId])
 }
 
 model Group {

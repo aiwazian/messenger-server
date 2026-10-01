@@ -10,6 +10,8 @@ import { InviteLinksService } from '../invites/invite-links.service'
 import { CreateChannelUseCase } from './use-cases/create-channel.use-case'
 import { StorageModule } from '../storage/storage.module'
 import { ChannelAdminsService } from './channel-admins.service'
+import { ChannelCommentsService } from './channel-comments.service'
+import { ChannelCommentsController } from './channel-comments.controller'
 
 @Module({
 	/*
@@ -17,10 +19,11 @@ import { ChannelAdminsService } from './channel-admins.service'
 	 * собственные зависимости, и второй экземпляр вне StorageModule не собрался бы.
 	 */
 	imports: [SessionsModule, SearchModule, ChatsModule, PrismaModule, StorageModule],
-	controllers: [ChannelsController],
+	controllers: [ChannelsController, ChannelCommentsController],
 	providers: [
 		ChannelsService,
 		ChannelAdminsService,
+		ChannelCommentsService,
 		EncryptionService,
 		InviteLinksService,
 		CreateChannelUseCase

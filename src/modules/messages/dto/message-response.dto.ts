@@ -156,6 +156,10 @@ export class MessageResponseDto {
 
 	@Expose()
 	@OmitNull()
+	commentsCount?: number
+
+	@Expose()
+	@OmitNull()
 	replyToId?: number
 
 	@Expose()

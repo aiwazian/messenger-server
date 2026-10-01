@@ -439,6 +439,7 @@ export class MessagesService {
 			isEdited: message.isEdited || undefined,
 			editedAt: context?.edits.get(message.id.toString()),
 			systemEventType: message.systemEvent?.eventType,
+			commentsCount: message._count?.comments,
 			attachments: message.attachments.map((f) =>
 				plainToInstance(MessageAttachmentDto, {
 					...f.file,
