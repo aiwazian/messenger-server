@@ -127,6 +127,9 @@ model User {
   privacyExceptionsTarget PrivacyException[] @relation("PrivacyExceptionTarget")
 
   comments Comment[]
+
+  wallpaperId Int?
+  wallpaper   Wallpaper? @relation(fields: [wallpaperId], references: [id], onDelete: SetNull)
 }
 
 model UserPhoto {
@@ -599,6 +602,9 @@ model Channel {
   inviteLinks  ChannelInviteLink[]
   joinRequests ChannelJoinRequest[]
   comments     Comment[]
+
+  wallpaperId Int?
+  wallpaper   Wallpaper? @relation(fields: [wallpaperId], references: [id], onDelete: SetNull)
 }
 
 model Comment {
@@ -724,6 +730,9 @@ model Group {
   adminPermissions GroupAdminPermission[]
   inviteLinks  GroupInviteLink[]
   joinRequests GroupJoinRequest[]
+
+  wallpaperId Int?
+  wallpaper   Wallpaper? @relation(fields: [wallpaperId], references: [id], onDelete: SetNull)
 }
 
 model GroupPhoto {
@@ -906,10 +915,20 @@ model FileCleanupTask {
 
 model Wallpaper {
   id     Int    @id @default(autoincrement())
-  fileId String @unique
+  fileId String
 
-  file  File   @relation(fields: [fileId], references: [id], onDelete: Cascade)
-  chats Chat[]
+  darken  Int   @default(0)
+  blur    Int   @default(0)
+  offsetX Float @default(0)
+  offsetY Float @default(0)
+
+  file     File      @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  chats    Chat[]
+  users    User[]
+  channels Channel[]
+  groups   Group[]
+
+  @@index([fileId])
 }
 
 model UserBlackList {

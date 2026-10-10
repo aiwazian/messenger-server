@@ -3,6 +3,7 @@ export enum FileType {
 	USER_AVATAR = 'avatars/users',
 	CHANNEL_AVATAR = 'avatars/channels',
 	GROUP_AVATAR = 'avatars/groups',
+	WALLPAPER = 'wallpapers',
 	STICKER = 'stickers',
 	EMOJI = 'emoji'
 }
