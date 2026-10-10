@@ -28,6 +28,6 @@ import { ChannelCommentsController } from './channel-comments.controller'
 		InviteLinksService,
 		CreateChannelUseCase
 	],
-	exports: [ChannelAdminsService]
+	exports: [ChannelsService, ChannelAdminsService]
 })
 export class ChannelsModule {}

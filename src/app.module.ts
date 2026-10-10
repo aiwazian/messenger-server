@@ -28,6 +28,7 @@ import { AuthGuard } from './common/guards/auth.guard'
 import { UserThrottlerGuard } from './common/guards/user-throttler.guard'
 import { ChatReadStateModule } from './modules/chat-read-state/chat-read-state.module'
 import { NotificationSettingsModule } from './modules/notification-settings/notification-settings.module'
+import { WallpapersModule } from './modules/wallpapers/wallpapers.module'
 
 @Module({
 	imports: [
@@ -98,7 +99,8 @@ import { NotificationSettingsModule } from './modules/notification-settings/noti
 		StorageModule,
 		StickersModule,
 		EmojiModule,
-		ChatReadStateModule
+		ChatReadStateModule,
+		WallpapersModule
 	],
 	controllers: [AppController],
 	providers: [

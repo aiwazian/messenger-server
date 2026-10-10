@@ -21,6 +21,6 @@ import { GroupAdminsService } from './group-admins.service'
 		InviteLinksService,
 		CreateGroupUseCase
 	],
-	exports: [GroupAdminsService]
+	exports: [GroupsService, GroupAdminsService]
 })
 export class GroupsModule {}
