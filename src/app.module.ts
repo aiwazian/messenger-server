@@ -29,6 +29,7 @@ import { UserThrottlerGuard } from './common/guards/user-throttler.guard'
 import { ChatReadStateModule } from './modules/chat-read-state/chat-read-state.module'
 import { NotificationSettingsModule } from './modules/notification-settings/notification-settings.module'
 import { WallpapersModule } from './modules/wallpapers/wallpapers.module'
+import { RestoreCredentialsModule } from './modules/restore-credentials/restore-credentials.module'
 
 @Module({
 	imports: [
@@ -69,7 +70,10 @@ import { WallpapersModule } from './modules/wallpapers/wallpapers.module'
 				SMTP_SECURE: Joi.boolean().required(),
 				SMTP_USER: Joi.string().required(),
 				SMTP_PASS: Joi.string().required(),
-				SMTP_FROM: Joi.string().required()
+				SMTP_FROM: Joi.string().required(),
+
+				WEBAUTHN_RP_ID: Joi.string().hostname().optional(),
+				WEBAUTHN_EXPECTED_ORIGINS: Joi.string().optional()
 			}),
 			validationOptions: { abortEarly: false }
 		}),
@@ -100,7 +104,8 @@ import { WallpapersModule } from './modules/wallpapers/wallpapers.module'
 		StickersModule,
 		EmojiModule,
 		ChatReadStateModule,
-		WallpapersModule
+		WallpapersModule,
+		RestoreCredentialsModule
 	],
 	controllers: [AppController],
 	providers: [

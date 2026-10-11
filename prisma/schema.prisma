@@ -86,6 +86,7 @@ model User {
 
   chats        Chat[]
   sessions     Session[]
+  restoreCredentials RestoreCredential[]
   sentMessages Message[]
   chatReadStates ChatReadState[]
   chatFolders  ChatFolder[]
@@ -159,10 +160,31 @@ model Session {
   createdAt   BigInt
   lastSeen    BigInt?
 
+  restoreCredentials RestoreCredential[]
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([installationId])
+}
+
+model RestoreCredential {
+  id           Int     @id @default(autoincrement())
+  userId       BigInt
+  sessionId    Int
+
+  credentialId String  @unique
+  publicKey    Bytes
+  counter      Int     @default(0)
+
+  createdAt  BigInt
+  lastUsedAt BigInt?
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([sessionId])
 }
 
 model Chat {
