@@ -161,15 +161,25 @@ export class UsersService {
 		const user = await this.prisma.user.findUnique({ where: { id } })
 		if (!user) throw new NotFoundException('User not found')
 
-		if (login !== user.username) {
-			const isAvailable = await this.searchService.isUsernameAvailable(login)
-			if (!isAvailable) throw new ConflictException('Username is already taken')
+		if (login !== user.login) {
+			const existing = await this.prisma.user.findFirst({
+				where: { login },
+				select: { id: true }
+			})
+			if (existing) throw new ConflictException('Login is already taken')
 		}
 
-		await this.prisma.user.update({
-			where: { id },
-			data: { username: login }
-		})
+		try {
+			await this.prisma.user.update({
+				where: { id },
+				data: { login }
+			})
+		} catch (error) {
+			if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+				throw new ConflictException('Login is already taken')
+			}
+			throw error
+		}
 	}
 
 	async updateUser(id: UserId, dto: UpdateUserDto): Promise<UserResponseDto> {
