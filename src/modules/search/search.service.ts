@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common'
 import { SearchResponseDto } from './dto/search-response.dto'
 import { plainToInstance } from 'class-transformer'
 import { SearchQueryDto } from './dto/search-query.dto'
+import { UsernameAvailabilityDto } from './dto/username-availability.dto'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { ChatId } from '../../common/types/chat-id.type'
 import { ChannelType, GroupType } from '../../generated/prisma/enums'
@@ -36,31 +37,31 @@ export class SearchService {
 		private readonly config: ConfigService,
 		private readonly prisma: PrismaService,
 		private readonly moderation: ContentModerationService
-	) { }
+	) {}
 
-	async isUsernameAvailable(username: string): Promise<{ available: boolean }> {
+	async isUsernameAvailable(username: string): Promise<UsernameAvailabilityDto> {
 		const isAllowed = await this.moderation.isAllowed(username)
-		if (!isAllowed) return { available: false }
+		if (!isAllowed) return { available: false, reason: 'blocked' }
 
 		const userExists = await this.prisma.user.findFirst({
 			where: { username },
 			select: { id: true }
 		})
-		if (userExists) return { available: false }
+		if (userExists) return { available: false, reason: 'taken' }
 
 		const groupExists = await this.prisma.group.findFirst({
 			where: { username },
 			select: { id: true }
 		})
-		if (groupExists) return { available: false }
+		if (groupExists) return { available: false, reason: 'taken' }
 
 		const channelExists = await this.prisma.channel.findFirst({
 			where: { username },
 			select: { id: true }
 		})
-		if (channelExists) return { available: false }
+		if (channelExists) return { available: false, reason: 'taken' }
 
-		return { available: true }
+		return { available: true, reason: null }
 	}
 
 	async resolveUsername(
@@ -117,10 +118,7 @@ export class SearchService {
 
 		// Кандидатов забираем с запасом и без skip: limit/offset применяются только
 		// после ранжирования, иначе лучшее совпадение может не попасть в страницу.
-		const take = Math.min(
-			offset + limit + SearchService.OVERFETCH,
-			SearchService.MAX_CANDIDATES
-		)
+		const take = Math.min(offset + limit + SearchService.OVERFETCH, SearchService.MAX_CANDIDATES)
 
 		const [users, channels, groups] = await Promise.all([
 			this.prisma.user.findMany({
@@ -247,11 +245,7 @@ export class SearchService {
 	 * и символы шаблона LIKE, которые Prisma не экранирует.
 	 */
 	private static normalizeQuery(raw: string): string {
-		return raw
-			.trim()
-			.replace(/^@+/, '')
-			.replace(/[%\\]/g, '')
-			.toLowerCase()
+		return raw.trim().replace(/^@+/, '').replace(/[%\\]/g, '').toLowerCase()
 	}
 
 	private static toCandidate(
