@@ -14,6 +14,7 @@ import {
 import { MessagesService } from './messages.service'
 import { TextMessageDto } from './dto/text-message.dto'
 import { StickerMessageDto } from './dto/sticker-message.dto'
+import { ContactMessageDto } from './dto/contact-message.dto'
 import { DeleteMessageDto } from './dto/delete-message.dto'
 import { ClearHistoryDto } from './dto/clear-history.dto'
 import { FileInitDto } from './dto/file-init.dto'
@@ -31,6 +32,7 @@ import { EditMessageDto } from './dto/edit-message.dto'
 import { PinMessageDto } from './dto/pin-message.dto'
 import { SendMessageUseCase } from './use-cases/send-message.use-case'
 import { SendStickerMessageUseCase } from './use-cases/send-sticker-message.use-case'
+import { SendContactMessageUseCase } from './use-cases/send-contact-message.use-case'
 import { GetMessagesWindowUseCase } from './use-cases/get-messages-window.use-case'
 import { SearchChatMessagesUseCase } from './use-cases/search-chat-messages.use-case'
 import { GetMessagesWindowDto } from './dto/get-messages-window.dto'
@@ -46,6 +48,7 @@ export class MessagesController {
 		private readonly messagesService: MessagesService,
 		private readonly sendMessageUseCase: SendMessageUseCase,
 		private readonly sendStickerMessageUseCase: SendStickerMessageUseCase,
+		private readonly sendContactMessageUseCase: SendContactMessageUseCase,
 		private readonly getMessagesWindowUseCase: GetMessagesWindowUseCase,
 		private readonly searchChatMessagesUseCase: SearchChatMessagesUseCase,
 		private readonly forwardMessageUseCase: ForwardMessageUseCase,
@@ -72,6 +75,17 @@ export class MessagesController {
 		@Headers('x-socket-id') socketId: string
 	) {
 		return this.sendStickerMessageUseCase.execute(userId, chatId, dto, socketId)
+	}
+
+	@Post('contacts')
+	@UseGuards(CanSendMessageGuard)
+	sendContactMessage(
+		@Param('chatId', ParseChatIdPipe) chatId: ChatId,
+		@Body() dto: ContactMessageDto,
+		@CurrentUserId() userId: UserId,
+		@Headers('x-socket-id') socketId: string
+	) {
+		return this.sendContactMessageUseCase.send(userId, chatId, dto, socketId)
 	}
 
 	@Post('files/init')

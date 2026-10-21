@@ -105,6 +105,36 @@ export class MessageReplyPreviewDto {
 }
 
 @Exclude()
+export class MessageContactDto {
+	@Expose()
+	name: string
+
+	@Expose()
+	phones: string[]
+
+	@Expose()
+	emails: string[]
+
+	@Expose()
+	urls: string[]
+
+	@Expose()
+	addresses: string[]
+
+	@Expose()
+	@OmitNull()
+	organization?: string
+
+	@Expose()
+	@OmitNull()
+	jobTitle?: string
+
+	@Expose()
+	@OmitNull()
+	birthday?: string
+}
+
+@Exclude()
 export class MessageResponseDto {
 	@Expose()
 	id: number
@@ -145,6 +175,11 @@ export class MessageResponseDto {
 	@OmitNull()
 	@Type(() => MessageStickerDto)
 	sticker?: MessageStickerDto
+
+	@Expose()
+	@OmitNull()
+	@Type(() => MessageContactDto)
+	contact?: MessageContactDto
 
 	@Expose()
 	@OmitNull()

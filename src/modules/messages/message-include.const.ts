@@ -12,6 +12,7 @@ export const MESSAGE_INCLUDE = {
 			emojis: true
 		}
 	},
+	contact: true,
 	replyTo: {
 		select: {
 			id: true,

@@ -47,6 +47,7 @@ enum FileStatus {
 enum MessageType {
   TEXT
   STICKER
+  CONTACT
   SYSTEM
 }
 
@@ -281,6 +282,9 @@ model Message {
   stickerId BigInt?
   sticker   Sticker? @relation(fields: [stickerId], references: [id], onDelete: SetNull)
 
+  contactId Int?
+  contact   MessageContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
   replyToId BigInt?
   replyTo   Message?  @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
   replies   Message[] @relation("MessageReplies")
@@ -306,6 +310,23 @@ model Message {
   @@index([chatId, messageType])
   @@index([encryptionKeyVersion])
   @@index([stickerId])
+  @@index([contactId])
+}
+
+model MessageContact {
+  id    Int @id @default(autoincrement())
+  name  String
+
+  phones    String[]
+  emails    String[]
+  urls      String[]
+  addresses String[]
+
+  organization String?
+  jobTitle     String?
+  birthday     String?
+
+  messages Message[]
 }
 
 /**
