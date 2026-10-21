@@ -48,6 +48,15 @@ export class ChatMediaController {
 		return this.chatMediaService.getVoices(userId, chatId, dto)
 	}
 
+	@Get('contacts')
+	getContacts(
+		@Param('chatId', ParseChatIdPipe) chatId: ChatId,
+		@CurrentUserId() userId: UserId,
+		@Query() dto: ChatMediaQueryDto
+	) {
+		return this.chatMediaService.getContacts(userId, chatId, dto)
+	}
+
 	@Get('media-counts')
 	getCounts(@Param('chatId', ParseChatIdPipe) chatId: ChatId, @CurrentUserId() userId: UserId) {
 		return this.chatMediaService.getCounts(userId, chatId)

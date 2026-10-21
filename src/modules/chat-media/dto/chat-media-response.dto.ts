@@ -67,4 +67,60 @@ export class ChatMediaCountsResponseDto {
 
 	@Expose()
 	voices: number
+
+	@Expose()
+	contacts: number
+}
+
+@Exclude()
+export class ChatContactDto {
+	@Expose()
+	contactId: number
+
+	@Expose()
+	messageId: number
+
+	@Expose()
+	senderId: number
+
+	@Expose()
+	sendTime: number
+
+	@Expose()
+	name: string
+
+	@Expose()
+	phones: string[]
+
+	@Expose()
+	emails: string[]
+
+	@Expose()
+	urls: string[]
+
+	@Expose()
+	addresses: string[]
+
+	@Expose()
+	@OmitNull()
+	organization?: string
+
+	@Expose()
+	@OmitNull()
+	jobTitle?: string
+
+	@Expose()
+	@OmitNull()
+	birthday?: string
+}
+
+@Exclude()
+export class ChatContactsResponseDto {
+	@Expose()
+	@Type(() => ChatContactDto)
+	items: ChatContactDto[]
+
+	@Expose()
+	@OmitNull()
+	nextCursorId?: number
 }

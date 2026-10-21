@@ -5,7 +5,8 @@ import {
 	IsArray,
 	IsBoolean,
 	IsNumberString,
-	IsOptional
+	IsOptional,
+	IsString
 } from 'class-validator'
 
 export class ForwardMessageDto {
@@ -23,4 +24,10 @@ export class ForwardMessageDto {
 	@IsOptional()
 	@IsBoolean()
 	hideCaption: boolean = false
+
+	@IsOptional()
+	@IsArray()
+	@ArrayMaxSize(100)
+	@IsString({ each: true })
+	fileIds?: string[]
 }
