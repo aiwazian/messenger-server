@@ -51,13 +51,19 @@ export class ForwardMessageUseCase {
 			throw new ForbiddenException('System messages cannot be forwarded')
 		}
 
-		if (dto.hideCaption && source.attachments.length === 0) {
+		const attachments = this.selectAttachments(source.attachments, dto.fileIds)
+
+		if (dto.fileIds?.length && attachments.length !== dto.fileIds.length) {
+			throw new BadRequestException('Some fileIds do not belong to the message')
+		}
+
+		if (dto.hideCaption && attachments.length === 0) {
 			throw new BadRequestException('Caption can only be hidden for messages with attachments')
 		}
 
-		this.assertMediaAttachmentsLimit(source.attachments.map((att) => att.type))
+		this.assertMediaAttachmentsLimit(attachments.map((att) => att.type))
 
-		await this.assertSourceForwardable(userId, sourceChatId)
+		this.assertSourceForwardable(userId, sourceChatId)
 
 		const originChatId = dto.hideAuthor || dto.hideCaption ? null : this.resolveOriginChatId(source)
 		const plainText = dto.hideCaption
@@ -74,6 +80,7 @@ export class ForwardMessageUseCase {
 					userId,
 					targetChatId,
 					source,
+					attachments,
 					originChatId,
 					plainText,
 					excludeSocketId
@@ -82,6 +89,17 @@ export class ForwardMessageUseCase {
 		}
 
 		return results
+	}
+
+	private selectAttachments(
+		sourceAttachments: Array<{ fileId: string; type: any; sortOrder: number }>,
+		fileIds?: string[]
+	): Array<{ fileId: string; type: any; sortOrder: number }> {
+		if (!fileIds?.length) {
+			return sourceAttachments
+		}
+
+		return sourceAttachments.filter((att) => fileIds.includes(att.fileId))
 	}
 
 	private assertMediaAttachmentsLimit(types: AttachmentType[]): void {
@@ -214,8 +232,10 @@ export class ForwardMessageUseCase {
 		source: {
 			messageType: MessageType
 			stickerId: bigint | null
+			contactId: number | null
 			attachments: Array<{ fileId: string; type: any; sortOrder: number }>
 		},
+		attachments: Array<{ fileId: string; type: any; sortOrder: number }>,
 		originChatId: bigint | null,
 		plainText: string | null,
 		excludeSocketId: string
@@ -242,11 +262,12 @@ export class ForwardMessageUseCase {
 				sendTime: Date.now(),
 				messageType: source.messageType,
 				stickerId: source.stickerId,
+				contactId: source.contactId,
 				encryptionKeyVersion: encryptedText?.version ?? this.encryption.currentVersion,
 				forwardedFromChatId: originChatId,
 				attachments: {
 					createMany: {
-						data: source.attachments.map((attachment) => ({
+						data: attachments.map((attachment) => ({
 							fileId: attachment.fileId,
 							type: attachment.type,
 							sortOrder: attachment.sortOrder

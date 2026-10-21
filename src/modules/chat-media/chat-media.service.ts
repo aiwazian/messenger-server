@@ -3,11 +3,15 @@ import { plainToInstance } from 'class-transformer'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
-import { AttachmentType, FileStatus } from '../../generated/prisma/enums'
+import { AttachmentType, FileStatus, MessageType } from '../../generated/prisma/enums'
 import { Prisma } from '../../generated/prisma/client'
 import { MessagesService } from '../messages/messages.service'
 import { ChatMediaQueryDto } from './dto/chat-media-query.dto'
-import { ChatMediaCountsResponseDto, ChatMediaResponseDto } from './dto/chat-media-response.dto'
+import {
+	ChatContactsResponseDto,
+	ChatMediaCountsResponseDto,
+	ChatMediaResponseDto
+} from './dto/chat-media-response.dto'
 
 const MEDIA_TYPES: AttachmentType[] = [AttachmentType.IMAGE, AttachmentType.VIDEO]
 
@@ -52,10 +56,54 @@ export class ChatMediaService {
 		return this.getAttachments(userId, chatId, VOICE_TYPES, dto)
 	}
 
+	async getContacts(userId: UserId, chatId: ChatId, dto: ChatMediaQueryDto): Promise<ChatContactsResponseDto> {
+		const rows = await this.prisma.message.findMany({
+			where: {
+				...this.messagesService.buildChatMessagesWhere(userId, chatId),
+				messageType: MessageType.CONTACT
+			},
+			include: { contact: true },
+			orderBy: { id: 'desc' },
+			take: dto.limit + 1,
+			...(dto.cursorId ? { cursor: { id: BigInt(dto.cursorId) }, skip: 1 } : {})
+		})
+
+		const page = rows.slice(0, dto.limit)
+		const hasMore = rows.length > dto.limit
+
+		return plainToInstance(ChatContactsResponseDto, {
+			items: page.flatMap((row) => {
+				const contact = row.contact
+
+				if (!contact) {
+					return []
+				}
+
+				return [
+					{
+						contactId: contact.id,
+						messageId: Number(row.id),
+						senderId: Number(row.senderId),
+						sendTime: Number(row.sendTime),
+						name: contact.name,
+						phones: contact.phones,
+						emails: contact.emails,
+						urls: contact.urls,
+						addresses: contact.addresses,
+						organization: contact.organization,
+						jobTitle: contact.jobTitle,
+						birthday: contact.birthday
+					}
+				]
+			}),
+			nextCursorId: hasMore ? Number(page[page.length - 1].id) : undefined
+		})
+	}
+
 	async getCounts(userId: UserId, chatId: ChatId): Promise<ChatMediaCountsResponseDto> {
 		const chatMessagesWhere = this.messagesService.buildChatMessagesWhere(userId, chatId)
 
-		const [grouped, musicCount] = await Promise.all([
+		const [grouped, musicCount, contactsCount] = await Promise.all([
 			this.prisma.messageAttachment.groupBy({
 				by: ['type'],
 				where: {
@@ -70,6 +118,11 @@ export class ChatMediaService {
 					type: AttachmentType.FILE,
 					file: { status: { not: FileStatus.FAILED }, OR: MUSIC_NAME_FILTERS }
 				}
+			}),
+			this.prisma.message.count({
+				where: {
+					AND: [chatMessagesWhere, { messageType: MessageType.CONTACT }]
+				}
 			})
 		])
 
@@ -83,7 +136,8 @@ export class ChatMediaService {
 			videos: counts.get(AttachmentType.VIDEO) ?? 0,
 			files: (counts.get(AttachmentType.FILE) ?? 0) - musicCount,
 			music: musicCount,
-			voices: counts.get(AttachmentType.VOICE) ?? 0
+			voices: counts.get(AttachmentType.VOICE) ?? 0,
+			contacts: contactsCount
 		})
 	}
 
