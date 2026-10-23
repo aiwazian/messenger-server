@@ -50,6 +50,9 @@ export class ForwardMessageUseCase {
 		if (source.messageType === MessageType.SYSTEM) {
 			throw new ForbiddenException('System messages cannot be forwarded')
 		}
+		if (source.attachments.some((attachment) => attachment.viewOnce)) {
+			throw new ForbiddenException('View-once media cannot be forwarded')
+		}
 
 		const attachments = this.selectAttachments(source.attachments, dto.fileIds)
 

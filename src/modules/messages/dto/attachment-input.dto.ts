@@ -1,5 +1,5 @@
 import { Expose } from 'class-transformer'
-import { IsString, IsEnum } from 'class-validator'
+import { IsBoolean, IsEnum, IsIn, IsOptional, IsString } from 'class-validator'
 import { AttachmentType } from '../../../generated/prisma/enums'
 
 export class AttachmentInputDto {
@@ -10,4 +10,14 @@ export class AttachmentInputDto {
 	@Expose()
 	@IsEnum(AttachmentType)
 	type: AttachmentType
+
+	@Expose()
+	@IsOptional()
+	@IsBoolean()
+	viewOnce?: boolean
+
+	@Expose()
+	@IsOptional()
+	@IsIn([3, 10, 30])
+	viewOnceSeconds?: number
 }

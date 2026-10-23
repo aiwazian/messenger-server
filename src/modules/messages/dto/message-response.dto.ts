@@ -33,6 +33,13 @@ export class MessageAttachmentDto {
 	@Expose()
 	@OmitNull()
 	height?: number
+
+	@Expose()
+	viewOnce: boolean
+
+	@Expose()
+	@OmitNull()
+	viewOnceSeconds?: number
 }
 
 @Exclude()
