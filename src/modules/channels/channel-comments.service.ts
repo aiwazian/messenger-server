@@ -21,6 +21,8 @@ import { ChannelId } from '../../common/types/channel-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
 import { UserId } from '../../common/types/user-id.type'
 import { AttachmentType, MessageType } from '../../generated/prisma/enums'
+import { assertNoViewOnceMetadata } from '../messages/view-once-media.util'
+import { assertNoSpoilerMetadata } from '../messages/spoiler-media.util'
 
 const MAX_COMMENT_ATTACHMENTS = 10
 
@@ -145,6 +147,8 @@ export class ChannelCommentsService {
 		dto: ConfirmCommentDto,
 		excludeSocketId?: string
 	): Promise<CommentResponseDto> {
+		assertNoViewOnceMetadata(dto.attachments ?? [])
+		assertNoSpoilerMetadata(dto.attachments ?? [])
 		await this.getExistingPost(channelId, postId)
 		const channel = await this.getChannelCommentContext(channelId)
 		await this.assertCanComment(channelId, channel, userId)
@@ -435,7 +439,9 @@ export class ChannelCommentsService {
 					...f.file,
 					fileId: f.fileId,
 					type: f.type,
-					sortOrder: f.sortOrder
+					sortOrder: f.sortOrder,
+					viewOnce: false,
+					spoiler: false
 				})
 			),
 			replyTo: comment.replyTo

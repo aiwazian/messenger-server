@@ -4,6 +4,7 @@ import {
 	forwardRef,
 	Inject,
 	Injectable,
+	Logger,
 	NotFoundException
 } from '@nestjs/common'
 import { plainToInstance } from 'class-transformer'
@@ -42,6 +43,8 @@ import { ForwardSourceAccess } from '../../common/enums/forward-source-access.en
 import { ChatReadStateService } from '../chat-read-state/chat-read-state.service'
 import { MessageReadEntry, MessageReadsStore } from '../chat-read-state/message-reads.store'
 import { MessageEditsStore } from './message-edits.store'
+import { assertValidViewOnceAttachment, assertViewOnceChatAllowed } from './view-once-media.util'
+import { assertValidSpoilerAttachment, resolveAttachmentSpoiler } from './spoiler-media.util'
 
 /**
  * Сколько времени есть на правку отправленного сообщения.
@@ -74,6 +77,8 @@ export interface MessagePageContext {
 
 @Injectable()
 export class MessagesService {
+	private readonly logger = new Logger(MessagesService.name)
+
 	constructor(
 		private readonly prisma: PrismaService,
 		@Inject(forwardRef(() => ChatsService))
@@ -109,6 +114,8 @@ export class MessagesService {
 		dto: FileConfirmDto,
 		excludeSocketId: string
 	): Promise<MessageResponseDto> {
+		assertViewOnceChatAllowed(userId, chatId, dto.attachments)
+
 		await this.chatsService.create(userId, chatId)
 
 		this.assertMediaAttachmentsLimit(dto.attachments.map((att) => att.type))
@@ -143,10 +150,16 @@ export class MessagesService {
 				attachmentType = AttachmentType.FILE
 			}
 
+			assertValidViewOnceAttachment(att, attachmentType, file.mimeType)
+			assertValidSpoilerAttachment(att, attachmentType)
+
 			attachmentsToCreate.push({
 				fileId: att.fileId,
 				type: attachmentType,
-				sortOrder: i
+				sortOrder: i,
+				viewOnce: att.viewOnce === true,
+				viewOnceSeconds: att.viewOnceSeconds ?? null,
+				spoiler: resolveAttachmentSpoiler(att)
 			})
 		}
 
@@ -220,6 +233,21 @@ export class MessagesService {
 		if (!file) throw new NotFoundException('File not found in this message')
 
 		return this.storageService.getDownloadUrl(fileId)
+	}
+
+	async getActiveViewOnceFileIds(
+		userId: UserId,
+		chatId: ChatId
+	): Promise<{ fileIds: string[] }> {
+		const attachments = await this.prisma.messageAttachment.findMany({
+			where: {
+				viewOnce: true,
+				message: this.buildChatMessagesWhere(userId, chatId)
+			},
+			select: { fileId: true }
+		})
+
+		return { fileIds: attachments.map((attachment) => attachment.fileId) }
 	}
 
 	async getAll(
@@ -445,7 +473,10 @@ export class MessagesService {
 					...f.file,
 					fileId: f.fileId,
 					type: f.type,
-					sortOrder: f.sortOrder
+					sortOrder: f.sortOrder,
+					viewOnce: f.viewOnce,
+					viewOnceSeconds: f.viewOnceSeconds ?? undefined,
+					spoiler: f.spoiler
 				})
 			),
 			senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
@@ -609,7 +640,10 @@ export class MessagesService {
 					...f.file,
 					fileId: f.fileId,
 					type: f.type,
-					sortOrder: f.sortOrder
+					sortOrder: f.sortOrder,
+					viewOnce: f.viewOnce,
+					viewOnceSeconds: f.viewOnceSeconds ?? undefined,
+					spoiler: f.spoiler
 				})
 			),
 			senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
@@ -707,6 +741,10 @@ export class MessagesService {
 			include: MESSAGE_INCLUDE
 		})
 		if (!message) throw new NotFoundException('Message not found')
+
+		if (message.attachments.some((attachment) => attachment.viewOnce)) {
+			throw new ForbiddenException('View-once media cannot be pinned')
+		}
 
 		const now = BigInt(Date.now())
 
@@ -859,7 +897,9 @@ export class MessagesService {
 			}
 		}
 
-		const deduped = [...unique.values()]
+		const deduped = [...unique.values()].filter(
+			(pin) => !pin.message.attachments.some((attachment) => attachment.viewOnce)
+		)
 		const sources = await this.resolveSources(
 			userId,
 			deduped.map((pin) => pin.message)
@@ -1081,6 +1121,70 @@ export class MessagesService {
 		if (isPrivateChat && clearForRecipient && recipients[0]) {
 			await this.chatReadState.recount(recipients[0], ChatId(userId))
 		}
+	}
+
+	async deleteViewOnceAttachment(
+		messageId: bigint,
+		fileId: string
+	): Promise<{ chatId: bigint; senderId: bigint; messageDeleted: boolean } | null> {
+		const result = await this.prisma.$transaction(async (tx) => {
+			const messages = await tx.$queryRaw<Array<{ chatId: bigint; senderId: bigint }>>`
+				SELECT "chatId", "senderId"
+				FROM "Message"
+				WHERE "id" = ${messageId}
+				FOR UPDATE
+			`
+			const message = messages[0]
+			if (!message) return null
+
+			const attachment = await tx.messageAttachment.findFirst({
+				where: { messageId, fileId },
+				select: { id: true }
+			})
+			if (!attachment) return null
+
+			await tx.messageAttachment.delete({ where: { id: attachment.id } })
+
+			const remaining = await tx.messageAttachment.count({ where: { messageId } })
+			let messageDeleted = false
+
+			if (remaining === 0) {
+				await tx.message.delete({ where: { id: messageId } })
+				messageDeleted = true
+			}
+
+			return {
+				chatId: message.chatId,
+				senderId: message.senderId,
+				messageDeleted
+			}
+		})
+
+		if (!result) return null
+
+		if (result.messageDeleted) {
+			try {
+				await this.messageReads.remove([messageId])
+				await this.messageEdits.remove([messageId])
+				await this.chatReadState.recount(UserId(result.senderId), ChatId(result.chatId))
+
+				if (detectChatType(ChatId(result.chatId)) === ChatType.PRIVATE) {
+					await this.chatReadState.recount(UserId(result.chatId), ChatId(result.senderId))
+				}
+			} catch (error) {
+				this.logger.error(
+					`Failed to update read state after deleting message ${messageId}: ${String(error)}`
+				)
+			}
+		}
+
+		try {
+			await this.releaseFiles([fileId])
+		} catch (error) {
+			this.logger.error(`Failed to release view-once file ${fileId}: ${String(error)}`)
+		}
+
+		return result
 	}
 
 	/**

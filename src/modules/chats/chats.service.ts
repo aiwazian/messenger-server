@@ -425,7 +425,15 @@ export class ChatsService {
 			isRead,
 			systemEventType: message.systemEvent?.eventType,
 			attachments: message.attachments.map((f) =>
-				plainToInstance(MessageAttachmentDto, { ...f.file, type: f.type, fileId: f.fileId, sortOrder: f.sortOrder })
+				plainToInstance(MessageAttachmentDto, {
+					...f.file,
+					type: f.type,
+					fileId: f.fileId,
+					sortOrder: f.sortOrder,
+					viewOnce: f.viewOnce,
+					viewOnceSeconds: f.viewOnceSeconds ?? undefined,
+					spoiler: f.spoiler
+				})
 			),
 			senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
 			messageType: message.messageType
