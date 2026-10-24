@@ -62,6 +62,8 @@ export class ForwardMessageUseCase {
 
 		const attachments = this.selectAttachments(source.attachments, dto.fileIds)
 
+		const attachments = this.selectAttachments(source.attachments, dto.fileIds)
+
 		if (dto.fileIds?.length && attachments.length !== dto.fileIds.length) {
 			throw new BadRequestException('Some fileIds do not belong to the message')
 		}
