@@ -20,4 +20,9 @@ export class AttachmentInputDto {
 	@IsOptional()
 	@IsIn([3, 10, 30])
 	viewOnceSeconds?: number
+
+	@Expose()
+	@IsOptional()
+	@IsBoolean()
+	spoiler?: boolean
 }

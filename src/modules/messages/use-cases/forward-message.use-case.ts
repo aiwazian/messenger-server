@@ -95,9 +95,9 @@ export class ForwardMessageUseCase {
 	}
 
 	private selectAttachments(
-		sourceAttachments: Array<{ fileId: string; type: any; sortOrder: number }>,
+		sourceAttachments: Array<{ fileId: string; type: any; sortOrder: number; spoiler: boolean }>,
 		fileIds?: string[]
-	): Array<{ fileId: string; type: any; sortOrder: number }> {
+	): Array<{ fileId: string; type: any; sortOrder: number; spoiler: boolean }> {
 		if (!fileIds?.length) {
 			return sourceAttachments
 		}
@@ -236,9 +236,9 @@ export class ForwardMessageUseCase {
 			messageType: MessageType
 			stickerId: bigint | null
 			contactId: number | null
-			attachments: Array<{ fileId: string; type: any; sortOrder: number }>
+			attachments: Array<{ fileId: string; type: any; sortOrder: number; spoiler: boolean }>
 		},
-		attachments: Array<{ fileId: string; type: any; sortOrder: number }>,
+		attachments: Array<{ fileId: string; type: any; sortOrder: number; spoiler: boolean }>,
 		originChatId: bigint | null,
 		plainText: string | null,
 		excludeSocketId: string
@@ -273,7 +273,8 @@ export class ForwardMessageUseCase {
 						data: attachments.map((attachment) => ({
 							fileId: attachment.fileId,
 							type: attachment.type,
-							sortOrder: attachment.sortOrder
+							sortOrder: attachment.sortOrder,
+							spoiler: attachment.spoiler
 						}))
 					}
 				}

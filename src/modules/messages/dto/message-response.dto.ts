@@ -40,6 +40,9 @@ export class MessageAttachmentDto {
 	@Expose()
 	@OmitNull()
 	viewOnceSeconds?: number
+
+	@Expose()
+	spoiler: boolean
 }
 
 @Exclude()

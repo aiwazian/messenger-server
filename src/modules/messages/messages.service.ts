@@ -44,6 +44,7 @@ import { ChatReadStateService } from '../chat-read-state/chat-read-state.service
 import { MessageReadEntry, MessageReadsStore } from '../chat-read-state/message-reads.store'
 import { MessageEditsStore } from './message-edits.store'
 import { assertValidViewOnceAttachment, assertViewOnceChatAllowed } from './view-once-media.util'
+import { assertValidSpoilerAttachment, resolveAttachmentSpoiler } from './spoiler-media.util'
 
 /**
  * Сколько времени есть на правку отправленного сообщения.
@@ -150,13 +151,15 @@ export class MessagesService {
 			}
 
 			assertValidViewOnceAttachment(att, attachmentType, file.mimeType)
+			assertValidSpoilerAttachment(att, attachmentType)
 
 			attachmentsToCreate.push({
 				fileId: att.fileId,
 				type: attachmentType,
 				sortOrder: i,
 				viewOnce: att.viewOnce === true,
-				viewOnceSeconds: att.viewOnceSeconds ?? null
+				viewOnceSeconds: att.viewOnceSeconds ?? null,
+				spoiler: resolveAttachmentSpoiler(att)
 			})
 		}
 
@@ -472,7 +475,8 @@ export class MessagesService {
 					type: f.type,
 					sortOrder: f.sortOrder,
 					viewOnce: f.viewOnce,
-					viewOnceSeconds: f.viewOnceSeconds ?? undefined
+					viewOnceSeconds: f.viewOnceSeconds ?? undefined,
+					spoiler: f.spoiler
 				})
 			),
 			senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
@@ -638,7 +642,8 @@ export class MessagesService {
 					type: f.type,
 					sortOrder: f.sortOrder,
 					viewOnce: f.viewOnce,
-					viewOnceSeconds: f.viewOnceSeconds ?? undefined
+					viewOnceSeconds: f.viewOnceSeconds ?? undefined,
+					spoiler: f.spoiler
 				})
 			),
 			senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,

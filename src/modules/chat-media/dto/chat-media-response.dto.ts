@@ -29,6 +29,9 @@ export class ChatMediaItemDto {
 	type: AttachmentType
 
 	@Expose()
+	spoiler: boolean
+
+	@Expose()
 	sendTime: number
 
 	@Expose()

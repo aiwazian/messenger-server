@@ -183,6 +183,7 @@ export class ChatMediaService {
 				size: Number(row.file.size),
 				mimeType: row.file.mimeType,
 				type: row.type,
+				spoiler: row.spoiler,
 				sendTime: Number(row.message.sendTime),
 				width: row.file.width,
 				height: row.file.height

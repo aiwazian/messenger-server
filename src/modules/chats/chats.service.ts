@@ -431,7 +431,8 @@ export class ChatsService {
 					fileId: f.fileId,
 					sortOrder: f.sortOrder,
 					viewOnce: f.viewOnce,
-					viewOnceSeconds: f.viewOnceSeconds ?? undefined
+					viewOnceSeconds: f.viewOnceSeconds ?? undefined,
+					spoiler: f.spoiler
 				})
 			),
 			senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
