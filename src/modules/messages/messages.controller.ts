@@ -12,6 +12,7 @@ import {
 	Headers
 } from '@nestjs/common'
 import { MessagesService } from './messages.service'
+import { ViewOnceMediaService } from './view-once-media.service'
 import { TextMessageDto } from './dto/text-message.dto'
 import { StickerMessageDto } from './dto/sticker-message.dto'
 import { ContactMessageDto } from './dto/contact-message.dto'
@@ -46,6 +47,7 @@ import { MarkReadDto } from '../chat-read-state/dto/mark-read.dto'
 export class MessagesController {
 	constructor(
 		private readonly messagesService: MessagesService,
+		private readonly viewOnceMediaService: ViewOnceMediaService,
 		private readonly sendMessageUseCase: SendMessageUseCase,
 		private readonly sendStickerMessageUseCase: SendStickerMessageUseCase,
 		private readonly sendContactMessageUseCase: SendContactMessageUseCase,
@@ -120,6 +122,17 @@ export class MessagesController {
 		return this.messagesService.getFileDownloadUrl(userId, chatId, messageId, fileId)
 	}
 
+	@Post(':messageId/attachments/:fileId/view')
+	@UseGuards(CanReadChatGuard)
+	markViewOnceAttachmentViewed(
+		@Param('chatId', ParseChatIdPipe) chatId: ChatId,
+		@Param('messageId', ParseIntPipe) messageId: number,
+		@Param('fileId') fileId: string,
+		@CurrentUserId() userId: UserId
+	) {
+		return this.viewOnceMediaService.markViewed(userId, chatId, messageId, fileId)
+	}
+
 	@Get()
 	@UseGuards(CanReadChatGuard)
 	getMessages(
@@ -158,6 +171,15 @@ export class MessagesController {
 		@CurrentUserId() userId: UserId
 	) {
 		return this.messagesService.getPinnedMessages(userId, chatId)
+	}
+
+	@Get('view-once')
+	@UseGuards(CanReadChatGuard)
+	getActiveViewOnceFileIds(
+		@Param('chatId', ParseChatIdPipe) chatId: ChatId,
+		@CurrentUserId() userId: UserId
+	) {
+		return this.messagesService.getActiveViewOnceFileIds(userId, chatId)
 	}
 
 	@Post(':messageId/pin')

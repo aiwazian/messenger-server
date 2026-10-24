@@ -108,6 +108,7 @@ export class ChatMediaService {
 				by: ['type'],
 				where: {
 					message: chatMessagesWhere,
+					viewOnce: false,
 					file: { status: { not: FileStatus.FAILED } }
 				},
 				_count: { _all: true }
@@ -116,6 +117,7 @@ export class ChatMediaService {
 				where: {
 					message: chatMessagesWhere,
 					type: AttachmentType.FILE,
+					viewOnce: false,
 					file: { status: { not: FileStatus.FAILED }, OR: MUSIC_NAME_FILTERS }
 				}
 			}),
@@ -150,6 +152,7 @@ export class ChatMediaService {
 	): Promise<ChatMediaResponseDto> {
 		const where: Prisma.MessageAttachmentWhereInput = {
 			type: { in: types },
+			viewOnce: false,
 			message: this.messagesService.buildChatMessagesWhere(userId, chatId),
 			file: fileWhere
 		}
@@ -180,6 +183,7 @@ export class ChatMediaService {
 				size: Number(row.file.size),
 				mimeType: row.file.mimeType,
 				type: row.type,
+				spoiler: row.spoiler,
 				sendTime: Number(row.message.sendTime),
 				width: row.file.width,
 				height: row.file.height

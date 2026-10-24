@@ -12,7 +12,7 @@ Output ONLY: true or false. No markdown, no text.`
 
 const VERDICT_KEY_PREFIX = 'content-moderation:username'
 
-const VERDICT_TTL_SECONDS = 7 * 24 * 60 * 60
+const VERDICT_TTL_SECONDS = 30 * 24 * 60 * 60
 
 @Injectable()
 export class ContentModerationService {
