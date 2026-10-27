@@ -62,6 +62,7 @@ export class SendContactMessageUseCase {
 				sendTime: Date.now(),
 				senderId: senderId,
 				messageType: MessageType.CONTACT,
+				silent: dto.silent === true,
 				encryptionKeyVersion: this.encryption.currentVersion,
 				contactId: contact.id
 			},

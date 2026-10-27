@@ -48,6 +48,7 @@ export class SendMessageUseCase {
 				sendTime: Date.now(),
 				senderId: senderId,
 				messageType: MessageType.TEXT,
+				silent: dto.silent === true,
 				encryptionKeyVersion: version,
 				replyToId: replyTarget?.id ?? null,
 				replyToChatId: replyTarget ? chatId : null

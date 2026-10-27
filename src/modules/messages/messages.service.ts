@@ -182,6 +182,7 @@ export class MessagesService {
 				sendTime: Date.now(),
 				senderId: userId,
 				messageType: MessageType.TEXT,
+				silent: dto.silent === true,
 				encryptionKeyVersion: caption?.version ?? this.encryption.currentVersion,
 				replyToId,
 				replyToChatId: replyToId ? chatId : null,
@@ -1272,7 +1273,8 @@ export class MessagesService {
 				chatId: actualChatId.toString(),
 				chatType,
 				recipientChatId: (chatType === ChatType.PRIVATE ? message.senderId : chatId).toString(),
-				sendTime: message.sendTime.toString()
+				sendTime: message.sendTime.toString(),
+				silent: message.silent === true
 			})
 		}
 	}
