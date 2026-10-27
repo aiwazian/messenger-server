@@ -272,7 +272,6 @@ model Message {
 
   isEdited    Boolean     @default(false)
   messageType MessageType
-  silent      Boolean     @default(false)
 
   encryptionKeyVersion Int
   encryptionKey        EncryptionKey? @relation(fields: [encryptionKeyVersion], references: [version])

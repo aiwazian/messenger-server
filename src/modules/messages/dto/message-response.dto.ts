@@ -227,7 +227,4 @@ export class MessageResponseDto {
 	@OmitNull()
 	@Type(() => MessageReplyPreviewDto)
 	replyTo?: MessageReplyPreviewDto
-
-	@Expose()
-	silent: boolean
 }

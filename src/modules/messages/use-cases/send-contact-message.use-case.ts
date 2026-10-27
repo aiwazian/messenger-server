@@ -62,7 +62,6 @@ export class SendContactMessageUseCase {
 				sendTime: Date.now(),
 				senderId: senderId,
 				messageType: MessageType.CONTACT,
-				silent: dto.silent === true,
 				encryptionKeyVersion: this.encryption.currentVersion,
 				contactId: contact.id
 			},
@@ -79,7 +78,7 @@ export class SendContactMessageUseCase {
 
 		messageInstance.isRead = false
 
-		this.messageService.notifyRecipients(senderId, chatId, messageInstance, excludeSocketId)
+		this.messageService.notifyRecipients(senderId, chatId, messageInstance, excludeSocketId, dto.silent === true)
 
 		return messageInstance
 	}

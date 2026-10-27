@@ -48,7 +48,6 @@ export class SendMessageUseCase {
 				sendTime: Date.now(),
 				senderId: senderId,
 				messageType: MessageType.TEXT,
-				silent: dto.silent === true,
 				encryptionKeyVersion: version,
 				replyToId: replyTarget?.id ?? null,
 				replyToChatId: replyTarget ? chatId : null
@@ -66,7 +65,7 @@ export class SendMessageUseCase {
 
 		messageInstance.isRead = false
 
-		this.messageService.notifyRecipients(senderId, chatId, messageInstance, excludeSocketId)
+		this.messageService.notifyRecipients(senderId, chatId, messageInstance, excludeSocketId, dto.silent === true)
 
 		return messageInstance
 	}

@@ -55,7 +55,6 @@ export class SendStickerMessageUseCase {
 				sendTime: Date.now(),
 				senderId: senderId,
 				messageType: MessageType.STICKER,
-				silent: dto.silent === true,
 				encryptionKeyVersion: this.encryption.currentVersion,
 				stickerId: sticker.id,
 				replyToId: replyTarget?.id ?? null,
@@ -74,7 +73,7 @@ export class SendStickerMessageUseCase {
 
 		messageInstance.isRead = false
 
-		this.messageService.notifyRecipients(senderId, chatId, messageInstance, excludeSocketId)
+		this.messageService.notifyRecipients(senderId, chatId, messageInstance, excludeSocketId, dto.silent === true)
 
 		return messageInstance
 	}
