@@ -86,7 +86,8 @@ export class ForwardMessageUseCase {
 					attachments,
 					originChatId,
 					plainText,
-					excludeSocketId
+					excludeSocketId,
+					dto.silent === true
 				)
 			)
 		}
@@ -241,7 +242,8 @@ export class ForwardMessageUseCase {
 		attachments: Array<{ fileId: string; type: any; sortOrder: number; spoiler: boolean }>,
 		originChatId: bigint | null,
 		plainText: string | null,
-		excludeSocketId: string
+		excludeSocketId: string,
+		silent: boolean
 	): Promise<MessageResponseDto> {
 		await this.chatsService.create(userId, targetChatId)
 
@@ -289,7 +291,7 @@ export class ForwardMessageUseCase {
 		)
 		const dto = this.messagesService.mapMessageToDto(created, userId, chatType, sources)
 
-		this.messagesService.notifyRecipients(userId, targetChatId, dto, excludeSocketId)
+		this.messagesService.notifyRecipients(userId, targetChatId, dto, excludeSocketId, silent)
 
 		return dto
 	}

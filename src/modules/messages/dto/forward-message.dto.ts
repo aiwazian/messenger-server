@@ -30,4 +30,8 @@ export class ForwardMessageDto {
 	@ArrayMaxSize(100)
 	@IsString({ each: true })
 	fileIds?: string[]
+
+	@IsOptional()
+	@IsBoolean()
+	silent: boolean = false
 }

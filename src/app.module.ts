@@ -75,7 +75,9 @@ import { RestoreCredentialsModule } from './modules/restore-credentials/restore-
 				WEBAUTHN_RP_ID: Joi.string().hostname().optional(),
 				WEBAUTHN_EXPECTED_ORIGINS: Joi.string().optional()
 			}),
-			validationOptions: { abortEarly: false }
+			validationOptions: {
+				libraryOptions: { abortEarly: false }
+			}
 		}),
 		ScheduleModule.forRoot(),
 		ThrottlerModule.forRoot([
