@@ -65,7 +65,7 @@ export class SendMessageUseCase {
 
 		messageInstance.isRead = false
 
-		this.messageService.notifyRecipients(senderId, chatId, messageInstance, excludeSocketId)
+		this.messageService.notifyRecipients(senderId, chatId, messageInstance, excludeSocketId, dto.silent === true)
 
 		return messageInstance
 	}

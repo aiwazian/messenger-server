@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsNumberString, IsOptional } from 'class-validator'
+import { IsBoolean, IsNotEmpty, IsNumberString, IsOptional } from 'class-validator'
 
 export class StickerMessageDto {
 	@IsNumberString()
@@ -8,4 +8,8 @@ export class StickerMessageDto {
 	@IsOptional()
 	@IsNumberString()
 	replyToId?: string
+
+	@IsOptional()
+	@IsBoolean()
+	silent?: boolean
 }

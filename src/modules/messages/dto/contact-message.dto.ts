@@ -2,6 +2,7 @@ import {
 	ArrayMaxSize,
 	ArrayNotEmpty,
 	IsArray,
+	IsBoolean,
 	IsOptional,
 	IsString,
 	MaxLength
@@ -73,4 +74,8 @@ export class ContactMessageDto {
 	@Trim()
 	@MaxLength(CONTACT_BIRTHDAY_MAX_LENGTH)
 	birthday?: string
+
+	@IsOptional()
+	@IsBoolean()
+	silent?: boolean
 }

@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsNumberString, IsOptional, IsString, MaxLength } from 'class-validator'
+import { IsBoolean, IsNotEmpty, IsNumberString, IsOptional, IsString, MaxLength } from 'class-validator'
 import { Trim } from '../../../common/decorators/trim.decorator'
 
 export class TextMessageDto {
@@ -12,4 +12,8 @@ export class TextMessageDto {
 	@IsOptional()
 	@IsNumberString()
 	replyToId?: string
+
+	@IsOptional()
+	@IsBoolean()
+	silent?: boolean
 }

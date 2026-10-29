@@ -199,7 +199,7 @@ export class MessagesService {
 		const messageInstance = this.mapMessageToDto(message, userId, chatType, sources)
 		messageInstance.text = dto.text
 
-		this.notifyRecipients(userId, chatId, messageInstance, excludeSocketId)
+		this.notifyRecipients(userId, chatId, messageInstance, excludeSocketId, dto.silent === true)
 
 		return messageInstance
 	}
@@ -1221,7 +1221,8 @@ export class MessagesService {
 		senderUserId: UserId,
 		chatId: ChatId,
 		message: MessageResponseDto,
-		excludeSocketId?: string
+		excludeSocketId?: string,
+		silent = false
 	): Promise<void> {
 		const chatType = detectChatType(chatId)
 		const recipients = await this.getRecipients(senderUserId, chatId, chatType)
@@ -1272,7 +1273,8 @@ export class MessagesService {
 				chatId: actualChatId.toString(),
 				chatType,
 				recipientChatId: (chatType === ChatType.PRIVATE ? message.senderId : chatId).toString(),
-				sendTime: message.sendTime.toString()
+				sendTime: message.sendTime.toString(),
+				silent
 			})
 		}
 	}

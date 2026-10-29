@@ -97,7 +97,8 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 							title: payload.title,
 							body,
 							chatId: payload.chatId,
-							sendTime
+							sendTime,
+							silent: payload.silent === true ? 'true' : 'false'
 						}
 					})
 
