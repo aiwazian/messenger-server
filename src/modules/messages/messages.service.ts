@@ -45,6 +45,7 @@ import { MessageReadEntry, MessageReadsStore } from '../chat-read-state/message-
 import { MessageEditsStore } from './message-edits.store'
 import { assertValidViewOnceAttachment, assertViewOnceChatAllowed } from './view-once-media.util'
 import { assertValidSpoilerAttachment, resolveAttachmentSpoiler } from './spoiler-media.util'
+import { resolveScheduledTime } from './scheduled-message.util'
 
 /**
  * Сколько времени есть на правку отправленного сообщения.
@@ -116,6 +117,8 @@ export class MessagesService {
 	): Promise<MessageResponseDto> {
 		assertViewOnceChatAllowed(userId, chatId, dto.attachments)
 
+		const scheduledTime = resolveScheduledTime(dto.scheduledAt)
+
 		await this.chatsService.create(userId, chatId)
 
 		this.assertMediaAttachmentsLimit(dto.attachments.map((att) => att.type))
@@ -179,7 +182,8 @@ export class MessagesService {
 				sequenceId: sequenceId + 1,
 				chatId,
 				text: caption?.encrypted ?? null,
-				sendTime: Date.now(),
+				sendTime: scheduledTime ?? Date.now(),
+				scheduledAt: scheduledTime,
 				senderId: userId,
 				messageType: MessageType.TEXT,
 				encryptionKeyVersion: caption?.version ?? this.encryption.currentVersion,
@@ -199,7 +203,11 @@ export class MessagesService {
 		const messageInstance = this.mapMessageToDto(message, userId, chatType, sources)
 		messageInstance.text = dto.text
 
-		this.notifyRecipients(userId, chatId, messageInstance, excludeSocketId, dto.silent === true)
+		if (scheduledTime != null) {
+			this.notifyScheduled(userId, chatId, excludeSocketId)
+		} else {
+			this.notifyRecipients(userId, chatId, messageInstance, excludeSocketId, dto.silent === true)
+		}
 
 		return messageInstance
 	}
@@ -292,13 +300,15 @@ export class MessagesService {
 					{ senderId: userId, chatId: chatId },
 					{ senderId: chatId, chatId: userId }
 				],
-				deletedFor: { none: { userId: userId } }
+				deletedFor: { none: { userId: userId } },
+				scheduledAt: null
 			}
 		}
 
 		return {
 			chatId: chatId,
-			deletedFor: { none: { userId: userId } }
+			deletedFor: { none: { userId: userId } },
+			scheduledAt: null
 		}
 	}
 
@@ -612,6 +622,11 @@ export class MessagesService {
 
 		await this.assertEditable(userId, chatId, chatType, messageId)
 
+		const existing = await this.prisma.message.findUnique({
+			where: { id: messageId },
+			select: { scheduledAt: true }
+		})
+
 		const now = Date.now()
 		const { encrypted, version } = this.encryption.encrypt(dto.text)
 
@@ -649,6 +664,12 @@ export class MessagesService {
 			senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
 			messageType: message.messageType
 		})
+
+		if (existing?.scheduledAt != null) {
+			this.notifyScheduled(userId, chatId, excludeSocketId)
+
+			return messageInstance
+		}
 
 		if (BigInt(chatId) === BigInt(userId)) {
 			this.realtimeGateway.sendToUser(
@@ -1025,11 +1046,13 @@ export class MessagesService {
 				OR: [
 					{ senderId: userId, chatId: chatId },
 					{ senderId: chatId, chatId: userId }
-				]
+				],
+				scheduledAt: null
 			}
 		} else {
 			messageWhere = {
 				chatId: chatId,
+				scheduledAt: null,
 				OR: [
 					{ systemEvent: null },
 					{
@@ -1215,6 +1238,19 @@ export class MessagesService {
 		for (const fileId of Array.from(new Set(fileIds))) {
 			await this.storageService.releaseFile(fileId)
 		}
+	}
+
+	async hardDeleteMessage(messageId: number): Promise<void> {
+		await this.deleteMessageWithFiles(messageId)
+	}
+
+	notifyScheduled(userId: UserId, chatId: ChatId, excludeSocketId?: string): void {
+		this.realtimeGateway.sendToUser(
+			userId,
+			SocketEvent.MESSAGE_SCHEDULED,
+			{ chatId: chatId.toString() },
+			excludeSocketId
+		)
 	}
 
 	async notifyRecipients(

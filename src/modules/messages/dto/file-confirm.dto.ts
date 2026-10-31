@@ -25,4 +25,9 @@ export class FileConfirmDto {
 	@IsOptional()
 	@IsBoolean()
 	silent?: boolean
+
+	@Expose()
+	@IsOptional()
+	@IsNumberString()
+	scheduledAt?: string
 }

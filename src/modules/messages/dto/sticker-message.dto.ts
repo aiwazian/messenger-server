@@ -12,4 +12,8 @@ export class StickerMessageDto {
 	@IsOptional()
 	@IsBoolean()
 	silent?: boolean
+
+	@IsOptional()
+	@IsNumberString()
+	scheduledAt?: string
 }

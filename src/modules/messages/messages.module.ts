@@ -2,6 +2,7 @@ import { forwardRef, Module } from '@nestjs/common'
 import { MessagesService } from './messages.service'
 import { MessagesController } from './messages.controller'
 import { ViewOnceMediaService } from './view-once-media.service'
+import { ScheduledMessagesService } from './scheduled-messages.service'
 import { SessionsModule } from '../sessions/sessions.module'
 import { PushModule } from '../push/push.module'
 import { ChatsModule } from '../chats/chats.module'
@@ -26,10 +27,11 @@ import { EncryptionModule } from '../encryption/encryption.module'
 		EncryptionModule
 	],
 	controllers: [MessagesController],
-	providers: [
-		MessagesService,
-		ViewOnceMediaService,
-		SendMessageUseCase,
+		providers: [
+			MessagesService,
+			ViewOnceMediaService,
+			ScheduledMessagesService,
+			SendMessageUseCase,
 		SendStickerMessageUseCase,
 		SendContactMessageUseCase,
 		GetMessagesWindowUseCase,

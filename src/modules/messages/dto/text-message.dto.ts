@@ -16,4 +16,8 @@ export class TextMessageDto {
 	@IsOptional()
 	@IsBoolean()
 	silent?: boolean
+
+	@IsOptional()
+	@IsNumberString()
+	scheduledAt?: string
 }
