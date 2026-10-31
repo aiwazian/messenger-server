@@ -10,6 +10,7 @@ import { detectChatType } from '../../../common/utils/detect-chat-type.util'
 import { ChatsService } from '../../chats/chats.service'
 import { MessagesService } from '../messages.service'
 import { MESSAGE_INCLUDE } from '../message-include.const'
+import { resolveScheduledTime } from '../scheduled-message.util'
 
 @Injectable()
 export class SendMessageUseCase {
@@ -29,6 +30,7 @@ export class SendMessageUseCase {
 		await this.chatsService.create(senderId, chatId)
 		const { encrypted, version } = this.encryption.encrypt(dto.text)
 		const replyTarget = await this.resolveReplyTarget(senderId, chatId, dto.replyToId)
+		const scheduledTime = resolveScheduledTime(dto.scheduledAt)
 		const sequenceId = await this.prisma.message.count({
 			where: {
 				OR: [
@@ -45,7 +47,8 @@ export class SendMessageUseCase {
 				sequenceId: sequenceId + 1,
 				chatId: chatId,
 				text: encrypted,
-				sendTime: Date.now(),
+				sendTime: scheduledTime ?? Date.now(),
+				scheduledAt: scheduledTime,
 				senderId: senderId,
 				messageType: MessageType.TEXT,
 				encryptionKeyVersion: version,
@@ -65,7 +68,11 @@ export class SendMessageUseCase {
 
 		messageInstance.isRead = false
 
-		this.messageService.notifyRecipients(senderId, chatId, messageInstance, excludeSocketId, dto.silent === true)
+		if (scheduledTime != null) {
+			this.messageService.notifyScheduled(senderId, chatId, excludeSocketId)
+		} else {
+			this.messageService.notifyRecipients(senderId, chatId, messageInstance, excludeSocketId, dto.silent === true)
+		}
 
 		return messageInstance
 	}

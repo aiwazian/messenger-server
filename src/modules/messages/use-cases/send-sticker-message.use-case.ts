@@ -10,6 +10,7 @@ import { detectChatType } from '../../../common/utils/detect-chat-type.util'
 import { ChatsService } from '../../chats/chats.service'
 import { MessagesService } from '../messages.service'
 import { MESSAGE_INCLUDE } from '../message-include.const'
+import { resolveScheduledTime } from '../scheduled-message.util'
 
 @Injectable()
 export class SendStickerMessageUseCase {
@@ -36,6 +37,7 @@ export class SendStickerMessageUseCase {
 		if (!sticker) throw new NotFoundException('Sticker not found')
 
 		const replyTarget = await this.resolveReplyTarget(senderId, chatId, dto.replyToId)
+		const scheduledTime = resolveScheduledTime(dto.scheduledAt)
 		const sequenceId = await this.prisma.message.count({
 			where: {
 				OR: [
@@ -52,7 +54,8 @@ export class SendStickerMessageUseCase {
 				sequenceId: sequenceId + 1,
 				chatId: chatId,
 				text: null,
-				sendTime: Date.now(),
+				sendTime: scheduledTime ?? Date.now(),
+				scheduledAt: scheduledTime,
 				senderId: senderId,
 				messageType: MessageType.STICKER,
 				encryptionKeyVersion: this.encryption.currentVersion,
@@ -73,7 +76,11 @@ export class SendStickerMessageUseCase {
 
 		messageInstance.isRead = false
 
-		this.messageService.notifyRecipients(senderId, chatId, messageInstance, excludeSocketId, dto.silent === true)
+		if (scheduledTime != null) {
+			this.messageService.notifyScheduled(senderId, chatId, excludeSocketId)
+		} else {
+			this.messageService.notifyRecipients(senderId, chatId, messageInstance, excludeSocketId, dto.silent === true)
+		}
 
 		return messageInstance
 	}

@@ -269,6 +269,7 @@ model Message {
   chatId      BigInt
   text        String?
   sendTime    BigInt
+  scheduledAt BigInt?
 
   isEdited    Boolean     @default(false)
   messageType MessageType
@@ -303,6 +304,7 @@ model Message {
 
   @@index([chatId, sendTime])
   @@index([chatId, id])
+  @@index([scheduledAt])
   @@index([replyToId])
   @@index([forwardedFromChatId])
   @@index([senderId])

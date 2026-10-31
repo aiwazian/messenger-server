@@ -390,10 +390,11 @@ export class ChatsService {
 				OR: [
 					{ senderId: userId, chatId: chatId },
 					{ senderId: chatId, chatId: userId }
-				]
+				],
+				scheduledAt: null
 			}
 		} else {
-			messageWhere = { chatId }
+			messageWhere = { chatId, scheduledAt: null }
 		}
 
 		const message = await this.prisma.message.findFirst({
