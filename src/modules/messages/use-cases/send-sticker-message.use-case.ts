@@ -102,7 +102,7 @@ export class SendStickerMessageUseCase {
 			select: { id: true }
 		})
 
-		if (!target) throw new NotFoundException('Reply target not found')
+		if (!target) return undefined
 
 		return target
 	}

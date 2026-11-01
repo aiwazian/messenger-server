@@ -304,9 +304,10 @@ export class MessagesController {
 		@Param('chatId', ParseChatIdPipe) chatId: ChatId,
 		@Param('messageId', ParseIntPipe) messageId: number,
 		@CurrentUserId() userId: UserId,
-		@Body() dto: DeleteMessageDto
+		@Body() dto: DeleteMessageDto,
+		@Headers('x-socket-id') socketId: string
 	) {
-		return this.messagesService.deleteMessage(userId, chatId, messageId, dto)
+		return this.messagesService.deleteMessage(userId, chatId, messageId, dto, socketId)
 	}
 
 	@Patch(':messageId')

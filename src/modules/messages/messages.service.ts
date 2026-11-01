@@ -132,8 +132,9 @@ export class MessagesService {
 				select: { id: true }
 			})
 
-			if (!target) throw new NotFoundException('Reply target not found')
-			replyToId = target.id
+			if (target) {
+				replyToId = target.id
+			}
 		}
 
 		const attachmentsToCreate = []
@@ -572,34 +573,47 @@ export class MessagesService {
 		userId: UserId,
 		chatId: ChatId,
 		messageId: number,
-		dto: DeleteMessageDto
+		dto: DeleteMessageDto,
+		excludeSocketId?: string
 	): Promise<void> {
 		const chatType = detectChatType(chatId)
 		const isPrivateChat = chatType === ChatType.PRIVATE
 
 		if (isPrivateChat && !dto.deleteForRecipient) {
-			const existingDelete = await this.prisma.deletedMessage.findFirst({
-				where: { messageId, userId: chatId }
+			const existingDeletes = await this.prisma.deletedMessage.findMany({
+				where: { messageId, userId: { in: [userId, chatId] } },
+				select: { userId: true }
 			})
 
-			if (existingDelete) {
+			const isHiddenForPeer = existingDeletes.some((row) => row.userId === chatId)
+
+			if (isHiddenForPeer) {
 				await this.deleteMessageWithFiles(messageId)
-			} else {
-				await this.prisma.deletedMessage.create({
-					data: {
-						messageId,
-						userId,
-						deletedAt: Date.now()
+			} else if (!existingDeletes.length) {
+				try {
+					await this.prisma.deletedMessage.create({
+						data: {
+							messageId,
+							userId,
+							deletedAt: Date.now()
+						}
+					})
+				} catch (error) {
+					if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+						return
 					}
-				})
+					throw error
+				}
 			}
 		} else {
 			await this.deleteMessageWithFiles(messageId)
 		}
 
+		const deletePayload = { chatId: chatId, messageId }
+		this.realtimeGateway.sendToUser(userId, SocketEvent.MESSAGE_DELETE, deletePayload, excludeSocketId)
+
 		if (dto.deleteForRecipient) {
-			const senderPayload = { chatId: chatId, messageId }
-			this.realtimeGateway.sendToUser(UserId(chatId), SocketEvent.MESSAGE_DELETE, senderPayload)
+			this.realtimeGateway.sendToUser(UserId(chatId), SocketEvent.MESSAGE_DELETE, deletePayload)
 		}
 
 		if (!isPrivateChat) {

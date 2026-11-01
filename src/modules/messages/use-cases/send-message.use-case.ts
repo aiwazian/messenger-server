@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { UserId } from '../../../common/types/user-id.type'
 import { ChatId } from '../../../common/types/chat-id.type'
 import { TextMessageDto } from '../dto/text-message.dto'
@@ -100,7 +100,7 @@ export class SendMessageUseCase {
 			select: { id: true }
 		})
 
-		if (!target) throw new NotFoundException('Reply target not found')
+		if (!target) return undefined
 
 		return target
 	}
