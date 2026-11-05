@@ -164,6 +164,10 @@ export class MessageResponseDto {
 
 	@Expose()
 	@OmitNull()
+	scheduledAt?: number
+
+	@Expose()
+	@OmitNull()
 	isEdited?: boolean
 
 	@Expose()

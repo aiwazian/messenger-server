@@ -45,6 +45,7 @@ import { MessageReadEntry, MessageReadsStore } from '../chat-read-state/message-
 import { MessageEditsStore } from './message-edits.store'
 import { assertValidViewOnceAttachment, assertViewOnceChatAllowed } from './view-once-media.util'
 import { assertValidSpoilerAttachment, resolveAttachmentSpoiler } from './spoiler-media.util'
+import { resolveScheduledTime } from './scheduled-message.util'
 
 /**
  * Сколько времени есть на правку отправленного сообщения.
@@ -116,6 +117,8 @@ export class MessagesService {
 	): Promise<MessageResponseDto> {
 		assertViewOnceChatAllowed(userId, chatId, dto.attachments)
 
+		const scheduledTime = resolveScheduledTime(dto.scheduledAt)
+
 		await this.chatsService.create(userId, chatId)
 
 		this.assertMediaAttachmentsLimit(dto.attachments.map((att) => att.type))
@@ -129,8 +132,9 @@ export class MessagesService {
 				select: { id: true }
 			})
 
-			if (!target) throw new NotFoundException('Reply target not found')
-			replyToId = target.id
+			if (target) {
+				replyToId = target.id
+			}
 		}
 
 		const attachmentsToCreate = []
@@ -179,7 +183,8 @@ export class MessagesService {
 				sequenceId: sequenceId + 1,
 				chatId,
 				text: caption?.encrypted ?? null,
-				sendTime: Date.now(),
+				sendTime: scheduledTime ?? Date.now(),
+				scheduledAt: scheduledTime,
 				senderId: userId,
 				messageType: MessageType.TEXT,
 				encryptionKeyVersion: caption?.version ?? this.encryption.currentVersion,
@@ -199,7 +204,11 @@ export class MessagesService {
 		const messageInstance = this.mapMessageToDto(message, userId, chatType, sources)
 		messageInstance.text = dto.text
 
-		this.notifyRecipients(userId, chatId, messageInstance, excludeSocketId, dto.silent === true)
+		if (scheduledTime != null) {
+			this.notifyScheduled(userId, chatId, excludeSocketId)
+		} else {
+			this.notifyRecipients(userId, chatId, messageInstance, excludeSocketId, dto.silent === true)
+		}
 
 		return messageInstance
 	}
@@ -292,13 +301,15 @@ export class MessagesService {
 					{ senderId: userId, chatId: chatId },
 					{ senderId: chatId, chatId: userId }
 				],
-				deletedFor: { none: { userId: userId } }
+				deletedFor: { none: { userId: userId } },
+				scheduledAt: null
 			}
 		}
 
 		return {
 			chatId: chatId,
-			deletedFor: { none: { userId: userId } }
+			deletedFor: { none: { userId: userId } },
+			scheduledAt: null
 		}
 	}
 
@@ -562,34 +573,47 @@ export class MessagesService {
 		userId: UserId,
 		chatId: ChatId,
 		messageId: number,
-		dto: DeleteMessageDto
+		dto: DeleteMessageDto,
+		excludeSocketId?: string
 	): Promise<void> {
 		const chatType = detectChatType(chatId)
 		const isPrivateChat = chatType === ChatType.PRIVATE
 
 		if (isPrivateChat && !dto.deleteForRecipient) {
-			const existingDelete = await this.prisma.deletedMessage.findFirst({
-				where: { messageId, userId: chatId }
+			const existingDeletes = await this.prisma.deletedMessage.findMany({
+				where: { messageId, userId: { in: [userId, chatId] } },
+				select: { userId: true }
 			})
 
-			if (existingDelete) {
+			const isHiddenForPeer = existingDeletes.some((row) => row.userId === chatId)
+
+			if (isHiddenForPeer) {
 				await this.deleteMessageWithFiles(messageId)
-			} else {
-				await this.prisma.deletedMessage.create({
-					data: {
-						messageId,
-						userId,
-						deletedAt: Date.now()
+			} else if (!existingDeletes.length) {
+				try {
+					await this.prisma.deletedMessage.create({
+						data: {
+							messageId,
+							userId,
+							deletedAt: Date.now()
+						}
+					})
+				} catch (error) {
+					if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+						return
 					}
-				})
+					throw error
+				}
 			}
 		} else {
 			await this.deleteMessageWithFiles(messageId)
 		}
 
+		const deletePayload = { chatId: chatId, messageId }
+		this.realtimeGateway.sendToUser(userId, SocketEvent.MESSAGE_DELETE, deletePayload, excludeSocketId)
+
 		if (dto.deleteForRecipient) {
-			const senderPayload = { chatId: chatId, messageId }
-			this.realtimeGateway.sendToUser(UserId(chatId), SocketEvent.MESSAGE_DELETE, senderPayload)
+			this.realtimeGateway.sendToUser(UserId(chatId), SocketEvent.MESSAGE_DELETE, deletePayload)
 		}
 
 		if (!isPrivateChat) {
@@ -611,6 +635,11 @@ export class MessagesService {
 		const chatType = detectChatType(chatId)
 
 		await this.assertEditable(userId, chatId, chatType, messageId)
+
+		const existing = await this.prisma.message.findUnique({
+			where: { id: messageId },
+			select: { scheduledAt: true }
+		})
 
 		const now = Date.now()
 		const { encrypted, version } = this.encryption.encrypt(dto.text)
@@ -649,6 +678,12 @@ export class MessagesService {
 			senderId: chatType === ChatType.CHANNEL ? message.chatId : message.senderId,
 			messageType: message.messageType
 		})
+
+		if (existing?.scheduledAt != null) {
+			this.notifyScheduled(userId, chatId, excludeSocketId)
+
+			return messageInstance
+		}
 
 		if (BigInt(chatId) === BigInt(userId)) {
 			this.realtimeGateway.sendToUser(
@@ -1025,11 +1060,13 @@ export class MessagesService {
 				OR: [
 					{ senderId: userId, chatId: chatId },
 					{ senderId: chatId, chatId: userId }
-				]
+				],
+				scheduledAt: null
 			}
 		} else {
 			messageWhere = {
 				chatId: chatId,
+				scheduledAt: null,
 				OR: [
 					{ systemEvent: null },
 					{
@@ -1215,6 +1252,19 @@ export class MessagesService {
 		for (const fileId of Array.from(new Set(fileIds))) {
 			await this.storageService.releaseFile(fileId)
 		}
+	}
+
+	async hardDeleteMessage(messageId: number): Promise<void> {
+		await this.deleteMessageWithFiles(messageId)
+	}
+
+	notifyScheduled(userId: UserId, chatId: ChatId, excludeSocketId?: string): void {
+		this.realtimeGateway.sendToUser(
+			userId,
+			SocketEvent.MESSAGE_SCHEDULED,
+			{ chatId: chatId.toString() },
+			excludeSocketId
+		)
 	}
 
 	async notifyRecipients(

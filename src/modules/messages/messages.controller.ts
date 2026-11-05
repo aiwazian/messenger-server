@@ -42,6 +42,9 @@ import { ForwardMessageUseCase } from './use-cases/forward-message.use-case'
 import { ForwardMessageDto } from './dto/forward-message.dto'
 import { ChatReadStateService } from '../chat-read-state/chat-read-state.service'
 import { MarkReadDto } from '../chat-read-state/dto/mark-read.dto'
+import { ScheduledMessagesService } from './scheduled-messages.service'
+import { UpdateScheduledMessageDto } from './dto/update-scheduled-message.dto'
+import { CanManageScheduledMessageGuard } from '../../common/guards/can-manage-scheduled-message.guard'
 
 @Controller('chats/:chatId/messages')
 export class MessagesController {
@@ -54,7 +57,8 @@ export class MessagesController {
 		private readonly getMessagesWindowUseCase: GetMessagesWindowUseCase,
 		private readonly searchChatMessagesUseCase: SearchChatMessagesUseCase,
 		private readonly forwardMessageUseCase: ForwardMessageUseCase,
-		private readonly chatReadStateService: ChatReadStateService
+		private readonly chatReadStateService: ChatReadStateService,
+		private readonly scheduledMessagesService: ScheduledMessagesService
 	) {}
 
 	@Post()
@@ -182,6 +186,59 @@ export class MessagesController {
 		return this.messagesService.getActiveViewOnceFileIds(userId, chatId)
 	}
 
+	@Get('scheduled')
+	@UseGuards(CanReadChatGuard)
+	getScheduledMessages(
+		@Param('chatId', ParseChatIdPipe) chatId: ChatId,
+		@CurrentUserId() userId: UserId
+	) {
+		return this.scheduledMessagesService.getScheduledMessages(userId, chatId)
+	}
+
+	@Patch(':messageId/schedule')
+	@UseGuards(CanManageScheduledMessageGuard)
+	updateScheduledMessage(
+		@Param('chatId', ParseChatIdPipe) chatId: ChatId,
+		@Param('messageId', ParseIntPipe) messageId: number,
+		@Body() dto: UpdateScheduledMessageDto,
+		@CurrentUserId() userId: UserId,
+		@Headers('x-socket-id') socketId: string
+	) {
+		return this.scheduledMessagesService.updateScheduledMessage(
+			userId,
+			chatId,
+			messageId,
+			dto,
+			socketId
+		)
+	}
+
+	@Delete(':messageId/schedule')
+	@UseGuards(CanManageScheduledMessageGuard)
+	deleteScheduledMessage(
+		@Param('chatId', ParseChatIdPipe) chatId: ChatId,
+		@Param('messageId', ParseIntPipe) messageId: number,
+		@CurrentUserId() userId: UserId,
+		@Headers('x-socket-id') socketId: string
+	) {
+		return this.scheduledMessagesService.deleteScheduledMessage(
+			userId,
+			chatId,
+			messageId,
+			socketId
+		)
+	}
+
+	@Post(':messageId/schedule/send-now')
+	@UseGuards(CanManageScheduledMessageGuard)
+	sendScheduledMessageNow(
+		@Param('chatId', ParseChatIdPipe) chatId: ChatId,
+		@Param('messageId', ParseIntPipe) messageId: number,
+		@CurrentUserId() userId: UserId
+	) {
+		return this.scheduledMessagesService.sendScheduledNow(userId, chatId, messageId)
+	}
+
 	@Post(':messageId/pin')
 	@UseGuards(CanReadChatGuard)
 	pinMessage(
@@ -247,9 +304,10 @@ export class MessagesController {
 		@Param('chatId', ParseChatIdPipe) chatId: ChatId,
 		@Param('messageId', ParseIntPipe) messageId: number,
 		@CurrentUserId() userId: UserId,
-		@Body() dto: DeleteMessageDto
+		@Body() dto: DeleteMessageDto,
+		@Headers('x-socket-id') socketId: string
 	) {
-		return this.messagesService.deleteMessage(userId, chatId, messageId, dto)
+		return this.messagesService.deleteMessage(userId, chatId, messageId, dto, socketId)
 	}
 
 	@Patch(':messageId')

@@ -3,6 +3,7 @@ import {
 	ArrayNotEmpty,
 	IsArray,
 	IsBoolean,
+	IsNumberString,
 	IsOptional,
 	IsString,
 	MaxLength
@@ -78,4 +79,8 @@ export class ContactMessageDto {
 	@IsOptional()
 	@IsBoolean()
 	silent?: boolean
+
+	@IsOptional()
+	@IsNumberString()
+	scheduledAt?: string
 }

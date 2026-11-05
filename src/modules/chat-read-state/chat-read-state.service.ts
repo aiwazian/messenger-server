@@ -436,13 +436,15 @@ export class ChatReadStateService {
 					{ senderId: userId, chatId: chatId },
 					{ senderId: chatId, chatId: userId }
 				],
-				deletedFor: { none: { userId: userId } }
+				deletedFor: { none: { userId: userId } },
+				scheduledAt: null
 			}
 		}
 
 		return {
 			chatId: chatId,
-			deletedFor: { none: { userId: userId } }
+			deletedFor: { none: { userId: userId } },
+			scheduledAt: null
 		}
 	}
 

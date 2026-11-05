@@ -9,9 +9,11 @@ export class AuthGuard implements CanActivate {
 	constructor(
 		private readonly reflector: Reflector,
 		private readonly sessionService: SessionsService
-	) {}
+	) { }
 
 	async canActivate(context: ExecutionContext) {
+		if (context.getType() !== 'http') return true
+
 		const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
 			context.getHandler(),
 			context.getClass()
@@ -35,11 +37,6 @@ export class AuthGuard implements CanActivate {
 			}
 		}
 
-		/*
-		 * Токен ничего не доказывает сам по себе: единственный источник истины —
-		 * таблица сессий. Удалённая на сервере сессия сразу даёт 401, отдельной
-		 * проверки срока действия нет — у токена его нет.
-		 */
 		const session = await this.sessionService.findByToken(token)
 		if (!session) {
 			throw new UnauthorizedException('Invalid token')

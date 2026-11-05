@@ -7,6 +7,8 @@ export const SocketEvent = {
 	MESSAGE_DELETE: 'message:delete',
 	MESSAGE_ATTACHMENT_DELETED: 'message:attachment_deleted',
 
+	MESSAGE_SCHEDULED: 'message:scheduled',
+
 	/** Новый комментарий под постом канала; событие уходит в комнату канала. */
 	COMMENT_NEW: 'comment:new',
 
