@@ -83,7 +83,7 @@ import { RestoreCredentialsModule } from './modules/restore-credentials/restore-
 		ThrottlerModule.forRoot([
 			{
 				ttl: 60000,
-				limit: 200
+				limit: 300
 			}
 		]),
 		PrismaModule,
