@@ -11,6 +11,7 @@ import {
 	Delete,
 	Headers
 } from '@nestjs/common'
+import { Throttle } from '@nestjs/throttler'
 import { MessagesService } from './messages.service'
 import { ViewOnceMediaService } from './view-once-media.service'
 import { TextMessageDto } from './dto/text-message.dto'
@@ -116,6 +117,7 @@ export class MessagesController {
 	}
 
 	@Get(':messageId/files/:fileId/download')
+	@Throttle({ default: { limit: 600, ttl: 60000 } })
 	@UseGuards(CanReadChatGuard)
 	getFileDownloadUrl(
 		@Param('chatId', ParseChatIdPipe) chatId: ChatId,
