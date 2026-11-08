@@ -142,12 +142,6 @@ export class InviteLinksService {
 			throw new BadRequestException('Invite link expired')
 		}
 
-		if (link.maxUses && link.uses >= link.maxUses) {
-			if (isChannel) await this.prisma.channelInviteLink.delete({ where: { id: link.id } })
-			else await this.prisma.groupInviteLink.delete({ where: { id: link.id } })
-			throw new BadRequestException('Invite link limit reached')
-		}
-
 		const chatId = isChannel
 			? (link as ChannelInviteLink).channelId
 			: (link as GroupInviteLink).groupId
@@ -173,25 +167,47 @@ export class InviteLinksService {
 				const existingRequest = await this.prisma.groupJoinRequest.findUnique({
 					where: { groupId_userId: { groupId: chatId, userId } }
 				})
-				if (!existingRequest) {
-					await this.prisma.groupJoinRequest.create({
-						data: { groupId: chatId, userId, inviteLinkId: link.id, createdAt: BigInt(Date.now()) }
-					})
-				}
+				if (existingRequest) return link
 			} else {
 				const existingRequest = await this.prisma.channelJoinRequest.findUnique({
 					where: { channelId_userId: { channelId: chatId, userId } }
 				})
-				if (!existingRequest) {
-					await this.prisma.channelJoinRequest.create({
-						data: {
-							channelId: chatId,
-							userId,
-							inviteLinkId: link.id,
-							createdAt: BigInt(Date.now())
-						}
-					})
-				}
+				if (existingRequest) return link
+			}
+		}
+
+		const consumeUse = !link.requireApproval
+
+		const consumed =
+			link.maxUses == null || !consumeUse
+				? null
+				: isChannel
+					? await this.prisma.channelInviteLink.updateMany({
+							where: { id: link.id, uses: { lt: link.maxUses } },
+							data: { uses: { increment: 1 } }
+						})
+					: await this.prisma.groupInviteLink.updateMany({
+							where: { id: link.id, uses: { lt: link.maxUses } },
+							data: { uses: { increment: 1 } }
+						})
+
+		if (consumed && consumed.count === 0) {
+			await this.deleteExhaustedLink(isChannel, link.id)
+			throw new BadRequestException('Invite link limit reached')
+		}		if (link.requireApproval) {
+			if (!isChannel) {
+				await this.prisma.groupJoinRequest.create({
+					data: { groupId: chatId, userId, inviteLinkId: link.id, createdAt: BigInt(Date.now()) }
+				})
+			} else {
+				await this.prisma.channelJoinRequest.create({
+					data: {
+						channelId: chatId,
+						userId,
+						inviteLinkId: link.id,
+						createdAt: BigInt(Date.now())
+					}
+				})
 			}
 		} else {
 			if (!isChannel) {
@@ -206,26 +222,70 @@ export class InviteLinksService {
 			await this.chatsService.create(userId, ChatId(chatId))
 		}
 
-		let updatedLink: ChannelInviteLink | GroupInviteLink | null = null
-		if (isChannel) {
-			updatedLink = await this.prisma.channelInviteLink.update({
-				where: { id: link.id },
-				data: { uses: { increment: 1 } }
-			})
-			if (updatedLink.maxUses && updatedLink.uses >= updatedLink.maxUses) {
-				await this.prisma.channelInviteLink.delete({ where: { id: link.id } })
-			}
-		} else {
-			updatedLink = await this.prisma.groupInviteLink.update({
-				where: { id: link.id },
-				data: { uses: { increment: 1 } }
-			})
-			if (updatedLink.maxUses && updatedLink.uses >= updatedLink.maxUses) {
-				await this.prisma.groupInviteLink.delete({ where: { id: link.id } })
+		if (consumeUse && link.maxUses != null) {
+			const updatedLink = isChannel
+				? await this.prisma.channelInviteLink.findUnique({ where: { id: link.id } })
+				: await this.prisma.groupInviteLink.findUnique({ where: { id: link.id } })
+
+			if (updatedLink?.maxUses && updatedLink.uses >= updatedLink.maxUses) {
+				await this.deleteExhaustedLink(isChannel, link.id)
 			}
 		}
 
 		return link
+	}
+
+	private async deleteExhaustedLink(isChannel: boolean, linkId: number): Promise<void> {
+		if (isChannel) {
+			await this.prisma.channelInviteLink.deleteMany({
+				where: { id: linkId, maxUses: { not: null } }
+			})
+		} else {
+			await this.prisma.groupInviteLink.deleteMany({
+				where: { id: linkId, maxUses: { not: null } }
+			})
+		}
+	}
+
+	async consumeOnAccept(inviteLinkId: number | null, isChannel: boolean): Promise<void> {
+		if (inviteLinkId == null) return
+
+		if (isChannel) {
+			const link = await this.prisma.channelInviteLink.findUnique({
+				where: { id: inviteLinkId }
+			})
+			if (!link?.maxUses) return
+
+			await this.prisma.channelInviteLink.updateMany({
+				where: { id: link.id, uses: { lt: link.maxUses } },
+				data: { uses: { increment: 1 } }
+			})
+
+			const updated = await this.prisma.channelInviteLink.findUnique({
+				where: { id: link.id }
+			})
+			if (updated?.maxUses && updated.uses >= updated.maxUses) {
+				await this.deleteExhaustedLink(isChannel, link.id)
+			}
+			return
+		}
+
+		const link = await this.prisma.groupInviteLink.findUnique({
+			where: { id: inviteLinkId }
+		})
+		if (!link?.maxUses) return
+
+		await this.prisma.groupInviteLink.updateMany({
+			where: { id: link.id, uses: { lt: link.maxUses } },
+			data: { uses: { increment: 1 } }
+		})
+
+		const updated = await this.prisma.groupInviteLink.findUnique({
+			where: { id: link.id }
+		})
+		if (updated?.maxUses && updated.uses >= updated.maxUses) {
+			await this.deleteExhaustedLink(isChannel, link.id)
+		}
 	}
 
 	async delete(id: number) {

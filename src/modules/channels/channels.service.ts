@@ -2,6 +2,7 @@ import { plainToInstance } from 'class-transformer'
 import {
 	BadRequestException,
 	ConflictException,
+	ForbiddenException,
 	Injectable,
 	NotFoundException
 } from '@nestjs/common'
@@ -12,8 +13,12 @@ import { RealtimeGateway } from '../realtime/realtime.gateway'
 import { ChatResponseDto } from '../chats/dto/chat-response.dto'
 import { MessageResponseDto } from '../messages/dto/message-response.dto'
 import { SearchService } from '../search/search.service'
+import { InviteLinksService } from '../invites/invite-links.service'
 import { StorageService } from '../storage/storage.service'
-import { UserResponseDto } from '../users/dto/user-response.dto'
+import { assertUsableAsAvatar } from '../storage/services/avatar-file.util'
+import { FileType } from '../../common/enums/file-type.enum'
+import { clampListRange } from '../../common/utils/list-range.util'
+import { UserResponseDto, toPublicUserResponse } from '../users/dto/user-response.dto'
 import { IsBannedDto } from './dto/is-banned.dto'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { ChannelType } from '../../generated/prisma/enums'
@@ -34,16 +39,29 @@ export class ChannelsService {
 		private readonly chatsService: ChatsService,
 		private readonly realtimeGateway: RealtimeGateway,
 		private readonly searchService: SearchService,
-		private readonly storageService: StorageService
+		private readonly storageService: StorageService,
+		private readonly inviteLinksService: InviteLinksService
 	) {}
 
-	async update(id: ChannelId, dto: UpdateChannelDto): Promise<ChannelResponseDto> {
+	async update(
+		id: ChannelId,
+		userId: UserId,
+		dto: UpdateChannelDto
+	): Promise<ChannelResponseDto> {
 		const exitingChannel = await this.prisma.channel.findUnique({ where: { id } })
 		if (!exitingChannel) throw new NotFoundException('Channel not found')
 
 		if (dto.username && dto.username !== exitingChannel.username) {
-			const isAvailable = await this.searchService.isUsernameAvailable(dto.username)
+			const isAvailable = await this.searchService.isUsernameAvailable(dto.username, userId)
 			if (!isAvailable) throw new ConflictException('Username is already taken')
+		}
+
+		const changesChannelType =
+			dto.channelType !== undefined && dto.channelType !== exitingChannel.channelType
+		const changesNoCopy = dto.noCopy !== undefined && dto.noCopy !== exitingChannel.noCopy
+
+		if ((changesChannelType || changesNoCopy) && exitingChannel.ownerId !== userId) {
+			throw new ForbiddenException('Only the channel owner can change these settings')
 		}
 
 		const channelType = dto.channelType ?? exitingChannel.channelType
@@ -61,7 +79,7 @@ export class ChannelsService {
 			}
 		})
 
-		if (dto.noCopy !== undefined && dto.noCopy !== exitingChannel.noCopy) {
+		if (changesNoCopy) {
 			await this.notifyNoCopyChanged(id, channel.noCopy)
 		}
 
@@ -221,6 +239,10 @@ export class ChannelsService {
 				.delete({ where: { userId_channelId: { userId, channelId } } })
 				.catch(() => {})
 
+			await tx.channelAdminPermission.deleteMany({
+				where: { channelId, userId }
+			})
+
 			await tx.chat.deleteMany({
 				where: { userId, chatId: channelId }
 			})
@@ -251,6 +273,10 @@ export class ChannelsService {
 			await tx.channelSubscriber
 				.delete({ where: { userId_channelId: { userId: targetUserId, channelId: id } } })
 				.catch(() => {})
+
+			await tx.channelAdminPermission.deleteMany({
+				where: { channelId: id, userId: targetUserId }
+			})
 
 			await tx.chat.deleteMany({
 				where: { userId: targetUserId, chatId: id }
@@ -379,18 +405,17 @@ export class ChannelsService {
 				: undefined
 		}
 
+		const { skip: safeSkip, take: safeTake } = clampListRange(skip, take)
+
 		const subscribers = await this.prisma.channelSubscriber.findMany({
 			where,
-			skip,
-			take,
+			skip: safeSkip,
+			take: safeTake,
 			include: { user: true },
 			orderBy: { user: { firstName: 'asc' } }
 		})
 
-		return plainToInstance(
-			UserResponseDto,
-			subscribers.map((s) => s.user)
-		)
+		return subscribers.map((s) => toPublicUserResponse(s.user))
 	}
 
 	async delete(id: ChannelId): Promise<void> {
@@ -447,18 +472,17 @@ export class ChannelsService {
 				: undefined
 		}
 
+		const { skip: safeSkip, take: safeTake } = clampListRange(skip, take)
+
 		const bannedUsers = await this.prisma.channelBlackList.findMany({
 			where,
-			skip,
-			take,
+			skip: safeSkip,
+			take: safeTake,
 			include: { user: true },
 			orderBy: { user: { firstName: 'asc' } }
 		})
 
-		return plainToInstance(
-			UserResponseDto,
-			bannedUsers.map((b) => b.user)
-		)
+		return bannedUsers.map((b) => toPublicUserResponse(b.user))
 	}
 
 	async unban(id: ChannelId, ownerId: UserId, targetUserId: UserId): Promise<void> {
@@ -514,18 +538,17 @@ export class ChannelsService {
 				: undefined
 		}
 
+		const { skip: safeSkip, take: safeTake } = clampListRange(skip, take)
+
 		const requests = await this.prisma.channelJoinRequest.findMany({
 			where,
-			skip,
-			take,
+			skip: safeSkip,
+			take: safeTake,
 			include: { user: true },
 			orderBy: { createdAt: 'desc' }
 		})
 
-		return plainToInstance(
-			UserResponseDto,
-			requests.map((r) => r.user)
-		)
+		return requests.map((r) => toPublicUserResponse(r.user))
 	}
 
 	async acceptJoinRequest(channelId: ChannelId, targetUserId: UserId): Promise<void> {
@@ -535,6 +558,16 @@ export class ChannelsService {
 
 		if (!request) {
 			throw new NotFoundException('Join request not found')
+		}
+
+		const isBanned = await this.prisma.channelBlackList.count({
+			where: { channelId, userId: targetUserId }
+		})
+		if (isBanned) {
+			await this.prisma.channelJoinRequest
+				.delete({ where: { channelId_userId: { channelId, userId: targetUserId } } })
+				.catch(() => {})
+			throw new BadRequestException('User is banned from this channel')
 		}
 
 		await this.prisma.$transaction(async (tx) => {
@@ -554,6 +587,8 @@ export class ChannelsService {
 		})
 
 		await this.chatsService.create(targetUserId, ChatId(channelId))
+
+		await this.inviteLinksService.consumeOnAccept(request.inviteLinkId, true)
 
 		const channel = await this.prisma.channel.findUnique({ where: { id: channelId } })
 		if (channel) {
@@ -648,7 +683,11 @@ export class ChannelsService {
 		await this.prisma.channelInviteLink.delete({ where: { id: linkId } })
 	}
 
-	async confirmUploadAvatar(channelId: ChannelId, fileId: string): Promise<void> {
+	async confirmUploadAvatar(
+		channelId: ChannelId,
+		fileId: string,
+		uploaderId: UserId
+	): Promise<void> {
 		const file = await this.prisma.file.findFirst({
 			where: { id: fileId }
 		})
@@ -657,14 +696,23 @@ export class ChannelsService {
 			throw new NotFoundException('File not found')
 		}
 
-		await this.storageService.confirmUpload(fileId)
+		assertUsableAsAvatar(file, FileType.CHANNEL_AVATAR)
 
-		await this.prisma.channelPhoto.create({
-			data: {
-				channelId: channelId,
-				fileId: file.id,
-				isCurrent: true
-			}
+		await this.storageService.confirmUpload(fileId, uploaderId.toString())
+
+		await this.prisma.$transaction(async (tx) => {
+			await tx.channelPhoto.updateMany({
+				where: { channelId },
+				data: { isCurrent: false }
+			})
+
+			await tx.channelPhoto.create({
+				data: {
+					channelId: channelId,
+					fileId: file.id,
+					isCurrent: true
+				}
+			})
 		})
 	}
 

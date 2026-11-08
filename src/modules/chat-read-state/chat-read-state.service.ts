@@ -292,9 +292,10 @@ export class ChatReadStateService {
 		chatIds: ChatId[],
 		excludeSocketId?: string
 	): Promise<ChatReadStateDto[]> {
+		const accessible = await this.filterAccessibleChats(userId, chatIds)
 		const states: ChatReadStateDto[] = []
 
-		for (const chatId of chatIds) {
+		for (const chatId of accessible) {
 			await this.prisma.chatReadState.updateMany({
 				where: { userId, chatId, isManuallyUnread: true },
 				data: { isManuallyUnread: false, updatedAt: Date.now() }
@@ -321,10 +322,11 @@ export class ChatReadStateService {
 		chatIds: ChatId[],
 		excludeSocketId?: string
 	): Promise<ChatReadStateDto[]> {
+		const accessible = await this.filterAccessibleChats(userId, chatIds)
 		const now = Date.now()
 		const states: ChatReadStateDto[] = []
 
-		for (const chatId of chatIds) {
+		for (const chatId of accessible) {
 			const row = await this.prisma.chatReadState.upsert({
 				where: { userId_chatId: { userId, chatId } },
 				create: {
@@ -421,6 +423,57 @@ export class ChatReadStateService {
 		if (!message) return chatId
 
 		return ChatId(message.senderId)
+	}
+
+	private async filterAccessibleChats(userId: UserId, chatIds: ChatId[]): Promise<ChatId[]> {
+		const accessible: ChatId[] = []
+
+		for (const chatId of chatIds) {
+			const chatType = detectChatType(chatId)
+
+			if (chatType === ChatType.PRIVATE) {
+				if (BigInt(chatId) === BigInt(userId)) {
+					accessible.push(chatId)
+					continue
+				}
+
+				const chat = await this.prisma.chat.findUnique({
+					where: { chat_uniq_id: `${userId}${chatId}` },
+					select: { id: true }
+				})
+				if (chat) accessible.push(chatId)
+				continue
+			}
+
+			if (chatType === ChatType.GROUP) {
+				const member = await this.prisma.groupMember.findFirst({
+					where: { groupId: chatId, userId },
+					select: { id: true }
+				})
+				if (member) accessible.push(chatId)
+				continue
+			}
+
+			if (chatType === ChatType.CHANNEL) {
+				const channel = await this.prisma.channel.findUnique({
+					where: { id: chatId },
+					select: { ownerId: true }
+				})
+				if (!channel) continue
+				if (channel.ownerId === userId) {
+					accessible.push(chatId)
+					continue
+				}
+
+				const subscriber = await this.prisma.channelSubscriber.findFirst({
+					where: { channelId: chatId, userId },
+					select: { id: true }
+				})
+				if (subscriber) accessible.push(chatId)
+			}
+		}
+
+		return accessible
 	}
 
 	/**

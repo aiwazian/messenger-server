@@ -14,7 +14,7 @@ export class DeleteChatUseCase {
 		private readonly messagesService: MessagesService
 	) {}
 
-	async execute(
+	async run(
 		userId: UserId,
 		chatId: ChatId,
 		deleteForRecipient: boolean = false
@@ -26,21 +26,59 @@ export class DeleteChatUseCase {
 			where: { userId, chatId }
 		})
 
-		if (isPrivateChat && deleteForRecipient) {
-			await this.prisma.chat.deleteMany({
-				where: { userId: chatId, chatId: userId }
-			})
+		if (isPrivateChat) {
+			if (deleteForRecipient) {
+				await this.prisma.chat.deleteMany({
+					where: { userId: chatId, chatId: userId }
+				})
+			}
+
+			await this.messagesService.clearHistory(userId, chatId, deleteForRecipient)
+
+			if (deleteForRecipient) {
+				await this.removeClearedMarker(chatId)
+			}
+
+			return
 		}
 
-		await this.messagesService.clearHistory(userId, chatId, deleteForRecipient)
+		const canWipe = await this.isHistoryOwner(chatType, chatId, userId)
+		if (!canWipe) return
 
-		if (!isPrivateChat || deleteForRecipient) {
-			await this.prisma.message.deleteMany({
-				where: {
-					chatId: chatId,
-					systemEvent: { eventType: SystemEventType.HISTORY_CLEARED }
-				}
+		await this.messagesService.clearHistory(userId, chatId, false)
+		await this.removeClearedMarker(chatId)
+	}
+
+	private async isHistoryOwner(
+		chatType: ChatType,
+		chatId: ChatId,
+		userId: UserId
+	): Promise<boolean> {
+		if (chatType === ChatType.GROUP) {
+			const group = await this.prisma.group.findFirst({
+				where: { id: chatId, ownerId: userId },
+				select: { id: true }
 			})
+			return group != null
 		}
+
+		if (chatType === ChatType.CHANNEL) {
+			const channel = await this.prisma.channel.findFirst({
+				where: { id: chatId, ownerId: userId },
+				select: { id: true }
+			})
+			return channel != null
+		}
+
+		return false
+	}
+
+	private async removeClearedMarker(chatId: ChatId): Promise<void> {
+		await this.prisma.message.deleteMany({
+			where: {
+				chatId: chatId,
+				systemEvent: { eventType: SystemEventType.HISTORY_CLEARED }
+			}
+		})
 	}
 }

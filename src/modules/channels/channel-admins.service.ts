@@ -235,6 +235,13 @@ export class ChannelAdminsService {
 			where: { channelId_userId: { channelId, userId } }
 		})
 		if (!admin) return false
+
+		const subscriber = await this.prisma.channelSubscriber.findFirst({
+			where: { channelId, userId },
+			select: { id: true }
+		})
+		if (!subscriber) return false
+
 		if (!permission) return true
 
 		return admin[permission] === true

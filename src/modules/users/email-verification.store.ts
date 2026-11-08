@@ -11,6 +11,10 @@ const CODE_TTL_SECONDS = 10 * 60
 
 const KEY_PREFIX = 'email-verification'
 
+const MAX_VERIFY_ATTEMPTS = 5
+
+const ATTEMPTS_TTL_SECONDS = CODE_TTL_SECONDS
+
 interface PendingEmail {
 	email: string
 	code: string
@@ -32,6 +36,10 @@ export class EmailVerificationStore {
 		return `${KEY_PREFIX}:${userId.toString()}`
 	}
 
+	private attemptsKey(userId: bigint): string {
+		return `${KEY_PREFIX}-attempts:${userId.toString()}`
+	}
+
 	/**
 	 * Генерирует шестизначный код.
 	 *
@@ -49,6 +57,7 @@ export class EmailVerificationStore {
 		const pending: PendingEmail = { email, code }
 
 		await this.redis.set(this.key(userId), JSON.stringify(pending), 'EX', CODE_TTL_SECONDS)
+		await this.redis.del(this.attemptsKey(userId))
 
 		return code
 	}
@@ -58,6 +67,16 @@ export class EmailVerificationStore {
 		if (!raw) return { valid: false }
 
 		const pending = JSON.parse(raw) as PendingEmail
+
+		const attempts = await this.redis.incr(this.attemptsKey(userId))
+		if (attempts === 1) {
+			await this.redis.expire(this.attemptsKey(userId), ATTEMPTS_TTL_SECONDS)
+		}
+
+		if (attempts > MAX_VERIFY_ATTEMPTS) {
+			await this.delete(userId)
+			return { valid: false }
+		}
 
 		const valid = pending.code === code
 		const email = valid ? pending.email : undefined
@@ -79,5 +98,6 @@ export class EmailVerificationStore {
 
 	async delete(userId: bigint): Promise<void> {
 		await this.redis.del(this.key(userId))
+		await this.redis.del(this.attemptsKey(userId))
 	}
 }

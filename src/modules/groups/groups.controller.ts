@@ -166,8 +166,12 @@ export class GroupsController {
 	@Patch(`:${PARAMS.GROUP_ID}`)
 	@UseGuards(GroupExistsGuard, GroupAdminGuard)
 	@RequireAdminPermission('canEditProfile')
-	update(@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId, @Body() dto: UpdateGroupDto) {
-		return this.groupsService.update(id, dto)
+	update(
+		@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId,
+		@CurrentUserId() userId: UserId,
+		@Body() dto: UpdateGroupDto
+	) {
+		return this.groupsService.update(id, userId, dto)
 	}
 
 	@HttpCode(204)
@@ -301,9 +305,10 @@ export class GroupsController {
 	@Post(`:${PARAMS.GROUP_ID}/avatar/init`)
 	@UseGuards(GroupExistsGuard, GroupAdminGuard)
 	@RequireAdminPermission('canEditProfile')
-	initFileUpload(@Body() dto: FileInitDto) {
+	initFileUpload(@CurrentUserId() userId: UserId, @Body() dto: FileInitDto) {
 		return this.storageService.initUpload({
 			...dto,
+			uploaderId: userId.toString(),
 			category:
 				dto.mimeType === VIDEO_AVATAR_MIME_TYPE
 					? UploadCategory.VIDEO_AVATAR
@@ -317,9 +322,10 @@ export class GroupsController {
 	@RequireAdminPermission('canEditProfile')
 	confirmFileUpload(
 		@Param(PARAMS.GROUP_ID, ParseGroupIdPipe) id: GroupId,
-		@Param('fileId') fileId: string
+		@Param('fileId') fileId: string,
+		@CurrentUserId() userId: UserId
 	) {
-		return this.groupsService.confirmUploadAvatar(id, fileId)
+		return this.groupsService.confirmUploadAvatar(id, fileId, userId)
 	}
 
 	@Delete(`:${PARAMS.GROUP_ID}/avatars/:fileId`)

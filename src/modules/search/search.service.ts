@@ -39,8 +39,11 @@ export class SearchService {
 		private readonly moderation: ContentModerationService
 	) {}
 
-	async isUsernameAvailable(username: string): Promise<UsernameAvailabilityDto> {
-		const isAllowed = await this.moderation.isAllowed(username)
+	async isUsernameAvailable(
+		username: string,
+		requesterId?: bigint
+	): Promise<UsernameAvailabilityDto> {
+		const isAllowed = await this.moderation.isAllowed(username, requesterId)
 		if (!isAllowed) return { available: false, reason: 'blocked' }
 
 		const userExists = await this.prisma.user.findFirst({

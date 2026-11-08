@@ -13,6 +13,8 @@ import { Server, Socket } from 'socket.io'
 import { SessionsService } from '../sessions/sessions.service'
 import { instanceToPlain } from 'class-transformer'
 import { SocketEvent, SocketEventType } from '../../common/socket/socket-events'
+import { detectChatType } from '../../common/utils/detect-chat-type.util'
+import { ChatType } from '../../common/enums/chat-type.enum'
 import { UserId } from '../../common/types/user-id.type'
 import { ChatId } from '../../common/types/chat-id.type'
 import { ChatsService } from '../chats/chats.service'
@@ -157,7 +159,12 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 		if (prev && prev !== chatId) {
 			await client.leave(`chat:${prev.toString()}`)
 		}
-		await client.join(`chat:${chatId.toString()}`)
+
+		const chatType = detectChatType(chatId)
+		if (chatType !== ChatType.PRIVATE) {
+			await client.join(`chat:${chatId.toString()}`)
+		}
+
 		client.data.activeChatId = chatId
 	}
 

@@ -188,7 +188,7 @@ export class EmojiService {
 	}
 
 	getPack(userId: UserId, packId: EmojiPackId): Promise<EmojiPackResponseDto> {
-		return this.findPackDetail(userId, { id: packId }, true)
+		return this.findPackDetail(userId, { id: packId })
 	}
 
 	getPackByUsername(userId: UserId, username: string): Promise<EmojiPackResponseDto> {
@@ -222,18 +222,18 @@ export class EmojiService {
 	}
 
 	async createPack(userId: UserId, dto: CreateEmojiPackDto): Promise<EmojiPackResponseDto> {
+		const packId = dto.id === undefined ? generateEmojiPackId() : this.parseClientPackId(dto.id)
 		const fileIds = dto.emojis.map(emoji => emoji.fileId)
 
-		await this.assertEmojiFilesUsable(fileIds)
+		await this.assertEmojiFilesUsable(fileIds, packId)
 
 		if (dto.coverFileId) {
-			await this.assertEmojiFileUsable(dto.coverFileId)
+			await this.assertEmojiFileUsable(dto.coverFileId, packId)
 		}
 
 		await this.assertUsernameFree(dto.username)
 
 		const now = BigInt(Date.now())
-		const packId = dto.id === undefined ? generateEmojiPackId() : EmojiPackId(dto.id)
 
 		await this.assertPackIdFree(packId)
 
@@ -288,7 +288,7 @@ export class EmojiService {
 		}
 
 		if (dto.coverFileId) {
-			await this.assertEmojiFileUsable(dto.coverFileId)
+			await this.assertEmojiFileUsable(dto.coverFileId, packId)
 		}
 
 		const previousCoverFileId = pack.coverFileId
@@ -297,7 +297,7 @@ export class EmojiService {
 		const desiredFileIds = desiredEmojis?.map(emoji => emoji.fileId)
 
 		if (desiredFileIds) {
-			await this.assertEmojiFilesUsable(desiredFileIds)
+			await this.assertEmojiFilesUsable(desiredFileIds, packId)
 		}
 
 		const removedFileIds = desiredFileIds
@@ -426,7 +426,7 @@ export class EmojiService {
 		await this.prisma.userEmojiPack.deleteMany({ where: { userId, packId } })
 	}
 
-	initEmojiUpload(dto: EmojiUploadInitDto): Promise<InitUploadDto> {
+	initEmojiUpload(dto: EmojiUploadInitDto, uploaderId: UserId): Promise<InitUploadDto> {
 		const packId = EmojiPackId(dto.packId)
 		const extension = EMOJI_EXTENSION_BY_MIME_TYPE[dto.mimeType]
 
@@ -446,12 +446,13 @@ export class EmojiService {
 			directory: FileType.EMOJI,
 			subdirectory: packId.toString(),
 			width: dto.width,
-			height: dto.height
+			height: dto.height,
+			uploaderId: uploaderId.toString()
 		})
 	}
 
-	confirmEmojiUpload(fileId: string): Promise<FileDto> {
-		return this.storage.confirmUpload(fileId)
+	confirmEmojiUpload(fileId: string, uploaderId: UserId): Promise<FileDto> {
+		return this.storage.confirmUpload(fileId, uploaderId.toString())
 	}
 
 	private async findPackDetail(
@@ -500,11 +501,22 @@ export class EmojiService {
 		}
 	}
 
-	private async assertEmojiFileUsable(fileId: string): Promise<void> {
-		await this.assertEmojiFilesUsable([fileId])
+	private async assertEmojiFileUsable(fileId: string, packId?: EmojiPackId): Promise<void> {
+		await this.assertEmojiFilesUsable([fileId], packId)
 	}
 
-	private async assertEmojiFilesUsable(fileIds: string[]): Promise<void> {
+	private parseClientPackId(raw: string): EmojiPackId {
+		if (!/^5\d{1,18}$/.test(raw)) {
+			throw new BadRequestException('Invalid emoji pack id')
+		}
+
+		return EmojiPackId(raw)
+	}
+
+	private async assertEmojiFilesUsable(
+		fileIds: string[],
+		packId?: EmojiPackId
+	): Promise<void> {
 		const uniqueIds = new Set(fileIds)
 
 		if (uniqueIds.size !== fileIds.length) {
@@ -527,6 +539,10 @@ export class EmojiService {
 
 			if (!file.path.startsWith(`${FileType.EMOJI}/`)) {
 				throw new ConflictException('File is not an emoji')
+			}
+
+			if (packId && !file.path.startsWith(`${FileType.EMOJI}/${packId.toString()}/`)) {
+				throw new ConflictException('Emoji file was uploaded for a different pack')
 			}
 
 			if (file.mimeType !== EMOJI_MIME_TYPE && file.mimeType !== VIDEO_EMOJI_MIME_TYPE) {

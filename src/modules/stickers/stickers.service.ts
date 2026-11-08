@@ -163,7 +163,7 @@ export class StickersService {
 	}
 
 	getPack(userId: UserId, packId: StickerPackId): Promise<StickerPackResponseDto> {
-		return this.findPackDetail(userId, { id: packId }, true)
+		return this.findPackDetail(userId, { id: packId })
 	}
 
 	getPackByUsername(userId: UserId, username: string): Promise<StickerPackResponseDto> {
@@ -197,18 +197,18 @@ export class StickersService {
 	}
 
 	async createPack(userId: UserId, dto: CreateStickerPackDto): Promise<StickerPackResponseDto> {
+		const packId = dto.id === undefined ? generateStickerPackId() : this.parseClientPackId(dto.id)
 		const fileIds = dto.stickers.map(sticker => sticker.fileId)
 
-		await this.assertStickerFilesUsable(fileIds)
+		await this.assertStickerFilesUsable(fileIds, packId)
 
 		if (dto.coverFileId) {
-			await this.assertStickerFileUsable(dto.coverFileId)
+			await this.assertStickerFileUsable(dto.coverFileId, packId)
 		}
 
 		await this.assertUsernameFree(dto.username)
 
 		const now = BigInt(Date.now())
-		const packId = dto.id === undefined ? generateStickerPackId() : StickerPackId(dto.id)
 
 		await this.assertPackIdFree(packId)
 
@@ -265,7 +265,7 @@ export class StickersService {
 		const desiredCoverFileId = dto.removeCover === true ? null : dto.coverFileId
 
 		if (desiredCoverFileId) {
-			await this.assertStickerFileUsable(desiredCoverFileId)
+			await this.assertStickerFileUsable(desiredCoverFileId, packId)
 		}
 
 		const previousCoverFileId = pack.coverFileId
@@ -273,7 +273,7 @@ export class StickersService {
 		const desiredFileIds = desiredStickers?.map(sticker => sticker.fileId)
 
 		if (desiredFileIds) {
-			await this.assertStickerFilesUsable(desiredFileIds)
+			await this.assertStickerFilesUsable(desiredFileIds, packId)
 		}
 
 		const removedFileIds = desiredFileIds
@@ -404,7 +404,7 @@ export class StickersService {
 		await this.prisma.userStickerPack.deleteMany({ where: { userId, packId } })
 	}
 
-	initStickerUpload(dto: StickerUploadInitDto): Promise<InitUploadDto> {
+	initStickerUpload(dto: StickerUploadInitDto, uploaderId: UserId): Promise<InitUploadDto> {
 		const packId = StickerPackId(dto.packId)
 		const extension = STICKER_EXTENSION_BY_MIME_TYPE[dto.mimeType]
 
@@ -427,12 +427,13 @@ export class StickersService {
 			directory: FileType.STICKER,
 			subdirectory: packId.toString(),
 			width: dto.width,
-			height: dto.height
+			height: dto.height,
+			uploaderId: uploaderId.toString()
 		})
 	}
 
-	confirmStickerUpload(fileId: string): Promise<FileDto> {
-		return this.storage.confirmUpload(fileId)
+	confirmStickerUpload(fileId: string, uploaderId: UserId): Promise<FileDto> {
+		return this.storage.confirmUpload(fileId, uploaderId.toString())
 	}
 
 	private async findPackDetail(
@@ -481,11 +482,22 @@ export class StickersService {
 		}
 	}
 
-	private async assertStickerFileUsable(fileId: string): Promise<void> {
-		await this.assertStickerFilesUsable([fileId])
+	private async assertStickerFileUsable(fileId: string, packId?: StickerPackId): Promise<void> {
+		await this.assertStickerFilesUsable([fileId], packId)
 	}
 
-	private async assertStickerFilesUsable(fileIds: string[]): Promise<void> {
+	private parseClientPackId(raw: string): StickerPackId {
+		if (!/^4\d{1,18}$/.test(raw)) {
+			throw new BadRequestException('Invalid sticker pack id')
+		}
+
+		return StickerPackId(raw)
+	}
+
+	private async assertStickerFilesUsable(
+		fileIds: string[],
+		packId?: StickerPackId
+	): Promise<void> {
 		const uniqueIds = new Set(fileIds)
 
 		if (uniqueIds.size !== fileIds.length) {
@@ -508,6 +520,10 @@ export class StickersService {
 
 			if (!file.path.startsWith(`${FileType.STICKER}/`)) {
 				throw new ConflictException('File is not a sticker')
+			}
+
+			if (packId && !file.path.startsWith(`${FileType.STICKER}/${packId.toString()}/`)) {
+				throw new ConflictException('Sticker file was uploaded for a different pack')
 			}
 
 			if (file.mimeType !== STICKER_MIME_TYPE && file.mimeType !== VIDEO_STICKER_MIME_TYPE) {
