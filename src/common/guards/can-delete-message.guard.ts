@@ -34,13 +34,17 @@ export class CanDeleteMessageGuard implements CanActivate {
 		}
 
 		if (message.senderId === userId) {
-			return true
+			return this.assertChatIdMatches(request, message)
 		}
 
 		const chatType = detectChatType(ChatId(message.chatId))
 
 		if (chatType === ChatType.PRIVATE) {
-			return true
+			const isParticipant = BigInt(message.chatId) === BigInt(userId)
+			if (!isParticipant) {
+				throw new ForbiddenException('You cannot delete this message')
+			}
+			return this.assertChatIdMatches(request, message)
 		}
 
 		if (chatType === ChatType.GROUP) {
@@ -58,5 +62,24 @@ export class CanDeleteMessageGuard implements CanActivate {
 		}
 
 		throw new ForbiddenException('You cannot delete this message')
+	}
+
+	private assertChatIdMatches(
+		request: Record<string, any>,
+		message: { chatId: bigint; senderId: bigint }
+	): boolean {
+		const rawChatId = request.params[PARAMS.CHAT_ID]
+		if (rawChatId == null) return true
+
+		if (!/^\d{1,19}$/.test(rawChatId)) {
+			throw new NotFoundException('Message not found')
+		}
+
+		const urlChatId = BigInt(rawChatId)
+		if (urlChatId === BigInt(message.chatId) || urlChatId === BigInt(message.senderId)) {
+			return true
+		}
+
+		throw new NotFoundException('Message not found')
 	}
 }

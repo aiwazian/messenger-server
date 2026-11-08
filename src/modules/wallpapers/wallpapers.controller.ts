@@ -45,17 +45,18 @@ export class WallpapersController {
 	) {}
 
 	@Post('users/me/wallpaper/init')
-	initUpload(@Body() dto: FileInitDto) {
+	initUpload(@CurrentUserId() userId: UserId, @Body() dto: FileInitDto) {
 		return this.storage.initUpload({
 			...dto,
+			uploaderId: userId.toString(),
 			category: UploadCategory.IMAGE,
 			directory: FileType.WALLPAPER
 		})
 	}
 
 	@Post('users/me/wallpaper/confirm/:fileId')
-	confirmUpload(@Param('fileId') fileId: string) {
-		return this.storage.confirmUpload(fileId)
+	confirmUpload(@CurrentUserId() userId: UserId, @Param('fileId') fileId: string) {
+		return this.storage.confirmUpload(fileId, userId.toString())
 	}
 
 	@Get('users/me/wallpaper')

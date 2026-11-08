@@ -19,6 +19,7 @@ import { CanReadChatGuard } from '../../common/guards/can-read-chat.guard'
 import { ChatId } from '../../common/types/chat-id.type'
 import { InviteLinkOwnerGuard } from '../../common/guards/invite-link-owner.guard'
 import { DeleteChatDto } from './dto/delete-chat.dto'
+import { PinChatsDto } from './dto/pin-chats.dto'
 import { DeleteChatUseCase } from './use-cases/delete-chat.use-case'
 import { ChatReadStateService } from '../chat-read-state/chat-read-state.service'
 import { MarkChatsDto } from '../chat-read-state/dto/mark-chats.dto'
@@ -56,7 +57,7 @@ export class ChatsController {
 		@Param('chatId') chatId: string,
 		@Body() dto: DeleteChatDto
 	) {
-		return this.deleteChatUseCase.execute(userId, ChatId(chatId), dto.deleteForRecipient)
+		return this.deleteChatUseCase.run(userId, ChatId(chatId), dto.deleteForRecipient)
 	}
 
 	@Get('invite-links/:code/info')
@@ -78,15 +79,15 @@ export class ChatsController {
 
 	@Post('pin')
 	@HttpCode(HttpStatus.NO_CONTENT)
-	pinChats(@CurrentUserId() userId: UserId, @Body() body: { chatIds: string[] }) {
-		const chatIds = body.chatIds.map((id) => ChatId(id))
+	pinChats(@CurrentUserId() userId: UserId, @Body() dto: PinChatsDto) {
+		const chatIds = dto.chatIds.map((id) => ChatId(id))
 		return this.chatsService.pinChats(userId, chatIds)
 	}
 
 	@Post('unpin')
 	@HttpCode(HttpStatus.NO_CONTENT)
-	unpinChats(@CurrentUserId() userId: UserId, @Body() body: { chatIds: string[] }) {
-		const chatIds = body.chatIds.map((id) => ChatId(id))
+	unpinChats(@CurrentUserId() userId: UserId, @Body() dto: PinChatsDto) {
+		const chatIds = dto.chatIds.map((id) => ChatId(id))
 		return this.chatsService.unpinChats(userId, chatIds)
 	}
 

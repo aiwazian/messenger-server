@@ -105,6 +105,7 @@ export class MessagesService {
 		await this.chatsService.create(userId, chatId)
 		return this.storageService.initUpload({
 			...dto,
+			uploaderId: userId.toString(),
 			directory: FileType.CHAT_ATTACHMENT
 		})
 	}
@@ -141,7 +142,7 @@ export class MessagesService {
 
 		for (let i = 0; i < dto.attachments.length; i++) {
 			const att = dto.attachments[i]
-			await this.storageService.confirmUpload(att.fileId)
+			await this.storageService.confirmUpload(att.fileId, userId.toString())
 
 			const file = await this.prisma.file.findUnique({ where: { id: att.fileId } })
 			if (!file) throw new NotFoundException(`File ${att.fileId} not found`)
@@ -229,10 +230,19 @@ export class MessagesService {
 		messageId: number,
 		fileId: string
 	): Promise<FileDownloadDto> {
-		await this.chatsService.create(userId, chatId)
+		const chatType = detectChatType(chatId)
+		const participantWhere: Prisma.MessageWhereInput =
+			chatType === ChatType.PRIVATE
+				? {
+						OR: [
+							{ senderId: userId, chatId: chatId },
+							{ senderId: chatId, chatId: userId }
+						]
+					}
+				: { chatId }
 
 		const message = await this.prisma.message.findFirst({
-			where: { id: messageId, chatId },
+			where: { AND: [participantWhere, { id: messageId }] },
 			include: { attachments: true }
 		})
 
@@ -579,13 +589,27 @@ export class MessagesService {
 		const chatType = detectChatType(chatId)
 		const isPrivateChat = chatType === ChatType.PRIVATE
 
+		const message = await this.prisma.message.findUnique({
+			where: { id: messageId },
+			select: { chatId: true, senderId: true }
+		})
+
+		if (!message) throw new NotFoundException('Message not found')
+
+		const peerId: bigint =
+			isPrivateChat
+				? BigInt(message.chatId) === BigInt(userId)
+					? message.senderId
+					: message.chatId
+				: chatId
+
 		if (isPrivateChat && !dto.deleteForRecipient) {
 			const existingDeletes = await this.prisma.deletedMessage.findMany({
-				where: { messageId, userId: { in: [userId, chatId] } },
+				where: { messageId, userId: { in: [userId, peerId] } },
 				select: { userId: true }
 			})
 
-			const isHiddenForPeer = existingDeletes.some((row) => row.userId === chatId)
+			const isHiddenForPeer = existingDeletes.some((row) => row.userId === peerId)
 
 			if (isHiddenForPeer) {
 				await this.deleteMessageWithFiles(messageId)
@@ -609,11 +633,14 @@ export class MessagesService {
 			await this.deleteMessageWithFiles(messageId)
 		}
 
-		const deletePayload = { chatId: chatId, messageId }
+		const deletePayload = { chatId: peerId, messageId }
 		this.realtimeGateway.sendToUser(userId, SocketEvent.MESSAGE_DELETE, deletePayload, excludeSocketId)
 
-		if (dto.deleteForRecipient) {
-			this.realtimeGateway.sendToUser(UserId(chatId), SocketEvent.MESSAGE_DELETE, deletePayload)
+		if (isPrivateChat && dto.deleteForRecipient) {
+			this.realtimeGateway.sendToUser(UserId(peerId), SocketEvent.MESSAGE_DELETE, {
+				chatId: userId,
+				messageId
+			})
 		}
 
 		if (!isPrivateChat) {
@@ -685,7 +712,7 @@ export class MessagesService {
 			return messageInstance
 		}
 
-		if (BigInt(chatId) === BigInt(userId)) {
+		if (chatType === ChatType.PRIVATE) {
 			this.realtimeGateway.sendToUser(
 				userId,
 				SocketEvent.MESSAGE_EDIT,
@@ -1282,18 +1309,15 @@ export class MessagesService {
 
 		await this.chatReadState.markReadOnSend(senderUserId, chatId, BigInt(message.id))
 
-		const online: UserId[] = []
 		const offline: UserId[] = []
 
 		for (const userId of wsTargets) {
-			if (this.realtimeGateway.isUserOnline(userId)) {
-				online.push(userId)
-			} else if (userId !== senderUserId) {
+			if (!this.realtimeGateway.isUserOnline(userId) && userId !== senderUserId) {
 				offline.push(userId)
 			}
 		}
 
-		if (BigInt(chatId) === BigInt(senderUserId)) {
+		if (chatType === ChatType.PRIVATE) {
 			this.realtimeGateway.sendToUser(
 				senderUserId,
 				SocketEvent.MESSAGE_NEW,
@@ -1304,9 +1328,11 @@ export class MessagesService {
 			this.realtimeGateway.sendToChat(chatId, SocketEvent.MESSAGE_NEW, message, excludeSocketId)
 		}
 
-		if (online.length > 0) {
+		const batchTargets = chatType === ChatType.PRIVATE ? recipients : wsTargets
+
+		if (batchTargets.length > 0) {
 			this.realtimeGateway.sendToUsersExceptChat(
-				online,
+				batchTargets,
 				chatId,
 				SocketEvent.MESSAGE_NEW,
 				message,

@@ -54,7 +54,8 @@ export class ChannelCommentsService {
 			this.prisma.comment.findMany({
 				where: { postId: BigInt(postId) },
 				include: COMMENT_INCLUDE,
-				orderBy: { id: 'asc' }
+				orderBy: { id: 'asc' },
+				take: 1000
 			}),
 			this.getChannelCommentContext(channelId)
 		])
@@ -177,7 +178,7 @@ export class ChannelCommentsService {
 
 		for (let i = 0; i < dto.attachments.length; i++) {
 			const att = dto.attachments[i]
-			await this.storageService.confirmUpload(att.fileId)
+			await this.storageService.confirmUpload(att.fileId, userId.toString())
 
 			const file = await this.prisma.file.findUnique({ where: { id: att.fileId } })
 			if (!file) throw new NotFoundException(`File ${att.fileId} not found`)
@@ -316,6 +317,7 @@ export class ChannelCommentsService {
 
 		return this.storageService.initUpload({
 			...dto,
+			uploaderId: userId.toString(),
 			directory: FileType.CHAT_ATTACHMENT
 		})
 	}

@@ -1,4 +1,4 @@
-import { Exclude, Expose } from 'class-transformer'
+import { Exclude, Expose, plainToInstance } from 'class-transformer'
 import { OmitNull } from '../../../common/decorators/omit-null.decorator'
 
 @Exclude()
@@ -49,4 +49,10 @@ export class UserResponseDto {
 
 	@Expose()
 	canForwardAndCopy?: boolean
+}
+
+export function toPublicUserResponse<T>(user: T): UserResponseDto {
+	const response = plainToInstance(UserResponseDto, user)
+	response.email = undefined
+	return response
 }

@@ -126,12 +126,18 @@ export class EmojiController {
 	}
 
 	@Post('upload/init')
-	async initEmojiUpload(@Body() dto: EmojiUploadInitDto): Promise<InitUploadDto> {
-		return this.emojiService.initEmojiUpload(dto)
+	async initEmojiUpload(
+		@CurrentUserId() userId: UserId,
+		@Body() dto: EmojiUploadInitDto
+	): Promise<InitUploadDto> {
+		return this.emojiService.initEmojiUpload(dto, userId)
 	}
 
 	@Post('upload/confirm/:fileId')
-	async confirmEmojiUpload(@Param('fileId') fileId: string): Promise<FileDto> {
-		return this.emojiService.confirmEmojiUpload(fileId)
+	async confirmEmojiUpload(
+		@CurrentUserId() userId: UserId,
+		@Param('fileId') fileId: string
+	): Promise<FileDto> {
+		return this.emojiService.confirmEmojiUpload(fileId, userId)
 	}
 }

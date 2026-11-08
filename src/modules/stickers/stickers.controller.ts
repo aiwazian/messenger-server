@@ -119,12 +119,18 @@ export class StickersController {
 	}
 
 	@Post('upload/init')
-	async initStickerUpload(@Body() dto: StickerUploadInitDto): Promise<InitUploadDto> {
-		return this.stickersService.initStickerUpload(dto)
+	async initStickerUpload(
+		@CurrentUserId() userId: UserId,
+		@Body() dto: StickerUploadInitDto
+	): Promise<InitUploadDto> {
+		return this.stickersService.initStickerUpload(dto, userId)
 	}
 
 	@Post('upload/confirm/:fileId')
-	async confirmStickerUpload(@Param('fileId') fileId: string): Promise<FileDto> {
-		return this.stickersService.confirmStickerUpload(fileId)
+	async confirmStickerUpload(
+		@CurrentUserId() userId: UserId,
+		@Param('fileId') fileId: string
+	): Promise<FileDto> {
+		return this.stickersService.confirmStickerUpload(fileId, userId)
 	}
 }

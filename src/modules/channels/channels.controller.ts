@@ -179,9 +179,10 @@ export class ChannelsController {
 	@RequireAdminPermission('canEditProfile')
 	updateChannel(
 		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
+		@CurrentUserId() userId: UserId,
 		@Body() dto: UpdateChannelDto
 	) {
-		return this.channelsService.update(id, dto)
+		return this.channelsService.update(id, userId, dto)
 	}
 
 	@HttpCode(204)
@@ -331,9 +332,10 @@ export class ChannelsController {
 	@Post(`:${PARAMS.CHANNEL_ID}/avatar/init`)
 	@UseGuards(ChannelExistsGuard, ChannelAdminGuard)
 	@RequireAdminPermission('canEditProfile')
-	initFileUpload(@Body() dto: FileInitDto) {
+	initFileUpload(@CurrentUserId() userId: UserId, @Body() dto: FileInitDto) {
 		return this.storageService.initUpload({
 			...dto,
+			uploaderId: userId.toString(),
 			category:
 				dto.mimeType === VIDEO_AVATAR_MIME_TYPE
 					? UploadCategory.VIDEO_AVATAR
@@ -347,9 +349,10 @@ export class ChannelsController {
 	@RequireAdminPermission('canEditProfile')
 	confirmFileUpload(
 		@Param(PARAMS.CHANNEL_ID, ParseChannelIdPipe) id: ChannelId,
-		@Param('fileId') fileId: string
+		@Param('fileId') fileId: string,
+		@CurrentUserId() userId: UserId
 	) {
-		return this.channelsService.confirmUploadAvatar(id, fileId)
+		return this.channelsService.confirmUploadAvatar(id, fileId, userId)
 	}
 
 	@Delete(`:${PARAMS.CHANNEL_ID}/avatars/:fileId`)

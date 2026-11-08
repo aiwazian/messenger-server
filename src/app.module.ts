@@ -74,7 +74,23 @@ import { RestoreCredentialsModule } from './modules/restore-credentials/restore-
 
 				WEBAUTHN_RP_ID: Joi.string().hostname().optional(),
 				WEBAUTHN_EXPECTED_ORIGINS: Joi.string().optional()
-			}),
+			})
+				.custom(
+					(
+						value: Record<string, any>,
+						helpers: Joi.CustomHelpers<Record<string, any>>
+					) => {
+						const keyName = `ENCRYPTION_KEY_V${value.CURRENT_ENCRYPTION_VERSION}`
+						if (!value[keyName]) {
+							return helpers.error('any.invalid')
+						}
+						return value
+					}
+				)
+				.messages({
+					'any.invalid':
+						'CURRENT_ENCRYPTION_VERSION has no matching ENCRYPTION_KEY_V<n> variable in env'
+				}),
 			validationOptions: {
 				libraryOptions: { abortEarly: false }
 			}

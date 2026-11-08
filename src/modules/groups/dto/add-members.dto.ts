@@ -1,8 +1,9 @@
-import { ArrayMinSize, IsArray, IsNotEmpty } from 'class-validator'
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsNumberString } from 'class-validator'
 
 export class AddMembersDto {
 	@IsArray()
-	@IsNotEmpty({ each: true })
 	@ArrayMinSize(1)
+	@ArrayMaxSize(100)
+	@IsNumberString({}, { each: true })
 	userIds: string[]
 }

@@ -91,9 +91,10 @@ export class UsersController {
 	}
 
 	@Post('me/avatar/init')
-	initFileUpload(@Body() dto: FileInitDto): Promise<InitUploadDto> {
+	initFileUpload(@CurrentUserId() userId: UserId, @Body() dto: FileInitDto): Promise<InitUploadDto> {
 		return this.storage.initUpload({
 			...dto,
+			uploaderId: userId.toString(),
 			category:
 				dto.mimeType === VIDEO_AVATAR_MIME_TYPE
 					? UploadCategory.VIDEO_AVATAR

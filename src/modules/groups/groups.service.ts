@@ -2,6 +2,7 @@ import { plainToInstance } from 'class-transformer'
 import {
 	BadRequestException,
 	ConflictException,
+	ForbiddenException,
 	Injectable,
 	NotFoundException
 } from '@nestjs/common'
@@ -10,8 +11,11 @@ import { UpdateGroupDto } from './dto/update-group.dto'
 import { ChatsService } from '../chats/chats.service'
 import { ChatResponseDto } from '../chats/dto/chat-response.dto'
 import { SearchService } from '../search/search.service'
+import { InviteLinksService } from '../invites/invite-links.service'
 import { StorageService } from '../storage/storage.service'
-import { UserResponseDto } from '../users/dto/user-response.dto'
+import { assertUsableAsAvatar } from '../storage/services/avatar-file.util'
+import { FileType } from '../../common/enums/file-type.enum'
+import { UserResponseDto, toPublicUserResponse } from '../users/dto/user-response.dto'
 import { RealtimeGateway } from '../realtime/realtime.gateway'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
@@ -23,6 +27,7 @@ import { PrivacyAccessService } from '../../common/privacy/privacy-access.servic
 import { SocketEvent } from '../../common/socket/socket-events'
 import { AddMembersDto } from './dto/add-members.dto'
 import { randomBytes } from 'crypto'
+import { clampListRange } from '../../common/utils/list-range.util'
 import { CreateInviteLinkDto } from '../../common/dtos/create-invite-link.dto'
 import { UpdateInviteLinkDto } from '../../common/dtos/update-invite-link.dto'
 import { InviteLinkResponseDto } from '../invites/dto/invite-link-response.dto'
@@ -35,15 +40,24 @@ export class GroupsService {
 		private readonly searchService: SearchService,
 		private readonly realtimeGateway: RealtimeGateway,
 		private readonly storageService: StorageService,
-		private readonly privacyAccess: PrivacyAccessService
+		private readonly privacyAccess: PrivacyAccessService,
+		private readonly inviteLinksService: InviteLinksService
 	) {}
 
-	async update(id: GroupId, dto: UpdateGroupDto): Promise<GroupResponseDto> {
+	async update(id: GroupId, userId: UserId, dto: UpdateGroupDto): Promise<GroupResponseDto> {
 		const existingGroup = await this.prisma.group.findUnique({ where: { id } })
+		if (!existingGroup) throw new NotFoundException('Group not found')
 
-		if (dto.username && dto.username !== existingGroup?.username) {
-			const isAvailable = await this.searchService.isUsernameAvailable(dto.username)
+		if (dto.username && dto.username !== existingGroup.username) {
+			const isAvailable = await this.searchService.isUsernameAvailable(dto.username, userId)
 			if (!isAvailable) throw new ConflictException('Username is already taken')
+		}
+
+		const changesGroupType = dto.groupType !== undefined && dto.groupType !== existingGroup.groupType
+		const changesNoCopy = dto.noCopy !== undefined && dto.noCopy !== existingGroup.noCopy
+
+		if ((changesGroupType || changesNoCopy) && existingGroup.ownerId !== userId) {
+			throw new ForbiddenException('Only the group owner can change these settings')
 		}
 
 		const group = await this.prisma.group.update({
@@ -57,7 +71,7 @@ export class GroupsService {
 			}
 		})
 
-		if (dto.noCopy !== undefined && dto.noCopy !== existingGroup?.noCopy) {
+		if (changesNoCopy) {
 			await this.notifyNoCopyChanged(id, group.noCopy)
 		}
 
@@ -141,6 +155,10 @@ export class GroupsService {
 				.delete({ where: { groupId_userId: { groupId: id, userId } } })
 				.catch(() => {})
 
+			await tx.groupAdminPermission.deleteMany({
+				where: { groupId: id, userId }
+			})
+
 			await tx.chat.deleteMany({
 				where: { userId, chatId: id }
 			})
@@ -171,6 +189,10 @@ export class GroupsService {
 			await tx.groupMember
 				.delete({ where: { groupId_userId: { groupId: id, userId: targetUserId } } })
 				.catch(() => {})
+
+			await tx.groupAdminPermission.deleteMany({
+				where: { groupId: id, userId: targetUserId }
+			})
 
 			await tx.chat.deleteMany({
 				where: { userId: targetUserId, chatId: id }
@@ -243,8 +265,12 @@ export class GroupsService {
 
 		if (!group) throw new NotFoundException('Group not found')
 
-		const isMember = userId ? group.members.length > 0 : false
-		const isOwner = userId ? group.ownerId === userId : false
+		const isMember = group.members.length > 0
+		const isOwner = group.ownerId === userId
+
+		if (group.groupType === GroupType.PRIVATE && !isMember && !isOwner) {
+			throw new NotFoundException('Group not found')
+		}
 
 		const response = plainToInstance(GroupResponseDto, {
 			...group,
@@ -291,18 +317,17 @@ export class GroupsService {
 				: undefined
 		}
 
+		const { skip: safeSkip, take: safeTake } = clampListRange(skip, take)
+
 		const members = await this.prisma.groupMember.findMany({
 			where,
-			skip,
-			take,
+			skip: safeSkip,
+			take: safeTake,
 			include: { user: true },
 			orderBy: { user: { firstName: 'asc' } }
 		})
 
-		return plainToInstance(
-			UserResponseDto,
-			members.map((m) => m.user)
-		)
+		return members.map((m) => toPublicUserResponse(m.user))
 	}
 
 	async getAvailableUsersForInvite(id: GroupId, ownerId: UserId): Promise<UserResponseDto[]> {
@@ -343,7 +368,7 @@ export class GroupsService {
 				)
 		)
 
-		return plainToInstance(UserResponseDto, filtered)
+		return filtered.map((u) => toPublicUserResponse(u))
 	}
 
 	async addMembers(id: GroupId, dto: AddMembersDto, ownerId: UserId): Promise<void> {
@@ -445,18 +470,17 @@ export class GroupsService {
 				: undefined
 		}
 
+		const { skip: safeSkip, take: safeTake } = clampListRange(skip, take)
+
 		const list = await this.prisma.groupBlackList.findMany({
 			where,
-			skip,
-			take,
+			skip: safeSkip,
+			take: safeTake,
 			select: { user: true },
 			orderBy: { user: { firstName: 'asc' } }
 		})
 
-		return plainToInstance(
-			UserResponseDto,
-			list.map((m) => m.user)
-		)
+		return list.map((m) => toPublicUserResponse(m.user))
 	}
 
 	async unban(id: GroupId, targetUserId: UserId): Promise<void> {
@@ -501,18 +525,17 @@ export class GroupsService {
 				: undefined
 		}
 
+		const { skip: safeSkip, take: safeTake } = clampListRange(skip, take)
+
 		const requests = await this.prisma.groupJoinRequest.findMany({
 			where,
-			skip,
-			take,
+			skip: safeSkip,
+			take: safeTake,
 			include: { user: true },
 			orderBy: { createdAt: 'desc' }
 		})
 
-		return plainToInstance(
-			UserResponseDto,
-			requests.map((r) => r.user)
-		)
+		return requests.map((r) => toPublicUserResponse(r.user))
 	}
 
 	async acceptJoinRequest(id: GroupId, targetUserId: UserId): Promise<void> {
@@ -522,6 +545,16 @@ export class GroupsService {
 
 		if (!request) {
 			throw new NotFoundException('Join request not found')
+		}
+
+		const isBanned = await this.prisma.groupBlackList.count({
+			where: { groupId: id, userId: targetUserId }
+		})
+		if (isBanned) {
+			await this.prisma.groupJoinRequest
+				.delete({ where: { groupId_userId: { groupId: id, userId: targetUserId } } })
+				.catch(() => {})
+			throw new BadRequestException('User is banned from this group')
 		}
 
 		await this.prisma.$transaction(async (tx) => {
@@ -541,6 +574,8 @@ export class GroupsService {
 		})
 
 		await this.chatsService.create(targetUserId, ChatId(id))
+
+		await this.inviteLinksService.consumeOnAccept(request.inviteLinkId, false)
 
 		const group = await this.prisma.group.findUnique({ where: { id } })
 		if (group) {
@@ -628,7 +663,7 @@ export class GroupsService {
 		await this.prisma.groupInviteLink.delete({ where: { id: linkId } })
 	}
 
-	async confirmUploadAvatar(groupId: GroupId, fileId: string): Promise<void> {
+	async confirmUploadAvatar(groupId: GroupId, fileId: string, uploaderId: UserId): Promise<void> {
 		const file = await this.prisma.file.findFirst({
 			where: { id: fileId }
 		})
@@ -637,14 +672,23 @@ export class GroupsService {
 			throw new NotFoundException('File not found')
 		}
 
-		await this.storageService.confirmUpload(fileId)
+		assertUsableAsAvatar(file, FileType.GROUP_AVATAR)
 
-		await this.prisma.groupPhoto.create({
-			data: {
-				groupId: groupId,
-				fileId: file.id,
-				isCurrent: true
-			}
+		await this.storageService.confirmUpload(fileId, uploaderId.toString())
+
+		await this.prisma.$transaction(async (tx) => {
+			await tx.groupPhoto.updateMany({
+				where: { groupId },
+				data: { isCurrent: false }
+			})
+
+			await tx.groupPhoto.create({
+				data: {
+					groupId: groupId,
+					fileId: file.id,
+					isCurrent: true
+				}
+			})
 		})
 	}
 

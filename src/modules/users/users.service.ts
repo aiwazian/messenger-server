@@ -10,12 +10,14 @@ import {
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { UpdateUserDto } from './dto/update-user.dto'
 import { plainToInstance } from 'class-transformer'
-import { UserResponseDto } from './dto/user-response.dto'
+import { UserResponseDto, toPublicUserResponse } from './dto/user-response.dto'
 import { SearchService } from '../search/search.service'
 import { PrivacySettingsDto } from './dto/privacy-settings.dto'
 import { UpdatePrivacySettingsDto } from './dto/update-privacy-settings.dto'
 import { ChangePasswordDto } from './dto/change-password.dto'
 import { StorageService } from '../storage/storage.service'
+import { assertUsableAsAvatar } from '../storage/services/avatar-file.util'
+import { FileType } from '../../common/enums/file-type.enum'
 import { SessionsService } from '../sessions/sessions.service'
 import { PrismaService } from '../../providers/prisma/prisma.service'
 import { UserId } from '../../common/types/user-id.type'
@@ -187,7 +189,7 @@ export class UsersService {
 		if (!user) throw new NotFoundException('User not found')
 
 		if (dto.username && dto.username !== user.username) {
-			const isAvailable = await this.searchService.isUsernameAvailable(dto.username)
+			const isAvailable = await this.searchService.isUsernameAvailable(dto.username, id)
 			if (!isAvailable) throw new ConflictException('Username is already taken')
 		}
 
@@ -290,6 +292,10 @@ export class UsersService {
 			}
 		} else if (lastSeenVal) {
 			response.lastSeen = lastSeenVal
+		}
+
+		if (currentUserId && currentUserId !== id) {
+			response.email = undefined
 		}
 
 		return response
@@ -460,7 +466,9 @@ export class UsersService {
 			throw new NotFoundException('File not found')
 		}
 
-		await this.storageService.confirmUpload(fileId)
+		assertUsableAsAvatar(file, FileType.USER_AVATAR)
+
+		await this.storageService.confirmUpload(fileId, userId.toString())
 
 		const lastPhoto = await this.prisma.userPhoto.findFirst({
 			where: { userId },
@@ -468,13 +476,20 @@ export class UsersService {
 		})
 		const nextSortOrder = lastPhoto ? lastPhoto.sortOrder + 1 : 0
 
-		await this.prisma.userPhoto.create({
-			data: {
-				userId: userId,
-				fileId: file.id,
-				isCurrent: true,
-				sortOrder: nextSortOrder
-			}
+		await this.prisma.$transaction(async (tx) => {
+			await tx.userPhoto.updateMany({
+				where: { userId },
+				data: { isCurrent: false }
+			})
+
+			await tx.userPhoto.create({
+				data: {
+					userId: userId,
+					fileId: file.id,
+					isCurrent: true,
+					sortOrder: nextSortOrder
+				}
+			})
 		})
 	}
 
@@ -583,7 +598,7 @@ export class UsersService {
 		})
 
 		return blackLists.map((bl) => {
-			const response = plainToInstance(UserResponseDto, bl.blocked)
+			const response = toPublicUserResponse(bl.blocked)
 			response.avatars = bl.blocked.photos.map((p) => ({
 				fileId: p.fileId,
 				sortOrder: p.sortOrder

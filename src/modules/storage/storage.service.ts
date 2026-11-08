@@ -1,4 +1,11 @@
-import { ConflictException, Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common'
+import {
+	ConflictException,
+	ForbiddenException,
+	Inject,
+	Injectable,
+	Logger,
+	OnModuleInit
+} from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { plainToInstance } from 'class-transformer'
 import { fileTypeFromBuffer } from 'file-type'
@@ -31,6 +38,7 @@ export interface InitUploadInput {
 	subdirectory?: string
 	width?: number
 	height?: number
+	uploaderId?: string
 }
 
 @Injectable()
@@ -77,7 +85,8 @@ export class StorageService implements OnModuleInit {
 			directory: input.directory,
 			subdirectory: input.subdirectory,
 			width: input.width,
-			height: input.height
+			height: input.height,
+			uploaderId: input.uploaderId
 		})
 
 		const form = await this.objectStorage.createUploadForm({
@@ -97,8 +106,12 @@ export class StorageService implements OnModuleInit {
 		})
 	}
 
-	async confirmUpload(fileId: string): Promise<FileDto> {
+	async confirmUpload(fileId: string, uploaderId?: string): Promise<FileDto> {
 		const file = await this.files.findByIdOrFail(fileId)
+
+		if (uploaderId && file.uploaderId && file.uploaderId !== uploaderId) {
+			throw new ForbiddenException('File was uploaded by another user')
+		}
 
 		if (file.status === FileStatus.UPLOADED) {
 			return plainToInstance(FileDto, file)

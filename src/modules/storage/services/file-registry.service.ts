@@ -13,6 +13,7 @@ export interface CreatePendingFileInput {
 	subdirectory?: string
 	width?: number
 	height?: number
+	uploaderId?: string
 }
 
 @Injectable()
@@ -35,6 +36,7 @@ export class FileRegistryService {
 				path: `${folder}/${id}${extension}`,
 				status: FileStatus.PENDING,
 				createdAt: Date.now(),
+				uploaderId: input.uploaderId ?? null,
 				width: input.width ?? null,
 				height: input.height ?? null
 			}

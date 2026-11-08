@@ -255,6 +255,13 @@ export class GroupAdminsService {
 			where: { groupId_userId: { groupId, userId } }
 		})
 		if (!admin) return false
+
+		const member = await this.prisma.groupMember.findFirst({
+			where: { groupId, userId },
+			select: { id: true }
+		})
+		if (!member) return false
+
 		if (!permission) return true
 
 		return admin[permission] === true

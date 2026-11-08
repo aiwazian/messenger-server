@@ -461,13 +461,14 @@ model DeletedMessage {
 }
 
 model File {
-  id        String     @id @default(uuid())
-  name      String
-  size      BigInt
-  mimeType  String
-  path      String
-  status    FileStatus @default(PENDING)
-  createdAt BigInt
+  id         String     @id @default(uuid())
+  name       String
+  size       BigInt
+  mimeType   String
+  path       String
+  status     FileStatus @default(PENDING)
+  createdAt  BigInt
+  uploaderId String?
 
   width     Int?
   height    Int?

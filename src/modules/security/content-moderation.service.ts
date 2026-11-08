@@ -1,5 +1,5 @@
 import OpenAI from 'openai'
-import { Inject, Injectable, Logger } from '@nestjs/common'
+import { HttpException, HttpStatus, Inject, Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Redis } from 'ioredis'
 import { REDIS_CLIENT } from '../../providers/redis/redis.module'
@@ -12,7 +12,13 @@ Output ONLY: true or false. No markdown, no text.`
 
 const VERDICT_KEY_PREFIX = 'content-moderation:username'
 
-const VERDICT_TTL_SECONDS = 30 * 24 * 60 * 60
+const VERDICT_TTL_SECONDS = 365 * 24 * 60 * 60
+
+const DAILY_BUDGET_KEY_PREFIX = 'ai-moderation-budget'
+
+const DAILY_BUDGET_LIMIT = 300
+
+const DAILY_BUDGET_TTL_SECONDS = 48 * 60 * 60
 
 @Injectable()
 export class ContentModerationService {
@@ -31,7 +37,7 @@ export class ContentModerationService {
 		})
 	}
 
-	async isAllowed(text: string): Promise<boolean> {
+	async isAllowed(text: string, requesterId?: bigint): Promise<boolean> {
 		const key = this.verdictKey(text)
 
 		let cached: string | null = null
@@ -43,6 +49,10 @@ export class ContentModerationService {
 
 		if (cached !== null) {
 			return cached === 'allowed'
+		}
+
+		if (requesterId !== undefined) {
+			await this.assertDailyBudget(requesterId)
 		}
 
 		const verdict = await this.requestVerdict(text)
@@ -89,6 +99,25 @@ export class ContentModerationService {
 		} catch (error) {
 			this.logger.error('Content moderation failed', error)
 			return null
+		}
+	}
+
+	private async assertDailyBudget(requesterId: bigint): Promise<void> {
+		const day = new Date().toISOString().slice(0, 10)
+		const key = `${DAILY_BUDGET_KEY_PREFIX}:${requesterId.toString()}:${day}`
+
+		let count: number | null = null
+		try {
+			count = await this.redis.incr(key)
+			if (count === 1) {
+				await this.redis.expire(key, DAILY_BUDGET_TTL_SECONDS)
+			}
+		} catch (error) {
+			this.logger.warn(`Daily budget check failed: ${String(error)}`)
+		}
+
+		if (count !== null && count > DAILY_BUDGET_LIMIT) {
+			throw new HttpException('Daily username check limit exceeded', HttpStatus.TOO_MANY_REQUESTS)
 		}
 	}
 
